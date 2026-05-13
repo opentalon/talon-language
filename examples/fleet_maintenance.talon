@@ -8,14 +8,18 @@
 //   rm -rf /tmp/talon-fleet-test
 //   dtlv exec -f /dev/stdin < examples/test_datalevin.clj
 
+define "active_vehicle" {
+  type == "item"
+  and status == "active"
+  and category == "Vehicles"
+}
+
 define "overdue_km" {
   attr "km" > attr "last_service_km"
 }
 
 detect "Service overdue" {
-  for records where type == "item"
-    and status == "active"
-    and category == "Vehicles"
+  for records where is "active_vehicle"
     and is "overdue_km"
   flag matching items
   label "{item.name}: {attr.km} km since last service at {attr.last_service_km} km"
@@ -24,9 +28,9 @@ detect "Service overdue" {
 
 detect "Unusual consumption" {
   for records where type == "stock_item"
-  is anomaly compared_to last 12 weeks
+    and attr "weekly_consumption" is anomaly compared_to last 12 weeks
   flag matching items
-  label "{item.name}: unusual consumption detected"
+  label "{item.name}: {attr.weekly_consumption} this week (unusual)"
   priority HIGH
 }
 
@@ -45,9 +49,7 @@ recommend "Schedule service" {
 }
 
 rule "Manager approval for high value" {
-  for records where type == "item"
-    and status == "active"
-    and category == "Vehicles"
+  for records where is "active_vehicle"
   before "status_change"
   requires approval from role "manager"
   reason "Fleet vehicles require manager approval for status changes"
