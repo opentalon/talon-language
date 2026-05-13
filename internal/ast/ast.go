@@ -275,16 +275,23 @@ type ChangedToCondition struct {
 	Value     Expr
 }
 
-func (*CompareCondition) condNode()    {}
-func (*LogicalCondition) condNode()    {}
-func (*NotCondition) condNode()        {}
-func (*MembershipCondition) condNode() {}
-func (*IsCondition) condNode()         {}
-func (*HasCondition) condNode()        {}
-func (*StringMatchCondition) condNode(){}
-func (*AnomalyCondition) condNode()    {}
-func (*TemporalCondition) condNode()   {}
-func (*ChangedToCondition) condNode()  {}
+// BlockMatchesCondition is `detect "name" matches` inside a recommend `when`.
+type BlockMatchesCondition struct {
+	Kind string // "detect", "predict", "forecast", etc.
+	Name string
+}
+
+func (*CompareCondition) condNode()      {}
+func (*LogicalCondition) condNode()      {}
+func (*NotCondition) condNode()          {}
+func (*MembershipCondition) condNode()   {}
+func (*IsCondition) condNode()           {}
+func (*HasCondition) condNode()          {}
+func (*StringMatchCondition) condNode()  {}
+func (*AnomalyCondition) condNode()      {}
+func (*TemporalCondition) condNode()     {}
+func (*ChangedToCondition) condNode()    {}
+func (*BlockMatchesCondition) condNode() {}
 
 // ─── Supporting types ─────────────────────────────────────────────────────────
 
