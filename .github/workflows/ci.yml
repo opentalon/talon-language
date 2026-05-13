@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  go-test:
+    name: Go Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go test ./...
+
+  go-lint:
+    name: Go Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  talon-test:
+    name: Talon Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go build ./cmd/talon
+      - run: ./talon build examples/fleet_maintenance.talon
+      - run: ./talon test examples/fleet_maintenance.talon examples/fleet_maintenance.talon.test
+
+  talon-datalevin:
+    name: Talon + Datalevin
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Install Datalevin
+        run: |
+          curl -sL https://github.com/datalevin/datalevin/releases/download/0.10.7/dtlv-0.10.7-ubuntu-22.04-amd64.zip -o dtlv.zip
+          unzip dtlv.zip
+          chmod +x dtlv
+          sudo mv dtlv /usr/local/bin/
+          dtlv --help | head -1
+      - run: go build ./cmd/talon
+      - run: ./talon build examples/fleet_maintenance.talon
+      - name: Run Datalevin integration test
+        run: |
+          output=$(dtlv exec -f /dev/stdin < examples/test_datalevin.clj)
+          echo "$output"
+          echo "$output" | grep -q ":service-overdue" || { echo "FAIL: missing query results"; exit 1; }

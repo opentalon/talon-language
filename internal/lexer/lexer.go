@@ -139,6 +139,13 @@ const (
 	TokenContext
 	TokenCategoryTree
 
+	// Keywords — test blocks
+	TokenTest
+	TokenGiven
+	TokenExpect
+	TokenFlagged
+	TokenRecord
+
 	// Special
 	TokenIdent
 	TokenEOF
@@ -233,6 +240,11 @@ var keywords = map[string]TokenType{
 	"category_tree":     TokenCategoryTree,
 	"true":              TokenBool,
 	"false":             TokenBool,
+	"test":              TokenTest,
+	"given":             TokenGiven,
+	"expect":            TokenExpect,
+	"flagged":           TokenFlagged,
+	"record":            TokenRecord,
 }
 
 type Token struct {

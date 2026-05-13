@@ -58,6 +58,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseClassifyBlock()
 	case lexer.TokenFind:
 		return p.parseSimilarBlock()
+	case lexer.TokenTest:
+		return p.parseTestBlock()
 	default:
 		p.errorf("expected block keyword (detect, rule, recommend, ...), got %q", p.peek().Value)
 		p.synchronize()
@@ -1255,6 +1257,140 @@ func (p *parser) synchronize() {
 // Used for unknown tokens inside a block — advances one token.
 func (p *parser) synchronizeInBlock() {
 	p.advance()
+}
+
+// ─── test block ────────────────────────────────────────────────────────────
+
+func (p *parser) parseTestBlock() *ast.TestBlock {
+	tok := p.advance() // test
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.TestBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch p.peek().Type {
+		case lexer.TokenGiven:
+			p.advance() // given
+			p.expect(lexer.TokenLBrace)
+			for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+				b.Given = append(b.Given, p.parseTestDatum())
+			}
+			p.expect(lexer.TokenRBrace)
+		case lexer.TokenWhen:
+			p.advance() // when
+			b.WhenKind = p.advance().Value // detect, rule, forecast, etc.
+			b.WhenBlock = p.expectString()
+		case lexer.TokenExpect:
+			p.advance() // expect
+			p.expect(lexer.TokenLBrace)
+			for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+				b.Expect = append(b.Expect, p.parseTestAssertion())
+			}
+			p.expect(lexer.TokenRBrace)
+		default:
+			p.errorf("unexpected token %q inside test block", p.peek().Value)
+			p.synchronizeInBlock()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+func (p *parser) parseTestDatum() ast.TestDatum {
+	switch p.peek().Type {
+	case lexer.TokenRecord:
+		p.advance() // record
+		id, _ := strconv.Atoi(p.expectNumberStr())
+		fields := map[string]interface{}{}
+		// Parse key value pairs: type "item" category "Vehicles" status "active"
+		for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) &&
+			!p.at(lexer.TokenRecord) && !p.at(lexer.TokenAttr) {
+			key := p.advance().Value // type, category, status, or ident
+			switch p.peek().Type {
+			case lexer.TokenString:
+				fields[key] = p.advance().Value
+			case lexer.TokenNumber:
+				n, _ := strconv.ParseFloat(p.advance().Value, 64)
+				fields[key] = n
+			case lexer.TokenBool:
+				fields[key] = p.advance().Value == "true"
+			default:
+				p.errorf("expected value after %q in record, got %q", key, p.peek().Value)
+				p.advance()
+			}
+		}
+		return ast.TestDatum{Kind: "record", ID: id, Fields: fields}
+
+	case lexer.TokenAttr:
+		p.advance() // attr
+		id, _ := strconv.Atoi(p.expectNumberStr())
+		attrName := p.expectString()
+		fields := map[string]interface{}{}
+		switch p.peek().Type {
+		case lexer.TokenString:
+			fields[attrName] = p.advance().Value
+		case lexer.TokenNumber:
+			n, _ := strconv.ParseFloat(p.advance().Value, 64)
+			fields[attrName] = n
+		case lexer.TokenBool:
+			fields[attrName] = p.advance().Value == "true"
+		default:
+			p.errorf("expected value for attr %q, got %q", attrName, p.peek().Value)
+		}
+		return ast.TestDatum{Kind: "attr", ID: id, Fields: fields}
+
+	default:
+		p.errorf("expected 'record' or 'attr' inside given block, got %q", p.peek().Value)
+		p.advance()
+		return ast.TestDatum{}
+	}
+}
+
+func (p *parser) parseTestAssertion() ast.TestAssertion {
+	switch p.peek().Type {
+	case lexer.TokenFlagged:
+		p.advance() // flagged
+		id, _ := strconv.Atoi(p.expectNumberStr())
+		return ast.TestAssertion{Kind: "flagged", ID: id}
+
+	case lexer.TokenNot:
+		p.advance() // not
+		if p.at(lexer.TokenFlagged) {
+			p.advance() // flagged
+			id, _ := strconv.Atoi(p.expectNumberStr())
+			return ast.TestAssertion{Kind: "not_flagged", ID: id}
+		}
+		p.errorf("expected 'flagged' after 'not' in expect, got %q", p.peek().Value)
+		p.advance()
+		return ast.TestAssertion{}
+
+	case lexer.TokenLabel:
+		p.advance() // label
+		op := p.advance().Value // "contains", "==", etc.
+		val := p.expectString()
+		return ast.TestAssertion{Kind: "label", Op: op, Value: val}
+
+	case lexer.TokenPriority:
+		p.advance() // priority
+		op := p.advance().Value // "=="
+		val := p.advance().Value // HIGH, LOW, etc.
+		return ast.TestAssertion{Kind: "priority", Op: op, Value: val}
+
+	case lexer.TokenIdent:
+		// e.g. "count == 2"
+		kind := p.advance().Value
+		op := p.advance().Value
+		val := p.advance().Value
+		return ast.TestAssertion{Kind: kind, Op: op, Value: val}
+
+	default:
+		p.errorf("unexpected token %q inside expect block", p.peek().Value)
+		p.advance()
+		return ast.TestAssertion{}
+	}
 }
 
 // exprToAttrName extracts a string attribute name from an expression node.

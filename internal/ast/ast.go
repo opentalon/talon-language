@@ -432,3 +432,33 @@ type MCPCall struct {
 	Tool   string
 	Args   map[string]Expr
 }
+
+// ─── Test types ──────────────────────────────────────────────────────────────
+
+// TestBlock is a single test case in a .talon.test file.
+type TestBlock struct {
+	Pos       Pos
+	Name      string
+	Given     []TestDatum
+	WhenKind  string // "detect", "rule", "forecast", etc.
+	WhenBlock string // block name
+	Expect    []TestAssertion
+}
+
+func (*TestBlock) blockNode()           {}
+func (b *TestBlock) BlockName() string  { return b.Name }
+
+// TestDatum is one line inside a given { } block.
+type TestDatum struct {
+	Kind   string            // "record" or "attr"
+	ID     int               // record/entity ID
+	Fields map[string]interface{} // key → value pairs
+}
+
+// TestAssertion is one line inside an expect { } block.
+type TestAssertion struct {
+	Kind    string // "flagged", "not_flagged", "label", "priority", "count"
+	ID      int    // entity ID (for flagged/not_flagged)
+	Op      string // "contains", "==", etc.
+	Value   string // expected value
+}

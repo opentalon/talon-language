@@ -2,6 +2,7 @@
 
 **A domain-agnostic expert system language with built-in ML primitives.**
 
+[![CI](https://github.com/opentalon/talon-language/actions/workflows/ci.yml/badge.svg)](https://github.com/opentalon/talon-language/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8.svg)](https://go.dev)
 
