@@ -63,3 +63,40 @@ jobs:
           output=$(dtlv exec -f /dev/stdin < examples/test_datalevin.clj)
           echo "$output"
           echo "$output" | grep -q ":service-overdue" || { echo "FAIL: missing query results"; exit 1; }
+
+  talon-run:
+    name: Talon Run (HTTP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install Clojure CLI
+        run: |
+          curl -sL https://download.clojure.org/install/linux-install-1.12.5.1638.sh -o install-clojure.sh
+          sudo bash install-clojure.sh || true
+          clojure --version
+      - run: go build ./cmd/talon
+      - name: Start datalevin-server
+        run: |
+          cd datalevin-server && clojure -M:run &
+          for i in $(seq 1 60); do
+            sleep 2
+            if curl -s http://localhost:8898/health | grep -q ok; then
+              echo "datalevin-server is up"
+              break
+            fi
+            echo "waiting... ($i)"
+          done
+          curl -sf http://localhost:8898/health || { echo "FAIL: server did not start"; exit 1; }
+      - name: Run talon with seed from test file
+        run: |
+          output=$(./talon run examples/fleet_maintenance.talon --seed examples/fleet_maintenance.talon.test)
+          echo "$output"
+          echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
+          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }

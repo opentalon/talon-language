@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/opentalon/talon-language/internal/datalevin"
 	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/planner"
@@ -18,7 +21,7 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: talon <command> [args]")
-		fmt.Fprintln(os.Stderr, "commands: build, test, repl, trace, mod")
+		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, mod")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -27,6 +30,8 @@ func main() {
 		runBuild()
 	case "test":
 		runTest()
+	case "run":
+		runExecute()
 	case "repl":
 		fmt.Fprintln(os.Stderr, "talon repl: not yet implemented")
 		os.Exit(diagnostic.ExitError)
@@ -203,6 +208,163 @@ func runTest() {
 	if failed > 0 {
 		os.Exit(diagnostic.ExitError)
 	}
+}
+
+func runExecute() {
+	// Parse args: talon run <file.talon> [--datalevin URL] [--seed file.talon.test]
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--datalevin URL] [--seed file.talon.test]")
+		os.Exit(diagnostic.ExitUsage)
+	}
+
+	path := os.Args[2]
+	serverURL := "http://localhost:8898"
+	seedPath := ""
+	for i := 3; i < len(os.Args); i++ {
+		if os.Args[i] == "--datalevin" && i+1 < len(os.Args) {
+			serverURL = os.Args[i+1]
+			i++
+		} else if os.Args[i] == "--seed" && i+1 < len(os.Args) {
+			seedPath = os.Args[i+1]
+			i++
+		}
+	}
+
+	// Compile
+	src, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon run: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+
+	file := filepath.Base(path)
+	plans, ok := compile(file, string(src))
+	if !ok {
+		os.Exit(diagnostic.ExitError)
+	}
+
+	// Connect to Datalevin
+	client := datalevin.NewClient(serverURL)
+	ctx := context.Background()
+
+	if err := client.Health(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "talon run: cannot reach datalevin-server at %s: %v\n", serverURL, err)
+		fmt.Fprintln(os.Stderr, "hint: start the server with: cd datalevin-server && clj -M:run")
+		os.Exit(diagnostic.ExitError)
+	}
+
+	exec := executor.NewExecutor(client)
+
+	// Seed from .talon.test file if requested
+	if seedPath != "" {
+		seedSrc, err := os.ReadFile(seedPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "talon run: %v\n", err)
+			os.Exit(diagnostic.ExitError)
+		}
+		seedFile := filepath.Base(seedPath)
+		seedTokens, sld := lexer.Lex(seedFile, string(seedSrc))
+		if sld.HasErrors() {
+			for _, d := range sld {
+				fmt.Fprintf(os.Stderr, "error: %s\n", d)
+			}
+			os.Exit(diagnostic.ExitError)
+		}
+		seedProg, spd := parser.Parse(seedFile, seedTokens)
+		if spd.HasErrors() {
+			for _, d := range spd {
+				fmt.Fprintf(os.Stderr, "error: %s\n", d)
+			}
+			os.Exit(diagnostic.ExitError)
+		}
+		n, err := exec.Seed(ctx, seedProg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "talon run: seed: %v\n", err)
+			os.Exit(diagnostic.ExitError)
+		}
+		fmt.Printf("==> seeded %d entity(s) from %s\n", n, seedFile)
+	}
+
+	// Execute all plans
+	results, err := exec.RunAll(ctx, plans)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon run: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+
+	// Resolve entity names for readable output
+	entityNames, resolveErr := exec.ResolveNames(ctx, nil)
+	if resolveErr != nil {
+		fmt.Fprintf(os.Stderr, "warn: could not resolve names: %v\n", resolveErr)
+	}
+
+	// Print results
+	fmt.Printf("==> %s: %d block(s) executed\n", file, len(results))
+
+	blockNames := make([]string, 0, len(results))
+	for name := range results {
+		blockNames = append(blockNames, name)
+	}
+	sort.Strings(blockNames)
+
+	for _, name := range blockNames {
+		r := results[name]
+		fmt.Printf("\n  [%s] %d row(s) matched\n", r.BlockName, len(r.Flagged))
+		for _, row := range r.Flagged {
+			if len(row) == 0 {
+				continue
+			}
+			eid, _ := row[0].(float64)
+			ename := entityNames[int(eid)]
+			if ename == "" {
+				ename = fmt.Sprintf("entity %d", int(eid))
+			}
+			if len(row) == 1 {
+				fmt.Printf("    - %s\n", ename)
+			} else {
+				// Include extra columns (e.g. km, last_service_km)
+				extras := make([]string, 0, len(row)-1)
+				for _, v := range row[1:] {
+					extras = append(extras, fmt.Sprintf("%v", v))
+				}
+				fmt.Printf("    - %s (%s)\n", ename, strings.Join(extras, ", "))
+			}
+		}
+	}
+}
+
+// compile runs lex → parse → validate → plan and returns plans.
+func compile(file, src string) (map[string]*planner.QueryPlan, bool) {
+	var allDiags diagnostic.List
+
+	tokens, ld := lexer.Lex(file, src)
+	allDiags = append(allDiags, ld...)
+
+	prog, pd := parser.Parse(file, tokens)
+	allDiags = append(allDiags, pd...)
+
+	vd := validator.Validate(file, prog)
+	allDiags = append(allDiags, vd...)
+
+	for _, d := range allDiags {
+		if d.Severity == diagnostic.Error {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		} else if d.Severity == diagnostic.Warning {
+			fmt.Fprintf(os.Stderr, "warn:  %s\n", d)
+		}
+	}
+	if allDiags.HasErrors() {
+		return nil, false
+	}
+
+	plans, planDiags := planner.Plan(prog)
+	for _, d := range planDiags {
+		fmt.Fprintf(os.Stderr, "error: %s\n", d)
+	}
+	if planDiags.HasErrors() {
+		return nil, false
+	}
+	return plans, true
 }
 
 func printStep(num int, step planner.PlanStep) {
