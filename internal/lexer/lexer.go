@@ -1,6 +1,11 @@
 package lexer
 
-import "github.com/opentalon/talon-language/internal/diagnostic"
+import (
+	"fmt"
+	"unicode"
+
+	"github.com/opentalon/talon-language/internal/diagnostic"
+)
 
 type TokenType int
 
@@ -9,7 +14,7 @@ const (
 	TokenString TokenType = iota
 	TokenNumber
 	TokenBool
-	TokenDuration
+	TokenDuration // reserved; lexer emits NUMBER + unit separately
 
 	// Delimiters
 	TokenLBrace
@@ -140,13 +145,341 @@ const (
 	TokenIllegal
 )
 
+var keywords = map[string]TokenType{
+	"detect":            TokenDetect,
+	"rule":              TokenRule,
+	"recommend":         TokenRecommend,
+	"combine":           TokenCombine,
+	"define":            TokenDefine,
+	"workflow":          TokenWorkflow,
+	"predict":           TokenPredict,
+	"forecast":          TokenForecast,
+	"cluster":           TokenCluster,
+	"classify":          TokenClassify,
+	"find":              TokenFind,
+	"for":               TokenFor,
+	"where":             TokenWhere,
+	"when":              TokenWhen,
+	"and":               TokenAnd,
+	"or":                TokenOr,
+	"not":               TokenNot,
+	"in":                TokenIn,
+	"is":                TokenIs,
+	"has":               TokenHas,
+	"attr":              TokenAttr,
+	"type":              TokenTypeKw,
+	"category":          TokenCategory,
+	"status":            TokenStatus,
+	"flag":              TokenFlag,
+	"label":             TokenLabel,
+	"priority":          TokenPriority,
+	"block":             TokenBlock,
+	"allow":             TokenAllow,
+	"reason":            TokenReason,
+	"action":            TokenAction,
+	"suggest":           TokenSuggest,
+	"return":            TokenReturn,
+	"best":              TokenBest,
+	"minimize":          TokenMinimize,
+	"maximize":          TokenMaximize,
+	"requires":          TokenRequires,
+	"approval":          TokenApproval,
+	"from":              TokenFrom,
+	"role":              TokenRole,
+	"before":            TokenBefore,
+	"after":             TokenAfter,
+	"every":             TokenEvery,
+	"on":                TokenOn,
+	"step":              TokenStep,
+	"depends_on":        TokenDepends,
+	"mcp":               TokenMcp,
+	"invoke":            TokenInvoke,
+	"anomaly":           TokenAnomaly,
+	"compared_to":       TokenComparedTo,
+	"series":            TokenSeries,
+	"over":              TokenOver,
+	"within":            TokenWithin,
+	"same":              TokenSame,
+	"similar":           TokenSimilar,
+	"calculate":         TokenCalculate,
+	"threshold":         TokenThreshold,
+	"learned_threshold": TokenLearnedThreshold,
+	"trained_on":        TokenTrainedOn,
+	"features":          TokenFeatures,
+	"confidence":        TokenConfidence,
+	"days":              TokenDays,
+	"weeks":             TokenWeeks,
+	"months":            TokenMonths,
+	"years":             TokenYears,
+	"km":                TokenKm,
+	"last":              TokenLast,
+	"next":              TokenNext,
+	"matching":          TokenMatching,
+	"records":           TokenRecords,
+	"items":             TokenItems,
+	"each":              TokenEach,
+	"today":             TokenToday,
+	"changed_to":        TokenChangedTo,
+	"contains":          TokenContains,
+	"starts_with":       TokenStartsWith,
+	"ends_with":         TokenEndsWith,
+	"older_than":        TokenOlderThan,
+	"newer_than":        TokenNewerThan,
+	"LOW":               TokenLow,
+	"MEDIUM":            TokenMedium,
+	"HIGH":              TokenHigh,
+	"CRITICAL":          TokenCritical,
+	"context":           TokenContext,
+	"category_tree":     TokenCategoryTree,
+	"true":              TokenBool,
+	"false":             TokenBool,
+}
+
 type Token struct {
-	Type    TokenType
-	Value   string
-	Line    int
-	Col     int
+	Type  TokenType
+	Value string
+	Line  int
+	Col   int
+}
+
+type scanner struct {
+	file   string
+	source []rune
+	pos    int
+	line   int
+	col    int
+	tokens []Token
+	diags  diagnostic.List
 }
 
 func Lex(file, source string) ([]Token, diagnostic.List) {
-	panic("not implemented")
+	s := &scanner{
+		file:   file,
+		source: []rune(source),
+		line:   1,
+		col:    1,
+	}
+	s.scan()
+	return s.tokens, s.diags
+}
+
+func (s *scanner) scan() {
+	for !s.atEnd() {
+		s.skipWhitespace()
+		if s.atEnd() {
+			break
+		}
+		line, col := s.line, s.col
+		ch := s.peek()
+		switch {
+		case ch == '/' && s.peek2() == '/':
+			s.scanLineComment()
+		case ch == '/' && s.peek2() == '*':
+			s.scanBlockComment(line, col)
+		case ch == '"':
+			s.scanString(line, col)
+		case unicode.IsDigit(ch):
+			s.scanNumber(line, col)
+		case unicode.IsLetter(ch) || ch == '_':
+			s.scanIdent(line, col)
+		default:
+			s.scanSymbol(line, col)
+		}
+	}
+	s.tokens = append(s.tokens, Token{Type: TokenEOF, Line: s.line, Col: s.col})
+}
+
+func (s *scanner) scanString(line, col int) {
+	s.advance() // opening "
+	var buf []rune
+	for !s.atEnd() {
+		ch := s.peek()
+		if ch == '"' {
+			s.advance()
+			s.emit(TokenString, string(buf), line, col)
+			return
+		}
+		if ch == '\n' {
+			s.diags.AddError(s.file, line, col, "unterminated string literal", "strings cannot span multiple lines")
+			return
+		}
+		if ch == '\\' {
+			s.advance()
+			if s.atEnd() {
+				s.diags.AddError(s.file, s.line, s.col, "unterminated string escape", "")
+				return
+			}
+			esc := s.advance()
+			switch esc {
+			case '"':
+				buf = append(buf, '"')
+			case '\\':
+				buf = append(buf, '\\')
+			case 'n':
+				buf = append(buf, '\n')
+			case 't':
+				buf = append(buf, '\t')
+			case 'r':
+				buf = append(buf, '\r')
+			default:
+				s.diags.AddError(s.file, s.line, s.col-1, fmt.Sprintf("unknown escape sequence \\%c", esc), "")
+				buf = append(buf, esc)
+			}
+			continue
+		}
+		buf = append(buf, s.advance())
+	}
+	s.diags.AddError(s.file, line, col, "unterminated string literal", "")
+}
+
+func (s *scanner) scanNumber(line, col int) {
+	var buf []rune
+	for !s.atEnd() && unicode.IsDigit(s.peek()) {
+		buf = append(buf, s.advance())
+	}
+	if !s.atEnd() && s.peek() == '.' && s.peek2() != 0 && unicode.IsDigit(s.peek2()) {
+		buf = append(buf, s.advance()) // .
+		for !s.atEnd() && unicode.IsDigit(s.peek()) {
+			buf = append(buf, s.advance())
+		}
+	}
+	s.emit(TokenNumber, string(buf), line, col)
+}
+
+func (s *scanner) scanIdent(line, col int) {
+	var buf []rune
+	for !s.atEnd() && (unicode.IsLetter(s.peek()) || unicode.IsDigit(s.peek()) || s.peek() == '_') {
+		buf = append(buf, s.advance())
+	}
+	word := string(buf)
+	if tt, ok := keywords[word]; ok {
+		s.emit(tt, word, line, col)
+	} else {
+		s.emit(TokenIdent, word, line, col)
+	}
+}
+
+func (s *scanner) scanSymbol(line, col int) {
+	ch := s.advance()
+	switch ch {
+	case '{':
+		s.emit(TokenLBrace, "{", line, col)
+	case '}':
+		s.emit(TokenRBrace, "}", line, col)
+	case '[':
+		s.emit(TokenLBracket, "[", line, col)
+	case ']':
+		s.emit(TokenRBracket, "]", line, col)
+	case '(':
+		s.emit(TokenLParen, "(", line, col)
+	case ')':
+		s.emit(TokenRParen, ")", line, col)
+	case ',':
+		s.emit(TokenComma, ",", line, col)
+	case '.':
+		s.emit(TokenDot, ".", line, col)
+	case '+':
+		s.emit(TokenPlus, "+", line, col)
+	case '-':
+		s.emit(TokenMinus, "-", line, col)
+	case '*':
+		s.emit(TokenStar, "*", line, col)
+	case '/':
+		s.emit(TokenSlash, "/", line, col)
+	case '%':
+		s.emit(TokenPercent, "%", line, col)
+	case '>':
+		if !s.atEnd() && s.peek() == '=' {
+			s.advance()
+			s.emit(TokenGte, ">=", line, col)
+		} else {
+			s.emit(TokenGt, ">", line, col)
+		}
+	case '<':
+		if !s.atEnd() && s.peek() == '=' {
+			s.advance()
+			s.emit(TokenLte, "<=", line, col)
+		} else {
+			s.emit(TokenLt, "<", line, col)
+		}
+	case '=':
+		if !s.atEnd() && s.peek() == '=' {
+			s.advance()
+			s.emit(TokenEq, "==", line, col)
+		} else {
+			s.diags.AddError(s.file, line, col, "unexpected character '='", "did you mean '=='?")
+			s.emit(TokenIllegal, "=", line, col)
+		}
+	case '!':
+		if !s.atEnd() && s.peek() == '=' {
+			s.advance()
+			s.emit(TokenNeq, "!=", line, col)
+		} else {
+			s.diags.AddError(s.file, line, col, "unexpected character '!'", "did you mean '!='?")
+			s.emit(TokenIllegal, "!", line, col)
+		}
+	default:
+		s.diags.AddError(s.file, line, col, fmt.Sprintf("unexpected character %q", ch), "")
+		s.emit(TokenIllegal, string(ch), line, col)
+	}
+}
+
+func (s *scanner) scanLineComment() {
+	for !s.atEnd() && s.peek() != '\n' {
+		s.advance()
+	}
+}
+
+func (s *scanner) scanBlockComment(line, col int) {
+	s.advance() // /
+	s.advance() // *
+	for !s.atEnd() {
+		if s.peek() == '*' && s.peek2() == '/' {
+			s.advance() // *
+			s.advance() // /
+			return
+		}
+		s.advance()
+	}
+	s.diags.AddError(s.file, line, col, "unterminated block comment", "")
+}
+
+func (s *scanner) peek() rune {
+	if s.atEnd() {
+		return 0
+	}
+	return s.source[s.pos]
+}
+
+func (s *scanner) peek2() rune {
+	if s.pos+1 >= len(s.source) {
+		return 0
+	}
+	return s.source[s.pos+1]
+}
+
+func (s *scanner) advance() rune {
+	ch := s.source[s.pos]
+	s.pos++
+	if ch == '\n' {
+		s.line++
+		s.col = 1
+	} else {
+		s.col++
+	}
+	return ch
+}
+
+func (s *scanner) atEnd() bool {
+	return s.pos >= len(s.source)
+}
+
+func (s *scanner) skipWhitespace() {
+	for !s.atEnd() && unicode.IsSpace(s.peek()) {
+		s.advance()
+	}
+}
+
+func (s *scanner) emit(tt TokenType, value string, line, col int) {
+	s.tokens = append(s.tokens, Token{Type: tt, Value: value, Line: line, Col: col})
 }
