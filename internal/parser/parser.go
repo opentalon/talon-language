@@ -1088,7 +1088,8 @@ func (p *parser) parsePrimary() ast.Expr {
 
 	case lexer.TokenNumber:
 		val := p.advance().Value
-		return &ast.LiteralExpr{Value: val}
+		n, _ := strconv.ParseFloat(val, 64)
+		return &ast.LiteralExpr{Value: n}
 
 	case lexer.TokenString:
 		val := p.advance().Value
