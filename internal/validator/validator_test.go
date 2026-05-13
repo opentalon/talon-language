@@ -1,0 +1,262 @@
+package validator
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/talon-language/internal/lexer"
+	"github.com/opentalon/talon-language/internal/parser"
+)
+
+func pipeline(t *testing.T, src string) diagnostic.List {
+	t.Helper()
+	tokens, ld := lexer.Lex("test.talon", src)
+	if ld.HasErrors() {
+		t.Fatalf("lex errors: %v", ld)
+	}
+	prog, pd := parser.Parse("test.talon", tokens)
+	if pd.HasErrors() {
+		t.Fatalf("parse errors: %v", pd)
+	}
+	return Validate("test.talon", prog)
+}
+
+func mustClean(t *testing.T, src string) {
+	t.Helper()
+	diags := pipeline(t, src)
+	if diags.HasErrors() {
+		t.Fatalf("expected no errors, got:\n%v", diags)
+	}
+}
+
+func mustError(t *testing.T, src string, containing string) {
+	t.Helper()
+	diags := pipeline(t, src)
+	if !diags.HasErrors() {
+		t.Fatalf("expected error containing %q, got no errors", containing)
+	}
+	for _, d := range diags {
+		if strings.Contains(d.Message, containing) || strings.Contains(d.Hint, containing) {
+			return
+		}
+	}
+	t.Fatalf("expected error containing %q, got:\n%v", containing, diags)
+}
+
+// ─── Valid programs ────────────────────────────────────────────────────────────
+
+func TestValidateEmpty(t *testing.T) {
+	mustClean(t, "")
+}
+
+func TestValidateCompleteDetect(t *testing.T) {
+	mustClean(t, `
+detect "Low stock" {
+  for records where type == "item"
+  flag matching items
+  label "Low stock"
+  priority HIGH
+}`)
+}
+
+func TestValidateCompleteRule(t *testing.T) {
+	mustClean(t, `
+rule "No assign" {
+  for records where type == "item"
+  block "assign"
+  reason "Cannot assign"
+}`)
+}
+
+func TestValidateCompleteRecommend(t *testing.T) {
+	mustClean(t, `
+detect "Low stock" {
+  for records where type == "item"
+  flag matching items
+}
+recommend "Order more" {
+  when detect "Low stock" matches
+  suggest "Order more"
+}`)
+}
+
+func TestValidateCompletePredict(t *testing.T) {
+	mustClean(t, `
+predict "Failure risk" {
+  for records where type == "item"
+  features [attr "km", attr "age"]
+  label "Risk"
+}`)
+}
+
+func TestValidateCompleteForecast(t *testing.T) {
+	mustClean(t, `
+forecast "Stock out" {
+  for records where type == "item"
+  series attr "stock" over last 30 days
+  label "Stock out soon"
+}`)
+}
+
+func TestValidateValidDefineRef(t *testing.T) {
+	mustClean(t, `
+define "high_value" {
+  attr "price" > 10000
+}
+detect "Expensive items" {
+  for records where is "high_value"
+  flag matching items
+}`)
+}
+
+func TestValidateValidDetectRef(t *testing.T) {
+	mustClean(t, `
+detect "Low stock" {
+  for records where type == "item"
+  flag matching items
+}
+recommend "Reorder" {
+  when detect "Low stock" matches
+  suggest "Place order"
+}`)
+}
+
+// ─── Completeness ──────────────────────────────────────────────────────────────
+
+func TestValidateDetectMissingFlag(t *testing.T) {
+	mustError(t, `
+detect "Low stock" {
+  for records where type == "item"
+  label "Low"
+  priority HIGH
+}`, "requires a 'flag' clause")
+}
+
+func TestValidateRuleMissingAction(t *testing.T) {
+	mustError(t, `
+rule "No assign" {
+  for records where type == "item"
+  reason "Cannot assign"
+}`, "requires 'block'")
+}
+
+func TestValidateRecommendMissingSuggest(t *testing.T) {
+	mustError(t, `
+recommend "Order" {
+  when detect "Low stock" matches
+  priority HIGH
+}`, "requires a 'suggest' clause")
+}
+
+func TestValidatePredictMissingFeatures(t *testing.T) {
+	mustError(t, `
+predict "Failure" {
+  for records where type == "item"
+  label "Risk"
+}`, "requires a 'features' clause")
+}
+
+func TestValidateForecastMissingSeries(t *testing.T) {
+	mustError(t, `
+forecast "Stock out" {
+  for records where type == "item"
+  label "Out soon"
+}`, "requires a 'series' clause")
+}
+
+// ─── Reference resolution ──────────────────────────────────────────────────────
+
+func TestValidateUndefinedDefineRef(t *testing.T) {
+	mustError(t, `
+detect "Check" {
+  for records where is "nonexistent_define"
+  flag matching items
+}`, "undefined define reference")
+}
+
+func TestValidateUndefinedDefineRefWithSuggestion(t *testing.T) {
+	diags := pipeline(t, `
+define "high_value" {
+  attr "price" > 10000
+}
+detect "Check" {
+  for records where is "high_valeu"
+  flag matching items
+}`)
+	if !diags.HasErrors() {
+		t.Fatal("expected error")
+	}
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Hint, "high_value") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected suggestion 'high_value' in hint, got:\n%v", diags)
+	}
+}
+
+func TestValidateUndefinedDetectRef(t *testing.T) {
+	mustError(t, `
+recommend "Order" {
+  when detect "nonexistent_detect" matches
+  suggest "Order more"
+}`, "undefined block reference")
+}
+
+// ─── Duplicate names ───────────────────────────────────────────────────────────
+
+func TestValidateDuplicateBlockNames(t *testing.T) {
+	mustError(t, `
+detect "Low stock" {
+  for records where type == "item"
+  flag matching items
+}
+detect "Low stock" {
+  for records where type == "item"
+  flag matching items
+}`, "duplicate block name")
+}
+
+// ─── Cycle detection ───────────────────────────────────────────────────────────
+
+func TestValidateCyclicDefines(t *testing.T) {
+	mustError(t, `
+define "a" {
+  attr "x" is "b"
+}
+define "b" {
+  is "a"
+}`, "circular dependency")
+}
+
+func TestValidateNoCycleWithLinearChain(t *testing.T) {
+	mustClean(t, `
+define "base" {
+  attr "price" > 0
+}
+define "expensive" {
+  attr "price" is "base"
+}`)
+}
+
+// ─── Type checking ─────────────────────────────────────────────────────────────
+
+func TestValidateTypeWarningStringComparedWithGt(t *testing.T) {
+	diags := pipeline(t, `
+detect "Check" {
+  for records where attr "name" > "hello"
+  flag matching items
+}`)
+	var hasWarn bool
+	for _, d := range diags {
+		if d.Severity == diagnostic.Warning && strings.Contains(d.Message, "string") {
+			hasWarn = true
+		}
+	}
+	if !hasWarn {
+		t.Error("expected type warning for string comparison with >")
+	}
+}

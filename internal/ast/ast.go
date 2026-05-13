@@ -1,5 +1,11 @@
 package ast
 
+// Pos is a source location, used for error reporting.
+type Pos struct {
+	Line int
+	Col  int
+}
+
 // Program is the top-level AST node for a .talon file.
 type Program struct {
 	Blocks []Block
@@ -14,6 +20,7 @@ type Block interface {
 // ─── Block types ──────────────────────────────────────────────────────────────
 
 type DetectBlock struct {
+	Pos        Pos
 	Name       string
 	Selector   Selector
 	Pattern    *PatternExpr
@@ -31,6 +38,7 @@ type DetectBlock struct {
 }
 
 type RuleBlock struct {
+	Pos      Pos
 	Name     string
 	Selector *Selector
 	When     Condition
@@ -45,6 +53,7 @@ type RuleBlock struct {
 }
 
 type RecommendBlock struct {
+	Pos       Pos
 	Name      string
 	When      Condition
 	Calculate []CalculateClause
@@ -53,6 +62,7 @@ type RecommendBlock struct {
 }
 
 type CombineBlock struct {
+	Pos      Pos
 	Name     string
 	Selector Selector
 	Optimize OptimizeClause
@@ -62,6 +72,7 @@ type CombineBlock struct {
 }
 
 type DefineBlock struct {
+	Pos        Pos
 	Name       string
 	Params     []string
 	Conditions []Condition
@@ -69,6 +80,7 @@ type DefineBlock struct {
 }
 
 type WorkflowBlock struct {
+	Pos   Pos
 	Name  string
 	Steps []WorkflowStep
 }
@@ -76,6 +88,7 @@ type WorkflowBlock struct {
 // Top-level ML blocks — also expressible as nested clauses inside detect.
 
 type PredictBlock struct {
+	Pos        Pos
 	Name       string
 	Selector   Selector
 	Features   []Expr
@@ -86,6 +99,7 @@ type PredictBlock struct {
 }
 
 type ForecastBlock struct {
+	Pos      Pos
 	Name     string
 	Selector Selector
 	Series   SeriesClause
@@ -96,6 +110,7 @@ type ForecastBlock struct {
 }
 
 type ClusterBlock struct {
+	Pos      Pos
 	Name     string
 	Selector Selector
 	ByAttrs  []Expr
@@ -104,6 +119,7 @@ type ClusterBlock struct {
 }
 
 type ClassifyBlock struct {
+	Pos        Pos
 	Name       string
 	Selector   Selector
 	Features   []Expr
@@ -113,6 +129,7 @@ type ClassifyBlock struct {
 }
 
 type SimilarBlock struct {
+	Pos      Pos
 	Name     string
 	Selector Selector
 	To       Expr

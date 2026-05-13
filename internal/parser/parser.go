@@ -68,13 +68,13 @@ func (p *parser) parseBlock() ast.Block {
 // ─── detect ───────────────────────────────────────────────────────────────────
 
 func (p *parser) parseDetect() *ast.DetectBlock {
-	p.advance() // detect
+	tok := p.advance() // detect
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.DetectBlock{Name: name}
+	b := &ast.DetectBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenFor) {
 		b.Selector = p.parseSelector()
 	}
@@ -127,13 +127,13 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 // ─── rule ─────────────────────────────────────────────────────────────────────
 
 func (p *parser) parseRule() *ast.RuleBlock {
-	p.advance() // rule
+	tok := p.advance() // rule
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.RuleBlock{Name: name}
+	b := &ast.RuleBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	// selector or when
 	if p.at(lexer.TokenFor) {
 		sel := p.parseSelector()
@@ -193,13 +193,13 @@ func (p *parser) parseRuleClause(b *ast.RuleBlock) bool {
 // ─── recommend ────────────────────────────────────────────────────────────────
 
 func (p *parser) parseRecommend() *ast.RecommendBlock {
-	p.advance() // recommend
+	tok := p.advance() // recommend
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.RecommendBlock{Name: name}
+	b := &ast.RecommendBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenWhen) {
 		b.When = p.parseWhenClause()
 	}
@@ -224,13 +224,13 @@ func (p *parser) parseRecommend() *ast.RecommendBlock {
 // ─── combine ──────────────────────────────────────────────────────────────────
 
 func (p *parser) parseCombine() *ast.CombineBlock {
-	p.advance() // combine
+	tok := p.advance() // combine
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.CombineBlock{Name: name}
+	b := &ast.CombineBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenFor) {
 		b.Selector = p.parseSelector()
 	}
@@ -264,7 +264,7 @@ func (p *parser) parseCombine() *ast.CombineBlock {
 // ─── define ───────────────────────────────────────────────────────────────────
 
 func (p *parser) parseDefine() *ast.DefineBlock {
-	p.advance() // define
+	tok := p.advance() // define
 	name := p.expectString()
 	var params []string
 	if p.at(lexer.TokenLParen) {
@@ -281,7 +281,7 @@ func (p *parser) parseDefine() *ast.DefineBlock {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.DefineBlock{Name: name, Params: params}
+	b := &ast.DefineBlock{Name: name, Params: params, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
 		if p.at(lexer.TokenFor) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenEach {
 			b.ForEach = p.parseForEachClause()
@@ -299,13 +299,13 @@ func (p *parser) parseDefine() *ast.DefineBlock {
 // ─── workflow ─────────────────────────────────────────────────────────────────
 
 func (p *parser) parseWorkflow() *ast.WorkflowBlock {
-	p.advance() // workflow
+	tok := p.advance() // workflow
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.WorkflowBlock{Name: name}
+	b := &ast.WorkflowBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
 		if p.at(lexer.TokenStep) {
 			b.Steps = append(b.Steps, p.parseWorkflowStep())
@@ -364,13 +364,13 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 // ─── top-level ML blocks ──────────────────────────────────────────────────────
 
 func (p *parser) parsePredictBlock() *ast.PredictBlock {
-	p.advance() // predict
+	tok := p.advance() // predict
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.PredictBlock{Name: name}
+	b := &ast.PredictBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenFor) {
 		b.Selector = p.parseSelector()
 	}
@@ -398,13 +398,13 @@ func (p *parser) parsePredictBlock() *ast.PredictBlock {
 }
 
 func (p *parser) parseForecastBlock() *ast.ForecastBlock {
-	p.advance() // forecast
+	tok := p.advance() // forecast
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.ForecastBlock{Name: name}
+	b := &ast.ForecastBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenFor) {
 		b.Selector = p.parseSelector()
 	}
@@ -431,13 +431,13 @@ func (p *parser) parseForecastBlock() *ast.ForecastBlock {
 }
 
 func (p *parser) parseClusterBlock() *ast.ClusterBlock {
-	p.advance() // cluster
+	tok := p.advance() // cluster
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.ClusterBlock{Name: name}
+	b := &ast.ClusterBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenFor) {
 		b.Selector = p.parseSelector()
 	}
@@ -466,13 +466,13 @@ func (p *parser) parseClusterBlock() *ast.ClusterBlock {
 }
 
 func (p *parser) parseClassifyBlock() *ast.ClassifyBlock {
-	p.advance() // classify
+	tok := p.advance() // classify
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.ClassifyBlock{Name: name}
+	b := &ast.ClassifyBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenFor) {
 		b.Selector = p.parseSelector()
 	}
@@ -498,7 +498,7 @@ func (p *parser) parseClassifyBlock() *ast.ClassifyBlock {
 }
 
 func (p *parser) parseSimilarBlock() *ast.SimilarBlock {
-	p.advance() // find
+	tok := p.advance() // find
 	// expect "similar"
 	if p.peek().Type == lexer.TokenSimilar {
 		p.advance()
@@ -510,7 +510,7 @@ func (p *parser) parseSimilarBlock() *ast.SimilarBlock {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.SimilarBlock{Name: name}
+	b := &ast.SimilarBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	if p.at(lexer.TokenFor) {
 		b.Selector = p.parseSelector()
 	}
