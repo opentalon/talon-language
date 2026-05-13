@@ -1,0 +1,87 @@
+// Fleet maintenance test suite.
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/fleet_maintenance.talon examples/fleet_maintenance.talon.test
+
+test "Overdue service is detected" {
+  given {
+    record 501 type "item" category "Vehicles" status "active"
+    attr 501 "km" 45000
+    attr 501 "last_service_km" 20000
+    attr 501 "name" "Truck A"
+  }
+
+  when detect "Service overdue"
+
+  expect {
+    flagged 501
+  }
+}
+
+test "Up-to-date service is not flagged" {
+  given {
+    record 502 type "item" category "Vehicles" status "active"
+    attr 502 "km" 25000
+    attr 502 "last_service_km" 25000
+  }
+
+  when detect "Service overdue"
+
+  expect {
+    not flagged 502
+  }
+}
+
+test "Non-vehicle is not flagged for service" {
+  given {
+    record 503 type "stock_item" status "active"
+    attr 503 "km" 99999
+    attr 503 "last_service_km" 0
+  }
+
+  when detect "Service overdue"
+
+  expect {
+    not flagged 503
+  }
+}
+
+test "Inactive vehicle is not flagged" {
+  given {
+    record 504 type "item" category "Vehicles" status "inactive"
+    attr 504 "km" 50000
+    attr 504 "last_service_km" 10000
+  }
+
+  when detect "Service overdue"
+
+  expect {
+    not flagged 504
+  }
+}
+
+test "Active items are blocked from assignment" {
+  given {
+    record 601 type "item" status "active"
+  }
+
+  when rule "No assignment during maintenance"
+
+  expect {
+    flagged 601
+  }
+}
+
+test "Stock items are candidates for anomaly detection" {
+  given {
+    record 701 type "stock_item" status "active"
+    attr 701 "name" "Brake Pads"
+  }
+
+  when detect "Unusual consumption"
+
+  expect {
+    flagged 701
+  }
+}
