@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -293,21 +292,43 @@ func runExecute() {
 		os.Exit(diagnostic.ExitError)
 	}
 
+	// Resolve entity names for readable output
+	entityNames, resolveErr := exec.ResolveNames(ctx, nil)
+	if resolveErr != nil {
+		fmt.Fprintf(os.Stderr, "warn: could not resolve names: %v\n", resolveErr)
+	}
+
 	// Print results
 	fmt.Printf("==> %s: %d block(s) executed\n", file, len(results))
 
-	names := make([]string, 0, len(results))
+	blockNames := make([]string, 0, len(results))
 	for name := range results {
-		names = append(names, name)
+		blockNames = append(blockNames, name)
 	}
-	sort.Strings(names)
+	sort.Strings(blockNames)
 
-	for _, name := range names {
+	for _, name := range blockNames {
 		r := results[name]
 		fmt.Printf("\n  [%s] %d row(s) matched\n", r.BlockName, len(r.Flagged))
-		if len(r.Flagged) > 0 {
-			out, _ := json.MarshalIndent(r.Flagged, "    ", "  ")
-			fmt.Printf("    %s\n", string(out))
+		for _, row := range r.Flagged {
+			if len(row) == 0 {
+				continue
+			}
+			eid, _ := row[0].(float64)
+			ename := entityNames[int(eid)]
+			if ename == "" {
+				ename = fmt.Sprintf("entity %d", int(eid))
+			}
+			if len(row) == 1 {
+				fmt.Printf("    - %s\n", ename)
+			} else {
+				// Include extra columns (e.g. km, last_service_km)
+				extras := make([]string, 0, len(row)-1)
+				for _, v := range row[1:] {
+					extras = append(extras, fmt.Sprintf("%v", v))
+				}
+				fmt.Printf("    - %s (%s)\n", ename, strings.Join(extras, ", "))
+			}
 		}
 	}
 }

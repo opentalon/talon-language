@@ -214,6 +214,35 @@ func (e *Executor) Seed(ctx context.Context, prog *ast.Program) (int, error) {
 	return len(entities), nil
 }
 
+// ResolveNames looks up :attr/name for all entities.
+func (e *Executor) ResolveNames(ctx context.Context, _ []int) (map[int]string, error) {
+	rows, err := e.Client.Query(ctx, `[:find ?e ?name :where [?e :attr/name ?name]]`)
+	if err != nil {
+		return nil, err
+	}
+	names := map[int]string{}
+	for _, row := range rows {
+		if len(row) >= 2 {
+			if eid, ok := toInt(row[0]); ok {
+				if name, ok := row[1].(string); ok {
+					names[eid] = name
+				}
+			}
+		}
+	}
+	return names, nil
+}
+
+func toInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	}
+	return 0, false
+}
+
 func fieldNamespace(kind, key string) string {
 	if kind == "attr" {
 		return ":attr/" + key
