@@ -209,12 +209,8 @@ func parseOneClause(s string) *whereClause {
 
 func parsePredicate(s string) *whereClause {
 	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "(") {
-		s = s[1:]
-	}
-	if strings.HasSuffix(s, ")") {
-		s = s[:len(s)-1]
-	}
+	s = strings.TrimPrefix(s, "(")
+	s = strings.TrimSuffix(s, ")")
 	parts := splitTokens(s)
 	if len(parts) < 3 {
 		return nil
