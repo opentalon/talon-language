@@ -78,12 +78,13 @@ jobs:
           java-version: "21"
       - name: Install Clojure CLI
         run: |
-          curl -sL https://download.clojure.org/install/linux-install-1.12.5.1638.sh | sudo bash
-          clj --version
+          curl -sL https://download.clojure.org/install/linux-install-1.12.5.1638.sh -o install-clojure.sh
+          sudo bash install-clojure.sh || true
+          clojure --version
       - run: go build ./cmd/talon
       - name: Start datalevin-server
         run: |
-          cd datalevin-server && clj -M:run &
+          cd datalevin-server && clojure -M:run &
           for i in $(seq 1 60); do
             sleep 2
             if curl -s http://localhost:8898/health | grep -q ok; then
