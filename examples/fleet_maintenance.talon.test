@@ -4,84 +4,144 @@
 //   go build ./cmd/talon
 //   ./talon test examples/fleet_maintenance.talon examples/fleet_maintenance.talon.test
 
-test "Overdue service is detected" {
+test "Overdue service flags only overdue vehicles" {
   given {
     record 501 type "item" category "Vehicles" status "active"
     attr 501 "km" 45000
     attr 501 "last_service_km" 20000
     attr 501 "name" "Truck A"
+
+    record 502 type "item" category "Vehicles" status "active"
+    attr 502 "km" 25000
+    attr 502 "last_service_km" 25000
+    attr 502 "name" "Van B"
+
+    record 503 type "item" category "Vehicles" status "inactive"
+    attr 503 "km" 80000
+    attr 503 "last_service_km" 10000
+    attr 503 "name" "Retired Truck"
+
+    record 504 type "stock_item" status "active"
+    attr 504 "km" 99999
+    attr 504 "last_service_km" 0
+    attr 504 "name" "Brake Pads"
+
+    record 505 type "item" category "Vehicles" status "active"
+    attr 505 "km" 12000
+    attr 505 "last_service_km" 11000
+    attr 505 "name" "Car C"
   }
 
   when detect "Service overdue"
 
   expect {
     flagged 501
-  }
-}
-
-test "Up-to-date service is not flagged" {
-  given {
-    record 502 type "item" category "Vehicles" status "active"
-    attr 502 "km" 25000
-    attr 502 "last_service_km" 25000
-  }
-
-  when detect "Service overdue"
-
-  expect {
     not flagged 502
-  }
-}
-
-test "Non-vehicle is not flagged for service" {
-  given {
-    record 503 type "stock_item" status "active"
-    attr 503 "km" 99999
-    attr 503 "last_service_km" 0
-  }
-
-  when detect "Service overdue"
-
-  expect {
     not flagged 503
-  }
-}
-
-test "Inactive vehicle is not flagged" {
-  given {
-    record 504 type "item" category "Vehicles" status "inactive"
-    attr 504 "km" 50000
-    attr 504 "last_service_km" 10000
-  }
-
-  when detect "Service overdue"
-
-  expect {
     not flagged 504
+    flagged 505
   }
 }
 
-test "Active items are blocked from assignment" {
+test "Assignment block applies to all active items" {
   given {
     record 601 type "item" status "active"
+    attr 601 "name" "Forklift"
+
+    record 602 type "item" status "inactive"
+    attr 602 "name" "Retired Crane"
+
+    record 603 type "item" status "active"
+    attr 603 "name" "Excavator"
+
+    record 604 type "stock_item" status "active"
+    attr 604 "name" "Oil Filters"
   }
 
   when rule "No assignment during maintenance"
 
   expect {
     flagged 601
+    not flagged 602
+    flagged 603
+    not flagged 604
   }
 }
 
-test "Stock items are candidates for anomaly detection" {
+test "Manager approval applies only to active vehicles" {
   given {
-    record 701 type "stock_item" status "active"
-    attr 701 "name" "Brake Pads"
+    record 701 type "item" category "Vehicles" status "active"
+    attr 701 "name" "Truck A"
+
+    record 702 type "item" category "Vehicles" status "inactive"
+    attr 702 "name" "Old Van"
+
+    record 703 type "item" category "Equipment" status "active"
+    attr 703 "name" "Generator"
+
+    record 704 type "stock_item" status "active"
+    attr 704 "name" "Spare Tires"
+  }
+
+  when rule "Manager approval for high value"
+
+  expect {
+    flagged 701
+    not flagged 702
+    not flagged 703
+    not flagged 704
+  }
+}
+
+test "Anomaly detection considers all stock items" {
+  given {
+    record 801 type "stock_item" status "active"
+    attr 801 "name" "Brake Pads"
+
+    record 802 type "stock_item" status "active"
+    attr 802 "name" "Oil Filters"
+
+    record 803 type "item" status "active"
+    attr 803 "name" "Truck A"
+
+    record 804 type "stock_item" status "inactive"
+    attr 804 "name" "Discontinued Part"
   }
 
   when detect "Unusual consumption"
 
   expect {
-    flagged 701
+    flagged 801
+    flagged 802
+    not flagged 803
+    flagged 804
+  }
+}
+
+test "Parts stock-out only considers active stock" {
+  given {
+    record 901 type "stock_item" status "active"
+    attr 901 "name" "Brake Pads"
+    attr 901 "current_stock" 15
+
+    record 902 type "stock_item" status "inactive"
+    attr 902 "name" "Old Gaskets"
+    attr 902 "current_stock" 5
+
+    record 903 type "item" status "active"
+    attr 903 "name" "Truck A"
+
+    record 904 type "stock_item" status "active"
+    attr 904 "name" "Oil Filters"
+    attr 904 "current_stock" 200
+  }
+
+  when forecast "Parts stock-out"
+
+  expect {
+    flagged 901
+    not flagged 902
+    not flagged 903
+    flagged 904
   }
 }
