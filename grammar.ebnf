@@ -1,0 +1,301 @@
+(* Talon Language Grammar — EBNF
+   Notation: [ x ] = optional, { x } = zero or more, ( x | y ) = alternation.
+   Terminal tokens are UPPER_CASE or quoted strings.
+   This file is the canonical grammar reference for the lexer and parser. *)
+
+(* ─── Top level ──────────────────────────────────────────────────────────────── *)
+
+Program   = { Block } EOF
+
+Block     = DetectBlock
+          | RuleBlock
+          | RecommendBlock
+          | CombineBlock
+          | DefineBlock
+          | WorkflowBlock
+          | PredictBlock
+          | ForecastBlock
+          | ClusterBlock
+          | ClassifyBlock
+          | SimilarBlock
+
+(* ─── detect ─────────────────────────────────────────────────────────────────── *)
+
+DetectBlock = "detect" STRING "{" DetectBody "}"
+
+DetectBody  = Selector
+              [ FlagTarget ]
+              [ LabelClause ]
+              [ PriorityClause ]
+              [ "when" Condition ]
+              [ ConfidenceClause ]
+              { CalculateClause }
+              [ AnomalyClause ]
+              [ PredictClause ]
+              [ ForecastClause ]
+              [ ClusterClause ]
+              [ SimilarClause ]
+              [ RecommendBlock ]
+
+(* ─── rule ───────────────────────────────────────────────────────────────────── *)
+
+RuleBlock   = "rule" STRING "{" RuleBody "}"
+
+RuleBody    = ( Selector | WhenClause )
+              [ EveryClause ]
+              [ BeforeClause | AfterClause ]
+              ( BlockClause | AllowClause | RequiresClause )
+              [ ReasonClause ]
+              [ PriorityClause ]
+
+(* ─── recommend ──────────────────────────────────────────────────────────────── *)
+
+RecommendBlock = "recommend" STRING "{" RecommendBody "}"
+
+RecommendBody  = WhenClause
+                 { CalculateClause }
+                 SuggestClause
+                 [ PriorityClause ]
+
+(* ─── combine ────────────────────────────────────────────────────────────────── *)
+
+CombineBlock = "combine" STRING "{" CombineBody "}"
+
+CombineBody  = Selector
+               OptimizeClause
+               ReturnClause
+               [ LabelClause ]
+               [ PriorityClause ]
+
+(* ─── define ─────────────────────────────────────────────────────────────────── *)
+
+DefineBlock  = "define" STRING [ "(" ParamList ")" ] "{" DefineBody "}"
+
+DefineBody   = { Condition | ForEachClause }
+
+ParamList    = IDENT { "," IDENT }
+
+ForEachClause = "for" "each" IDENT "in" IDENT "{" { Condition } "}"
+
+(* ─── workflow ───────────────────────────────────────────────────────────────── *)
+
+WorkflowBlock = "workflow" STRING "{" { WorkflowStep } "}"
+
+WorkflowStep  = "step" STRING
+                [ "depends_on" ( STRING | "[" STRING { "," STRING } "]" ) ]
+                "{" StepBody "}"
+
+StepBody      = MCPCall { Condition }
+
+MCPCall       = "mcp" STRING STRING "{" { MCPArg } "}"
+
+MCPArg        = IDENT Expr
+
+(* ─── top-level ML blocks ────────────────────────────────────────────────────── *)
+
+(* predict and forecast can also appear as nested clauses inside detect.
+   When appearing at top level they are standalone named blocks. *)
+
+PredictBlock  = "predict" STRING "{" PredictBody "}"
+
+PredictBody   = Selector
+                FeaturesClause
+                [ TrainedOnClause ]
+                [ ConfidenceClause ]
+                [ LabelClause ]
+                [ PriorityClause ]
+
+ForecastBlock = "forecast" STRING "{" ForecastBody "}"
+
+ForecastBody  = Selector
+                SeriesClause
+                [ "predict" ForecastPredictExpr ]
+                [ WhenClause ]
+                [ LabelClause ]
+                [ PriorityClause ]
+
+ClusterBlock  = "cluster" STRING "{" ClusterBody "}"
+
+ClusterBody   = Selector
+                "by" AttrList
+                [ LabelClause ]
+                [ PriorityClause ]
+
+ClassifyBlock = "classify" STRING "{" ClassifyBody "}"
+
+ClassifyBody  = Selector
+                FeaturesClause
+                [ ConfidenceClause ]
+                [ LabelClause ]
+                [ PriorityClause ]
+
+SimilarBlock  = "find" "similar" STRING "{" SimilarBody "}"
+
+SimilarBody   = Selector
+                "to" Expr
+                [ "within" NUMBER ]
+                [ LabelClause ]
+                [ PriorityClause ]
+
+(* ─── Nested ML clauses (inside detect) ─────────────────────────────────────── *)
+
+AnomalyClause   = "is" "anomaly" "compared_to" "last" NUMBER DurationUnit
+
+PredictClause   = "predict" FeaturesClause [ TrainedOnClause ] [ ConfidenceClause ]
+
+ForecastClause  = "forecast" SeriesClause [ "predict" ForecastPredictExpr ]
+
+ClusterClause   = "cluster" "by" AttrList
+
+SimilarClause   = "find" "similar" "to" Expr [ "within" NUMBER ]
+
+(* ─── Shared clauses ─────────────────────────────────────────────────────────── *)
+
+Selector        = "for" "records" "where" ConditionList
+
+WhenClause      = "when" ConditionList
+
+FlagTarget      = "flag" "matching" ( "items" | "records" | IDENT )
+
+LabelClause     = "label" Template
+
+PriorityClause  = "priority" ( "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" )
+
+ConfidenceClause = "confidence" ">=" NUMBER
+
+EveryClause     = "every" NUMBER ( DurationUnit | IDENT ) "on" "attr" STRING
+
+BeforeClause    = "before" STRING [ "when" ConditionList ]
+
+AfterClause     = "after" STRING
+
+BlockClause     = "block" [ STRING ] [ ReasonClause ]
+
+AllowClause     = "allow" STRING
+
+RequiresClause  = "requires" ( STRING | ApprovalExpr )
+
+ApprovalExpr    = "approval" "from" "role" STRING
+
+ReasonClause    = "reason" Template
+
+SuggestClause   = "suggest" Template
+
+OptimizeClause  = ( "minimize" | "maximize" ) Expr
+
+ReturnClause    = "return" IDENT { "," IDENT }
+
+CalculateClause = "calculate" IDENT "from" ( "activities" | "records" )
+                  [ "where" ConditionList ]
+                  [ "within" "last" NUMBER DurationUnit ]
+
+FeaturesClause  = "features" "[" AttrList "]"
+
+TrainedOnClause = "trained_on" "records" "where" ConditionList
+
+SeriesClause    = "series" Expr "over" "last" NUMBER DurationUnit
+
+ForecastPredictExpr = IDENT "value" ComparisonOp Expr
+
+AttrList        = Expr { "," Expr }
+
+(* ─── Conditions ─────────────────────────────────────────────────────────────── *)
+
+ConditionList   = Condition { ( "and" | "or" ) Condition }
+
+Condition       = NotCondition
+                | CompareCondition
+                | MembershipCondition
+                | IsCondition
+                | HasCondition
+                | StringMatchCondition
+                | AnomalyCondition
+                | TemporalCondition
+                | ChangedToCondition
+
+NotCondition        = "not" Condition
+
+CompareCondition    = Expr ComparisonOp Expr
+
+MembershipCondition = Expr [ "not" ] "in" ( "[" ValueList "]" | CategoryTreeExpr )
+
+IsCondition         = ( Expr "is" STRING )
+                    | ( "attr" STRING "is" "anomaly" "compared_to" "last" NUMBER DurationUnit )
+
+HasCondition        = "has" "record" "type" STRING  (* open maintenance ticket, etc. *)
+
+StringMatchCondition = Expr ( "contains" | "starts_with" | "ends_with" ) STRING
+
+AnomalyCondition    = "attr" STRING "is" "anomaly" "compared_to" "last" NUMBER DurationUnit
+
+TemporalCondition   = "attr" STRING ( "older_than" | "newer_than" ) NUMBER DurationUnit
+
+ChangedToCondition  = "status" "changed_to" STRING
+
+CategoryTreeExpr    = "category_tree" "(" STRING ")"
+
+(* ─── Expressions ────────────────────────────────────────────────────────────── *)
+
+Expr        = BinaryExpr | UnaryExpr | PrimaryExpr
+
+BinaryExpr  = Expr ArithOp Expr
+
+UnaryExpr   = "-" PrimaryExpr
+
+PrimaryExpr = AttrRef
+            | ContextRef
+            | StepRef
+            | CategoryTreeExpr
+            | "today"
+            | Literal
+            | IDENT
+            | "(" Expr ")"
+
+AttrRef     = "attr" STRING
+
+ContextRef  = "context" "." IDENT
+
+StepRef     = "step" "(" STRING ")" "." IDENT { "." IDENT }
+
+Literal     = STRING | NUMBER | BOOLEAN | Duration
+
+Duration    = NUMBER DurationUnit
+
+DurationUnit = "days" | "weeks" | "months" | "years" | "km"
+
+ValueList   = Literal { "," Literal }
+
+Template    = STRING
+              (* STRING may contain {ident}, {ident.field}, {attr.name},
+                 {confidence}, {avg}, {days_until} interpolations *)
+
+ComparisonOp = "==" | "!=" | ">" | "<" | ">=" | "<="
+
+ArithOp     = "+" | "-" | "*" | "/" | "%"
+
+BOOLEAN     = "true" | "false"
+
+(* ─── Tokens ─────────────────────────────────────────────────────────────────── *)
+
+STRING  = '"' { CHAR | ESCAPE | INTERPOLATION } '"'
+
+INTERPOLATION = "{" IDENT_PATH "}"
+
+IDENT_PATH = IDENT { "." IDENT }
+
+NUMBER  = DIGIT { DIGIT } [ "." DIGIT { DIGIT } ]
+
+IDENT   = LETTER { LETTER | DIGIT | "_" }
+
+LETTER  = "a" ... "z" | "A" ... "Z" | "_"
+
+DIGIT   = "0" ... "9"
+
+CHAR    = (* any Unicode character except '"' and '\' *)
+
+ESCAPE  = "\" ( '"' | "\" | "n" | "t" | "r" )
+
+COMMENT = ( "//" { CHAR } NEWLINE )
+        | ( "/*" { CHAR } "*/" )
+
+EOF     = (* end of input *)
