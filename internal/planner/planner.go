@@ -27,7 +27,7 @@ type QueryPlan struct {
 	Steps     []PlanStep
 }
 
-// PlanStep is implemented by DatalevinQuery, GoComputation, and Filter.
+// PlanStep is implemented by DatalevinQuery, GoComputation, MLComputation, and Filter.
 type PlanStep interface {
 	stepType() string
 }
@@ -39,11 +39,22 @@ type DatalevinQuery struct {
 	Into     string         // result variable name
 }
 
-// GoComputation runs a Go function over a result set.
+// GoComputation runs a non-ML Go function over a result set
+// (template rendering, block-match resolution, MCP calls, combinatorial optimize).
 type GoComputation struct {
 	Function string         // function name constant (FuncXxx)
 	Input    string         // result variable from a previous step
 	Params   map[string]any // function parameters
+	Into     string         // output variable name
+}
+
+// MLComputation runs an ML primitive (one of the 7 keywords).
+// The result row carries an explanation alongside its value so downstream steps
+// and `talon trace` can surface the decision path. See ADR-0001.
+type MLComputation struct {
+	Function string         // function name constant (FuncXxx, ML subset)
+	Input    string         // result variable from a previous step
+	Params   map[string]any // primitive parameters (features, window, series…)
 	Into     string         // output variable name
 }
 
@@ -56,7 +67,22 @@ type Filter struct {
 
 func (*DatalevinQuery) stepType() string { return "DatalevinQuery" }
 func (*GoComputation) stepType() string  { return "GoComputation" }
+func (*MLComputation) stepType() string  { return "MLComputation" }
 func (*Filter) stepType() string         { return "Filter" }
+
+// IsMLFunction reports whether fn names one of the 7 ML primitives.
+func IsMLFunction(fn string) bool {
+	switch fn {
+	case FuncAnomalyZscore,
+		FuncPredictDecisionTree,
+		FuncForecastExpSmoothing,
+		FuncClusterDBSCAN,
+		FuncSimilarityCosine,
+		FuncClassifyKNN:
+		return true
+	}
+	return false
+}
 
 // EmitDatalevin returns the Datalog query string from a DatalevinQuery step.
 func EmitDatalevin(q *DatalevinQuery) string {
@@ -147,7 +173,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 	}
 
 	if b.Anomaly != nil {
-		plan.Steps = append(plan.Steps, &GoComputation{
+		plan.Steps = append(plan.Steps, &MLComputation{
 			Function: FuncAnomalyZscore,
 			Input:    last,
 			Params:   map[string]any{"window": b.Anomaly.Window},
@@ -157,7 +183,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 	}
 
 	if b.Predict != nil {
-		plan.Steps = append(plan.Steps, &GoComputation{
+		plan.Steps = append(plan.Steps, &MLComputation{
 			Function: FuncPredictDecisionTree,
 			Input:    last,
 			Params:   map[string]any{"features": b.Predict.Features},
@@ -167,7 +193,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 	}
 
 	if b.Forecast != nil {
-		plan.Steps = append(plan.Steps, &GoComputation{
+		plan.Steps = append(plan.Steps, &MLComputation{
 			Function: FuncForecastExpSmoothing,
 			Input:    last,
 			Params:   map[string]any{"series": b.Forecast.Series},
@@ -254,7 +280,7 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
-	plan.Steps = append(plan.Steps, &GoComputation{
+	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncPredictDecisionTree,
 		Input:    "candidates",
 		Params:   map[string]any{"features": b.Features, "trained_on": b.TrainedOn},
@@ -280,7 +306,7 @@ func (p *planner) planForecastBlock(b *ast.ForecastBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
-	plan.Steps = append(plan.Steps, &GoComputation{
+	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncForecastExpSmoothing,
 		Input:    "candidates",
 		Params:   map[string]any{"series": b.Series},
@@ -306,7 +332,7 @@ func (p *planner) planClusterBlock(b *ast.ClusterBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
-	plan.Steps = append(plan.Steps, &GoComputation{
+	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncClusterDBSCAN,
 		Input:    "candidates",
 		Params:   map[string]any{"by": b.ByAttrs},
@@ -324,7 +350,7 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
-	plan.Steps = append(plan.Steps, &GoComputation{
+	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncClassifyKNN,
 		Input:    "candidates",
 		Params:   map[string]any{"features": b.Features},
@@ -342,7 +368,7 @@ func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
-	plan.Steps = append(plan.Steps, &GoComputation{
+	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncSimilarityCosine,
 		Input:    "candidates",
 		Params:   map[string]any{"to": b.To, "within": b.Within},

@@ -51,15 +51,38 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan) TestResult {
 		return result
 	}
 
-	// Execute the first DatalevinQuery step against in-memory entities
+	// Walk the full step list, mirroring the executor path so .test files can
+	// later assert on ML / filter / render output as M3+ wires real primitives.
+	vars := map[string]any{}
 	var flagged []int
+	var flaggedSet bool
 	for _, step := range plan.Steps {
-		dq, ok := step.(*planner.DatalevinQuery)
-		if !ok {
-			continue
+		switch s := step.(type) {
+		case *planner.DatalevinQuery:
+			ids := evalDatalogInMemory(s.Query, entities)
+			vars[s.Into] = ids
+			if !flaggedSet {
+				flagged = ids
+				flaggedSet = true
+			}
+		case *planner.MLComputation:
+			vars[s.Into] = map[string]any{
+				"function":     s.Function,
+				"input":        vars[s.Input],
+				"params":       s.Params,
+				"status":       "stub",
+				"explanations": []any{},
+			}
+		case *planner.GoComputation:
+			vars[s.Into] = map[string]any{
+				"function": s.Function,
+				"input":    vars[s.Input],
+				"params":   s.Params,
+				"status":   "stub",
+			}
+		case *planner.Filter:
+			vars[s.Into] = vars[s.Input]
 		}
-		flagged = evalDatalogInMemory(dq.Query, entities)
-		break // only evaluate the first query step
 	}
 
 	// Check assertions

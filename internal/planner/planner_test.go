@@ -72,6 +72,27 @@ func goStep(t *testing.T, plan *QueryPlan, i int) *GoComputation {
 	return g
 }
 
+func mlStep(t *testing.T, plan *QueryPlan, i int) *MLComputation {
+	t.Helper()
+	if i >= len(plan.Steps) {
+		t.Fatalf("step[%d]: out of range (len=%d)", i, len(plan.Steps))
+	}
+	m, ok := plan.Steps[i].(*MLComputation)
+	if !ok {
+		t.Fatalf("step[%d]: expected *MLComputation, got %T", i, plan.Steps[i])
+	}
+	return m
+}
+
+func findMLStep(plan *QueryPlan, fn string) *MLComputation {
+	for _, s := range plan.Steps {
+		if m, ok := s.(*MLComputation); ok && m.Function == fn {
+			return m
+		}
+	}
+	return nil
+}
+
 func assertContains(t *testing.T, query, fragment string) {
 	t.Helper()
 	if !strings.Contains(query, fragment) {
@@ -185,7 +206,7 @@ detect "Not inactive" {
 	assertContains(t, q.Query, "(not")
 }
 
-func TestPlanDetectWithAnomalyGoStep(t *testing.T) {
+func TestPlanDetectWithAnomalyMLStep(t *testing.T) {
 	plan := planBlock(t, `
 detect "Unusual" {
   for records where type == "stock_item"
@@ -194,12 +215,12 @@ detect "Unusual" {
 }`, "Unusual")
 
 	if len(plan.Steps) < 2 {
-		t.Fatalf("expected DatalevinQuery + GoComputation, got %d steps", len(plan.Steps))
+		t.Fatalf("expected DatalevinQuery + MLComputation, got %d steps", len(plan.Steps))
 	}
 	queryStep(t, plan, 0)
-	g := goStep(t, plan, 1)
-	if g.Function != FuncAnomalyZscore {
-		t.Errorf("GoComputation.Function: got %q, want %q", g.Function, FuncAnomalyZscore)
+	m := mlStep(t, plan, 1)
+	if m.Function != FuncAnomalyZscore {
+		t.Errorf("MLComputation.Function: got %q, want %q", m.Function, FuncAnomalyZscore)
 	}
 }
 
@@ -286,15 +307,8 @@ predict "Failure risk" {
 }`, "Failure risk")
 
 	queryStep(t, plan, 0)
-	// Should have GoComputation for predict
-	var foundPredict bool
-	for _, s := range plan.Steps {
-		if g, ok := s.(*GoComputation); ok && g.Function == FuncPredictDecisionTree {
-			foundPredict = true
-		}
-	}
-	if !foundPredict {
-		t.Error("expected GoComputation with predict_decision_tree")
+	if findMLStep(plan, FuncPredictDecisionTree) == nil {
+		t.Error("expected MLComputation with predict_decision_tree")
 	}
 }
 
@@ -307,14 +321,70 @@ forecast "Stock out" {
 }`, "Stock out")
 
 	queryStep(t, plan, 0)
-	var foundForecast bool
-	for _, s := range plan.Steps {
-		if g, ok := s.(*GoComputation); ok && g.Function == FuncForecastExpSmoothing {
-			foundForecast = true
+	if findMLStep(plan, FuncForecastExpSmoothing) == nil {
+		t.Error("expected MLComputation with forecast_exponential_smoothing")
+	}
+}
+
+func TestPlanClusterBlock(t *testing.T) {
+	plan := planBlock(t, `
+cluster "Segments" {
+  for records where type == "item"
+  by [attr "km", attr "age"]
+}`, "Segments")
+
+	queryStep(t, plan, 0)
+	m := findMLStep(plan, FuncClusterDBSCAN)
+	if m == nil {
+		t.Fatal("expected MLComputation with cluster_dbscan")
+	}
+	if _, ok := m.Params["by"]; !ok {
+		t.Error("MLComputation.Params missing 'by'")
+	}
+}
+
+func TestPlanClassifyBlock(t *testing.T) {
+	plan := planBlock(t, `
+classify "Tickets" {
+  for records where type == "ticket"
+  features [attr "title", attr "body"]
+}`, "Tickets")
+
+	queryStep(t, plan, 0)
+	if findMLStep(plan, FuncClassifyKNN) == nil {
+		t.Error("expected MLComputation with classify_knn")
+	}
+}
+
+func TestPlanSimilarBlock(t *testing.T) {
+	plan := planBlock(t, `
+find similar "Neighbors" {
+  for records where type == "item"
+  to attr "title"
+  within 5
+}`, "Neighbors")
+
+	queryStep(t, plan, 0)
+	if findMLStep(plan, FuncSimilarityCosine) == nil {
+		t.Error("expected MLComputation with similarity_cosine")
+	}
+}
+
+func TestIsMLFunction(t *testing.T) {
+	mlFns := []string{
+		FuncAnomalyZscore, FuncPredictDecisionTree, FuncForecastExpSmoothing,
+		FuncClusterDBSCAN, FuncSimilarityCosine, FuncClassifyKNN,
+	}
+	for _, fn := range mlFns {
+		if !IsMLFunction(fn) {
+			t.Errorf("IsMLFunction(%q) = false, want true", fn)
 		}
 	}
-	if !foundForecast {
-		t.Error("expected GoComputation with forecast_exponential_smoothing")
+	nonML := []string{FuncRenderTemplate, "resolve_block_matches", "mcp_call", "optimize_min"}
+	for _, fn := range nonML {
+		if IsMLFunction(fn) {
+			t.Errorf("IsMLFunction(%q) = true, want false", fn)
+		}
 	}
 }
 

@@ -84,6 +84,8 @@ func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map
 		return e.execQuery(ctx, s, vars)
 	case *planner.GoComputation:
 		return e.execComputation(s, vars)
+	case *planner.MLComputation:
+		return e.execMLComputation(s, vars)
 	case *planner.Filter:
 		return e.execFilter(s, vars)
 	default:
@@ -126,8 +128,7 @@ func (e *Executor) execComputation(gc *planner.GoComputation, vars map[string]an
 		// MCP calls are stubbed — would call external tool servers
 		vars[gc.Into] = map[string]any{"status": "stub", "step": gc.Params["step"]}
 	default:
-		// ML functions: anomaly_zscore, predict_decision_tree, etc.
-		// Stub: pass through input with function metadata
+		// Optimize, etc. — pass through input with function metadata
 		vars[gc.Into] = map[string]any{
 			"function": gc.Function,
 			"input":    input,
@@ -140,6 +141,25 @@ func (e *Executor) execComputation(gc *planner.GoComputation, vars map[string]an
 		Type:   "GoComputation",
 		Name:   gc.Function,
 		Output: vars[gc.Into],
+	}, nil
+}
+
+// execMLComputation dispatches to the ML primitive registry.
+// Until the registry lands (M3+), each ML step is a structured stub so plans
+// remain executable and downstream steps (render_template, filters) can run.
+func (e *Executor) execMLComputation(ml *planner.MLComputation, vars map[string]any) (StepResult, error) {
+	input := vars[ml.Input]
+	vars[ml.Into] = map[string]any{
+		"function":     ml.Function,
+		"input":        input,
+		"params":       ml.Params,
+		"status":       "stub",
+		"explanations": []any{},
+	}
+	return StepResult{
+		Type:   "MLComputation",
+		Name:   ml.Function,
+		Output: vars[ml.Into],
 	}, nil
 }
 
