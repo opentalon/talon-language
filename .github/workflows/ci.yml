@@ -39,7 +39,7 @@ jobs:
           go-version: "1.24"
       - run: go build ./cmd/talon
       - run: ./talon build examples/fleet_maintenance.talon
-      - run: ./talon test examples/fleet_maintenance.talon examples/fleet_maintenance.talon.test
+      - run: ./talon test examples/fleet_maintenance.talon test/fleet_maintenance.talon.test
 
   talon-datalevin:
     name: Talon + Datalevin
@@ -96,7 +96,7 @@ jobs:
           curl -sf http://localhost:8898/health || { echo "FAIL: server did not start"; exit 1; }
       - name: Run talon with seed from test file
         run: |
-          output=$(./talon run examples/fleet_maintenance.talon --seed examples/fleet_maintenance.talon.test)
+          output=$(./talon run examples/fleet_maintenance.talon --seed test/fleet_maintenance.talon.test)
           echo "$output"
           echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
           echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }
