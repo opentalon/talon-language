@@ -3,9 +3,14 @@
 // Build:
 //   go build ./cmd/talon && ./talon build examples/fleet_maintenance.talon
 //
-// Test queries against Datalevin:
-//   brew install datalevin        (if not already installed)
-//   rm -rf /tmp/talon-fleet-test
+// Seeded end-to-end run (requires JDK 21 + Clojure CLI; no `brew install datalevin`):
+//   brew install openjdk@21 clojure/tools/clojure
+//   rm -rf /tmp/talon-datalevin
+//   (cd datalevin-server && clojure -M:run)                 # terminal 1
+//   ./talon run examples/fleet_maintenance.talon \          # terminal 2
+//     --seed test/fleet_maintenance.talon.test
+//
+// Ad-hoc REPL against the native dtlv CLI (optional; download release zip — no brew formula):
 //   dtlv exec -f /dev/stdin < examples/test_datalevin.clj
 
 define "active_vehicle" {
