@@ -60,18 +60,6 @@ func queryStep(t *testing.T, plan *QueryPlan, i int) *DatalevinQuery {
 	return q
 }
 
-func goStep(t *testing.T, plan *QueryPlan, i int) *GoComputation {
-	t.Helper()
-	if i >= len(plan.Steps) {
-		t.Fatalf("step[%d]: out of range (len=%d)", i, len(plan.Steps))
-	}
-	g, ok := plan.Steps[i].(*GoComputation)
-	if !ok {
-		t.Fatalf("step[%d]: expected *GoComputation, got %T", i, plan.Steps[i])
-	}
-	return g
-}
-
 func mlStep(t *testing.T, plan *QueryPlan, i int) *MLComputation {
 	t.Helper()
 	if i >= len(plan.Steps) {
