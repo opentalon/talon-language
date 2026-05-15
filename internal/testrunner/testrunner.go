@@ -1,12 +1,14 @@
 package testrunner
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
 
@@ -17,17 +19,22 @@ type TestResult struct {
 	Errors []string
 }
 
-// Run executes all test blocks against compiled query plans.
-// It simulates the FactStore in-memory: inserts given data, runs the referenced
-// block's DatalevinQuery, and checks expect assertions.
+// Run executes all test blocks against compiled query plans using the
+// default ML registry.
 func Run(prog *ast.Program, plans map[string]*planner.QueryPlan) []TestResult {
+	return RunWithRegistry(prog, plans, mlruntime.NewRegistry())
+}
+
+// RunWithRegistry executes test blocks with an injected ML registry so
+// callers can swap primitives in tests.
+func RunWithRegistry(prog *ast.Program, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) []TestResult {
 	var results []TestResult
 	for _, b := range prog.Blocks {
 		tb, ok := b.(*ast.TestBlock)
 		if !ok {
 			continue
 		}
-		results = append(results, runOne(tb, plans))
+		results = append(results, runOne(tb, plans, reg))
 	}
 	return results
 }
@@ -38,7 +45,7 @@ type entity struct {
 	fields map[string]interface{} // ":record/type" → "item", ":attr/km" → 45000, etc.
 }
 
-func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan) TestResult {
+func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) TestResult {
 	result := TestResult{Name: tb.Name}
 
 	// Build in-memory entities from given block
@@ -66,13 +73,7 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan) TestResult {
 				flaggedSet = true
 			}
 		case *planner.MLComputation:
-			vars[s.Into] = map[string]any{
-				"function":     s.Function,
-				"input":        vars[s.Input],
-				"params":       s.Params,
-				"status":       "stub",
-				"explanations": []any{},
-			}
+			vars[s.Into] = invokeML(reg, s, vars[s.Input])
 		case *planner.GoComputation:
 			vars[s.Into] = map[string]any{
 				"function": s.Function,
@@ -404,6 +405,27 @@ func PrintResults(results []TestResult) (passed, failed int) {
 		}
 	}
 	return
+}
+
+// invokeML dispatches an MLComputation through the registry when the input
+// shape matches; otherwise returns a stub map so downstream steps still run.
+func invokeML(reg *mlruntime.Registry, s *planner.MLComputation, input any) map[string]any {
+	if reg != nil && reg.Has(s.Function) {
+		if rows, ok := input.([][]any); ok {
+			prim, _ := reg.Get(s.Function)
+			results, err := prim.Compute(context.Background(), mlruntime.Input{Rows: rows, Params: s.Params})
+			if err == nil {
+				return map[string]any{"function": s.Function, "results": results}
+			}
+		}
+	}
+	return map[string]any{
+		"function":     s.Function,
+		"input":        input,
+		"params":       s.Params,
+		"status":       "stub",
+		"explanations": []any{},
+	}
 }
 
 // Validate checks that all test blocks reference existing plans.

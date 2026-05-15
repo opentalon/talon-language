@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/datalevin"
+	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
 
@@ -27,12 +28,14 @@ type StepResult struct {
 
 // Executor runs compiled QueryPlans against a Datalevin server.
 type Executor struct {
-	Client *datalevin.Client
+	Client   *datalevin.Client
+	Registry *mlruntime.Registry
 }
 
-// NewExecutor creates an executor backed by the given Datalevin client.
+// NewExecutor creates an executor backed by the given Datalevin client
+// and a registry pre-populated with the default ML primitives.
 func NewExecutor(client *datalevin.Client) *Executor {
-	return &Executor{Client: client}
+	return &Executor{Client: client, Registry: mlruntime.NewRegistry()}
 }
 
 // RunAll executes all plans and returns results keyed by block name.
@@ -144,11 +147,33 @@ func (e *Executor) execComputation(gc *planner.GoComputation, vars map[string]an
 	}, nil
 }
 
-// execMLComputation dispatches to the ML primitive registry.
-// Until the registry lands (M3+), each ML step is a structured stub so plans
-// remain executable and downstream steps (render_template, filters) can run.
+// execMLComputation dispatches an MLComputation step to the registry.
+// Primitives without a registered implementation fall back to a structured
+// stub so downstream steps (render_template, filters) can still run.
 func (e *Executor) execMLComputation(ml *planner.MLComputation, vars map[string]any) (StepResult, error) {
 	input := vars[ml.Input]
+
+	if e.Registry != nil && e.Registry.Has(ml.Function) {
+		prim, _ := e.Registry.Get(ml.Function)
+		rows, _ := input.([][]any)
+		results, err := prim.Compute(context.Background(), mlruntime.Input{
+			Rows:   rows,
+			Params: ml.Params,
+		})
+		if err != nil {
+			return StepResult{}, fmt.Errorf("ml %s: %w", ml.Function, err)
+		}
+		vars[ml.Into] = map[string]any{
+			"function": ml.Function,
+			"results":  results,
+		}
+		return StepResult{
+			Type:   "MLComputation",
+			Name:   ml.Function,
+			Output: vars[ml.Into],
+		}, nil
+	}
+
 	vars[ml.Into] = map[string]any{
 		"function":     ml.Function,
 		"input":        input,
