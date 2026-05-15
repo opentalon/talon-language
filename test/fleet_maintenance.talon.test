@@ -93,28 +93,62 @@ test "Manager approval applies only to active vehicles" {
   }
 }
 
-test "Anomaly detection considers all stock items" {
+test "Anomaly detection flags only outlier consumption" {
+  // Eight stock_items with weekly_consumption: seven cluster around 50, one
+  // spikes to 250. With n=8 and default z=2.5 the spike is the only flagged
+  // row; smaller samples don't have enough degrees of freedom to exceed 2.5σ
+  // on a single outlier.
   given {
     record 801 type "stock_item" status "active"
     attr 801 "name" "Brake Pads"
+    attr 801 "weekly_consumption" 48
 
     record 802 type "stock_item" status "active"
     attr 802 "name" "Oil Filters"
+    attr 802 "weekly_consumption" 51
 
-    record 803 type "item" status "active"
-    attr 803 "name" "Truck A"
+    record 803 type "stock_item" status "active"
+    attr 803 "name" "Air Filters"
+    attr 803 "weekly_consumption" 49
 
-    record 804 type "stock_item" status "inactive"
-    attr 804 "name" "Discontinued Part"
+    record 804 type "stock_item" status "active"
+    attr 804 "name" "Spark Plugs"
+    attr 804 "weekly_consumption" 50
+
+    record 805 type "stock_item" status "active"
+    attr 805 "name" "Cabin Filters"
+    attr 805 "weekly_consumption" 49
+
+    record 806 type "stock_item" status "active"
+    attr 806 "name" "Fuel Filters"
+    attr 806 "weekly_consumption" 50
+
+    record 807 type "stock_item" status "active"
+    attr 807 "name" "Belts"
+    attr 807 "weekly_consumption" 51
+
+    record 808 type "stock_item" status "active"
+    attr 808 "name" "Wiper Blades"
+    attr 808 "weekly_consumption" 250
+
+    // Excluded by selector — wrong record type.
+    record 809 type "item" status "active"
+    attr 809 "name" "Truck A"
+    attr 809 "weekly_consumption" 999
   }
 
   when detect "Unusual consumption"
 
   expect {
-    flagged 801
-    flagged 802
+    not flagged 801
+    not flagged 802
     not flagged 803
-    flagged 804
+    not flagged 804
+    not flagged 805
+    not flagged 806
+    not flagged 807
+    flagged 808
+    not flagged 809
   }
 }
 

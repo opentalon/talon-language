@@ -206,6 +206,32 @@ detect "Not inactive" {
 	assertContains(t, q.Query, "(not")
 }
 
+func TestPlanDetectAnomalyConditionEmitsMLStep(t *testing.T) {
+	plan := planBlock(t, `
+detect "Unusual" {
+  for records where type == "stock_item"
+    and attr "weekly_consumption" is anomaly compared_to last 12 weeks
+  flag matching items
+}`, "Unusual")
+
+	q := queryStep(t, plan, 0)
+	// Query must bind the value var so the primitive can score it.
+	assertContains(t, q.Query, ":attr/weekly_consumption")
+	assertContains(t, q.Query, "?weekly_consumption")
+	assertContains(t, q.Query, ":find ?e ?weekly_consumption")
+
+	m := findMLStep(plan, FuncAnomalyZscore)
+	if m == nil {
+		t.Fatal("expected MLComputation with anomaly_zscore")
+	}
+	if attr, _ := m.Params["attr"].(string); attr != "weekly_consumption" {
+		t.Errorf("Params[attr]: got %q, want %q", attr, "weekly_consumption")
+	}
+	if idx, _ := m.Params["value_index"].(int); idx != 1 {
+		t.Errorf("Params[value_index]: got %d, want 1", idx)
+	}
+}
+
 func TestPlanDetectWithAnomalyMLStep(t *testing.T) {
 	plan := planBlock(t, `
 detect "Unusual" {

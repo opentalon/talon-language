@@ -172,6 +172,21 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 		last = "filtered"
 	}
 
+	for i, ab := range qb.anomalyConds {
+		into := fmt.Sprintf("anomaly_%d", i)
+		plan.Steps = append(plan.Steps, &MLComputation{
+			Function: FuncAnomalyZscore,
+			Input:    last,
+			Params: map[string]any{
+				"attr":        ab.AttrName,
+				"window":      ab.Window,
+				"value_index": indexOf(qb.findVars, ab.ValueVar),
+			},
+			Into: into,
+		})
+		last = into
+	}
+
 	if b.Anomaly != nil {
 		plan.Steps = append(plan.Steps, &MLComputation{
 			Function: FuncAnomalyZscore,
@@ -420,7 +435,18 @@ type queryBuilder struct {
 	findVars     []string
 	whereClauses []string
 	goConditions []ast.Condition
+	anomalyConds []anomalyBinding
 	usedVars     map[string]int // base name → count (for dedup)
+}
+
+// anomalyBinding records an `attr X is anomaly` clause lifted out of the
+// Datalog selector into an MLComputation step. The Datalog query is widened
+// to also return the bound value var so the primitive can score it.
+type anomalyBinding struct {
+	AttrPath string         // ":attr/weekly_consumption"
+	AttrName string         // "weekly_consumption" — what label templates show
+	ValueVar string         // "?weekly_consumption"
+	Window   ast.Duration   // 12 weeks, 30 days…
 }
 
 func (p *planner) newQueryBuilder() *queryBuilder {
@@ -469,9 +495,11 @@ func (b *queryBuilder) addCondition(cond ast.Condition) {
 		b.addIsCondition(c)
 	case *ast.StringMatchCondition:
 		b.addStringMatch(c)
+	case *ast.AnomalyCondition:
+		b.addAnomalyCondition(c)
 	default:
-		// AnomalyCondition, TemporalCondition, ChangedToCondition, HasCondition
-		// — cannot express in Datalog, defer to Go
+		// TemporalCondition, ChangedToCondition, HasCondition — cannot express
+		// in Datalog, defer to Go.
 		b.goConditions = append(b.goConditions, cond)
 	}
 }
@@ -603,6 +631,29 @@ func (b *queryBuilder) addIsCondition(c *ast.IsCondition) {
 	// if no define found, validator already reported the error
 }
 
+// addAnomalyCondition lifts `attr X is anomaly` out of the Datalog selector:
+// it binds the value var into the query's :find clause so the resulting rows
+// carry the numeric series, and records a binding the planner uses to emit
+// an MLComputation step after the query.
+func (b *queryBuilder) addAnomalyCondition(c *ast.AnomalyCondition) {
+	path, ok := exprToFieldPath(c.Subject)
+	if !ok {
+		b.goConditions = append(b.goConditions, c)
+		return
+	}
+	attrName := attrVarName(c.Subject)
+	v := b.varFor(attrName)
+	b.whereClauses = append(b.whereClauses,
+		fmt.Sprintf("[%s %s %s]", b.entityVar, path, v))
+	b.findVars = appendUniq(b.findVars, v)
+	b.anomalyConds = append(b.anomalyConds, anomalyBinding{
+		AttrPath: path,
+		AttrName: attrName,
+		ValueVar: v,
+		Window:   c.Window,
+	})
+}
+
 func (b *queryBuilder) addStringMatch(c *ast.StringMatchCondition) {
 	path, ok := exprToFieldPath(c.Subject)
 	if !ok {
@@ -720,6 +771,15 @@ func (p *planner) buildCalculateQuery(calc ast.CalculateClause) string {
 		qb.addCondition(c)
 	}
 	return qb.build()
+}
+
+func indexOf(s []string, v string) int {
+	for i, x := range s {
+		if x == v {
+			return i
+		}
+	}
+	return -1
 }
 
 func appendUniq(s []string, vs ...string) []string {

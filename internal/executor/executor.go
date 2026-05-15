@@ -66,19 +66,77 @@ func (e *Executor) Run(ctx context.Context, plan *planner.QueryPlan) (*BlockResu
 		result.Steps = append(result.Steps, sr)
 	}
 
-	// The first DatalevinQuery result is the "flagged" set
+	result.Flagged = flaggedRows(plan, result.Vars)
+	return result, nil
+}
+
+// flaggedRows derives the block's flagged set. Start with the first
+// DatalevinQuery's rows, then narrow to entities marked Value=true by any
+// MLComputation step downstream.
+func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
+	var rows [][]any
 	for _, step := range plan.Steps {
 		if dq, ok := step.(*planner.DatalevinQuery); ok {
-			if rows, ok := result.Vars[dq.Into]; ok {
-				if arr, ok := rows.([][]any); ok {
-					result.Flagged = arr
-				}
+			if arr, ok := vars[dq.Into].([][]any); ok {
+				rows = arr
 			}
 			break
 		}
 	}
+	if rows == nil {
+		return nil
+	}
 
-	return result, nil
+	for _, step := range plan.Steps {
+		ml, ok := step.(*planner.MLComputation)
+		if !ok {
+			continue
+		}
+		flagged, ok := extractFlaggedIDs(vars[ml.Into])
+		if !ok {
+			continue
+		}
+		rows = filterRowsByID(rows, flagged)
+	}
+	return rows
+}
+
+// extractFlaggedIDs reads the entity IDs from an ML step's output where
+// Value is the bool true.
+func extractFlaggedIDs(out any) (map[int]bool, bool) {
+	m, ok := out.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	rs, ok := m["results"].([]mlruntime.Result)
+	if !ok {
+		return nil, false
+	}
+	ids := map[int]bool{}
+	for _, r := range rs {
+		if v, _ := r.Value.(bool); v {
+			ids[r.EntityID] = true
+		}
+	}
+	return ids, true
+}
+
+// filterRowsByID keeps only rows whose first column (entity ID) is in keep.
+func filterRowsByID(rows [][]any, keep map[int]bool) [][]any {
+	out := make([][]any, 0, len(rows))
+	for _, row := range rows {
+		if len(row) == 0 {
+			continue
+		}
+		id, ok := toInt(row[0])
+		if !ok {
+			continue
+		}
+		if keep[id] {
+			out = append(out, row)
+		}
+	}
+	return out
 }
 
 func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map[string]any) (StepResult, error) {
@@ -158,6 +216,7 @@ func (e *Executor) execMLComputation(ml *planner.MLComputation, vars map[string]
 		rows, _ := input.([][]any)
 		results, err := prim.Compute(context.Background(), mlruntime.Input{
 			Rows:   rows,
+			Schema: schemaFromParams(ml.Params),
 			Params: ml.Params,
 		})
 		if err != nil {
@@ -276,6 +335,37 @@ func (e *Executor) ResolveNames(ctx context.Context, _ []int) (map[int]string, e
 		}
 	}
 	return names, nil
+}
+
+// schemaFromParams extracts column indices the planner stuffed into Params
+// (value_index, entity_id_index) so primitives can read the right cells.
+func schemaFromParams(params map[string]any) map[string]int {
+	if params == nil {
+		return nil
+	}
+	schema := map[string]int{}
+	if idx, ok := intParam(params, "value_index"); ok && idx >= 0 {
+		schema["value"] = idx
+	}
+	if idx, ok := intParam(params, "entity_id_index"); ok && idx >= 0 {
+		schema["entity_id"] = idx
+	}
+	if len(schema) == 0 {
+		return nil
+	}
+	return schema
+}
+
+func intParam(params map[string]any, key string) (int, bool) {
+	switch v := params[key].(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case float64:
+		return int(v), true
+	}
+	return 0, false
 }
 
 func toInt(v any) (int, bool) {

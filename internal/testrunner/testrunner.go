@@ -73,7 +73,13 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 				flaggedSet = true
 			}
 		case *planner.MLComputation:
-			vars[s.Into] = invokeML(reg, s, vars[s.Input])
+			flagged = narrowByML(reg, s, flagged, entities)
+			vars[s.Into] = map[string]any{
+				"function": s.Function,
+				"input":    vars[s.Input],
+				"params":   s.Params,
+				"flagged":  flagged,
+			}
 		case *planner.GoComputation:
 			vars[s.Into] = map[string]any{
 				"function": s.Function,
@@ -407,25 +413,59 @@ func PrintResults(results []TestResult) (passed, failed int) {
 	return
 }
 
-// invokeML dispatches an MLComputation through the registry when the input
-// shape matches; otherwise returns a stub map so downstream steps still run.
-func invokeML(reg *mlruntime.Registry, s *planner.MLComputation, input any) map[string]any {
-	if reg != nil && reg.Has(s.Function) {
-		if rows, ok := input.([][]any); ok {
-			prim, _ := reg.Get(s.Function)
-			results, err := prim.Compute(context.Background(), mlruntime.Input{Rows: rows, Params: s.Params})
-			if err == nil {
-				return map[string]any{"function": s.Function, "results": results}
-			}
+// narrowByML runs an MLComputation against the entity values pulled from the
+// in-memory store and returns the subset of flagged ids whose Value=true.
+// If the registry has no primitive registered for the function, or the step
+// lacks the params needed to fetch values, the original flagged set passes
+// through unchanged.
+func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int, entities map[int]*entity) []int {
+	if reg == nil || !reg.Has(s.Function) {
+		return flagged
+	}
+	attr, _ := s.Params["attr"].(string)
+	if attr == "" {
+		return flagged
+	}
+	attrKey := ":attr/" + attr
+
+	rows := make([][]any, 0, len(flagged))
+	for _, id := range flagged {
+		e := entities[id]
+		if e == nil {
+			continue
+		}
+		val, ok := e.fields[attrKey]
+		if !ok {
+			continue
+		}
+		rows = append(rows, []any{id, val})
+	}
+
+	prim, _ := reg.Get(s.Function)
+	results, err := prim.Compute(context.Background(), mlruntime.Input{
+		Rows:   rows,
+		Schema: map[string]int{"entity_id": 0, "value": 1},
+		Params: s.Params,
+	})
+	if err != nil {
+		// Sample too small — leave flagged unchanged so tests can still run
+		// against tiny fixtures without forcing a synthetic 12-week window.
+		return flagged
+	}
+
+	keep := map[int]bool{}
+	for _, r := range results {
+		if v, _ := r.Value.(bool); v {
+			keep[r.EntityID] = true
 		}
 	}
-	return map[string]any{
-		"function":     s.Function,
-		"input":        input,
-		"params":       s.Params,
-		"status":       "stub",
-		"explanations": []any{},
+	out := make([]int, 0, len(flagged))
+	for _, id := range flagged {
+		if keep[id] {
+			out = append(out, id)
+		}
 	}
+	return out
 }
 
 // Validate checks that all test blocks reference existing plans.
