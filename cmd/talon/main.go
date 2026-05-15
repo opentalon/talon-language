@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,8 +37,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "talon repl: not yet implemented")
 		os.Exit(diagnostic.ExitError)
 	case "trace":
-		fmt.Fprintln(os.Stderr, "talon trace: not yet implemented")
-		os.Exit(diagnostic.ExitError)
+		runTrace()
 	case "mod":
 		fmt.Fprintln(os.Stderr, "talon mod: not yet implemented")
 		os.Exit(diagnostic.ExitError)
@@ -330,6 +330,83 @@ func runExecute() {
 				fmt.Printf("    - %s (%s)\n", ename, strings.Join(extras, ", "))
 			}
 		}
+	}
+}
+
+func runTrace() {
+	if len(os.Args) < 4 {
+		fmt.Fprintln(os.Stderr, "usage: talon trace <rules.talon> <tests.talon.test> [--test NAME]")
+		os.Exit(diagnostic.ExitUsage)
+	}
+
+	rulesPath := os.Args[2]
+	testPath := os.Args[3]
+	wantTest := ""
+	for i := 4; i < len(os.Args); i++ {
+		if os.Args[i] == "--test" && i+1 < len(os.Args) {
+			wantTest = os.Args[i+1]
+			i++
+		}
+	}
+
+	rulesSrc, err := os.ReadFile(rulesPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon trace: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+	rulesFile := filepath.Base(rulesPath)
+	plans, ok := compile(rulesFile, string(rulesSrc))
+	if !ok {
+		os.Exit(diagnostic.ExitError)
+	}
+
+	testSrc, err := os.ReadFile(testPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon trace: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+	testFile := filepath.Base(testPath)
+	testTokens, tld := lexer.Lex(testFile, string(testSrc))
+	if tld.HasErrors() {
+		for _, d := range tld {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+	testProg, tpd := parser.Parse(testFile, testTokens)
+	if tpd.HasErrors() {
+		for _, d := range tpd {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+	if tvd := testrunner.Validate(testProg, plans); tvd.HasErrors() {
+		for _, d := range tvd {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+
+	traces := testrunner.Trace(testProg, plans)
+	if wantTest != "" {
+		filtered := traces[:0]
+		for _, t := range traces {
+			if t.Name == wantTest {
+				filtered = append(filtered, t)
+			}
+		}
+		traces = filtered
+		if len(traces) == 0 {
+			fmt.Fprintf(os.Stderr, "talon trace: no test matched %q\n", wantTest)
+			os.Exit(diagnostic.ExitError)
+		}
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(map[string]any{"traces": traces}); err != nil {
+		fmt.Fprintf(os.Stderr, "talon trace: %v\n", err)
+		os.Exit(diagnostic.ExitError)
 	}
 }
 

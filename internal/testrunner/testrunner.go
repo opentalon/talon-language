@@ -19,6 +19,28 @@ type TestResult struct {
 	Errors []string
 }
 
+// TraceStep records one plan step's execution during a traced run.
+// Marshalled to JSON by `talon trace`.
+type TraceStep struct {
+	Type         string                  `json:"type"`
+	Into         string                  `json:"into"`
+	Function     string                  `json:"function,omitempty"`
+	Query        string                  `json:"query,omitempty"`
+	Params       map[string]any          `json:"params,omitempty"`
+	Rows         []int                   `json:"rows,omitempty"`
+	Explanations []mlruntime.Explanation `json:"explanations,omitempty"`
+}
+
+// TraceResult is the per-test trace returned by Trace.
+type TraceResult struct {
+	Name    string      `json:"name"`
+	Block   string      `json:"block"`
+	Passed  bool        `json:"passed"`
+	Errors  []string    `json:"errors,omitempty"`
+	Steps   []TraceStep `json:"steps"`
+	Flagged []int       `json:"flagged"`
+}
+
 // Run executes all test blocks against compiled query plans using the
 // default ML registry.
 func Run(prog *ast.Program, plans map[string]*planner.QueryPlan) []TestResult {
@@ -34,9 +56,54 @@ func RunWithRegistry(prog *ast.Program, plans map[string]*planner.QueryPlan, reg
 		if !ok {
 			continue
 		}
-		results = append(results, runOne(tb, plans, reg))
+		tr, _ := runOne(tb, plans, reg)
+		results = append(results, tr)
 	}
 	return results
+}
+
+// Trace executes all test blocks and returns rich per-step traces including
+// ML explanations. Each test is run once against the same in-memory entity
+// store the regular test runner uses.
+func Trace(prog *ast.Program, plans map[string]*planner.QueryPlan) []TraceResult {
+	reg := mlruntime.NewRegistry()
+	var out []TraceResult
+	for _, b := range prog.Blocks {
+		tb, ok := b.(*ast.TestBlock)
+		if !ok {
+			continue
+		}
+		tr, steps := runOne(tb, plans, reg)
+		flagged := flaggedFromSteps(steps)
+		out = append(out, TraceResult{
+			Name:    tr.Name,
+			Block:   tb.WhenBlock,
+			Passed:  tr.Passed,
+			Errors:  tr.Errors,
+			Steps:   steps,
+			Flagged: flagged,
+		})
+	}
+	return out
+}
+
+// flaggedFromSteps reads the last narrowed row set from a step list.
+// Mirrors the executor's flaggedRows logic: start with the first DatalevinQuery,
+// then narrow by each MLComputation step.
+func flaggedFromSteps(steps []TraceStep) []int {
+	var flagged []int
+	for _, s := range steps {
+		if s.Type == "DatalevinQuery" {
+			flagged = s.Rows
+			break
+		}
+	}
+	for _, s := range steps {
+		if s.Type == "MLComputation" {
+			flagged = s.Rows
+		}
+	}
+	return flagged
 }
 
 // entity is an in-memory record.
@@ -45,7 +112,7 @@ type entity struct {
 	fields map[string]interface{} // ":record/type" → "item", ":attr/km" → 45000, etc.
 }
 
-func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) TestResult {
+func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) (TestResult, []TraceStep) {
 	result := TestResult{Name: tb.Name}
 
 	// Build in-memory entities from given block
@@ -55,7 +122,7 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 	plan, ok := plans[tb.WhenBlock]
 	if !ok {
 		result.Errors = append(result.Errors, fmt.Sprintf("no plan for block %q", tb.WhenBlock))
-		return result
+		return result, nil
 	}
 
 	// Walk the full step list, mirroring the executor path so .test files can
@@ -63,6 +130,7 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 	vars := map[string]any{}
 	var flagged []int
 	var flaggedSet bool
+	trace := make([]TraceStep, 0, len(plan.Steps))
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.DatalevinQuery:
@@ -72,14 +140,29 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 				flagged = ids
 				flaggedSet = true
 			}
+			trace = append(trace, TraceStep{
+				Type:  "DatalevinQuery",
+				Into:  s.Into,
+				Query: s.Query,
+				Rows:  ids,
+			})
 		case *planner.MLComputation:
-			flagged = narrowByML(reg, s, flagged, entities)
+			narrowed, explanations := narrowByML(reg, s, flagged, entities)
+			flagged = narrowed
 			vars[s.Into] = map[string]any{
 				"function": s.Function,
 				"input":    vars[s.Input],
 				"params":   s.Params,
 				"flagged":  flagged,
 			}
+			trace = append(trace, TraceStep{
+				Type:         "MLComputation",
+				Into:         s.Into,
+				Function:     s.Function,
+				Params:       s.Params,
+				Rows:         flagged,
+				Explanations: explanations,
+			})
 		case *planner.GoComputation:
 			vars[s.Into] = map[string]any{
 				"function": s.Function,
@@ -87,8 +170,18 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 				"params":   s.Params,
 				"status":   "stub",
 			}
+			trace = append(trace, TraceStep{
+				Type:     "GoComputation",
+				Into:     s.Into,
+				Function: s.Function,
+				Params:   s.Params,
+			})
 		case *planner.Filter:
 			vars[s.Into] = vars[s.Input]
+			trace = append(trace, TraceStep{
+				Type: "Filter",
+				Into: s.Into,
+			})
 		}
 	}
 
@@ -100,7 +193,7 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 	}
 
 	result.Passed = len(result.Errors) == 0
-	return result
+	return result, trace
 }
 
 func buildEntities(data []ast.TestDatum) map[int]*entity {
@@ -414,17 +507,18 @@ func PrintResults(results []TestResult) (passed, failed int) {
 }
 
 // narrowByML runs an MLComputation against the entity values pulled from the
-// in-memory store and returns the subset of flagged ids whose Value=true.
+// in-memory store and returns the subset of flagged ids whose Value=true plus
+// the per-entity explanations the primitive produced.
 // If the registry has no primitive registered for the function, or the step
 // lacks the params needed to fetch values, the original flagged set passes
-// through unchanged.
-func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int, entities map[int]*entity) []int {
+// through unchanged and explanations is nil.
+func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int, entities map[int]*entity) ([]int, []mlruntime.Explanation) {
 	if reg == nil || !reg.Has(s.Function) {
-		return flagged
+		return flagged, nil
 	}
 	attr, _ := s.Params["attr"].(string)
 	if attr == "" {
-		return flagged
+		return flagged, nil
 	}
 	attrKey := ":attr/" + attr
 
@@ -450,11 +544,13 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 	if err != nil {
 		// Sample too small — leave flagged unchanged so tests can still run
 		// against tiny fixtures without forcing a synthetic 12-week window.
-		return flagged
+		return flagged, nil
 	}
 
 	keep := map[int]bool{}
+	explanations := make([]mlruntime.Explanation, 0, len(results))
 	for _, r := range results {
+		explanations = append(explanations, r.Explanation)
 		if v, _ := r.Value.(bool); v {
 			keep[r.EntityID] = true
 		}
@@ -465,7 +561,7 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 			out = append(out, id)
 		}
 	}
-	return out
+	return out, explanations
 }
 
 // Validate checks that all test blocks reference existing plans.
