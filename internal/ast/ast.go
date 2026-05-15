@@ -217,16 +217,26 @@ type CategoryTreeExpr struct {
 // TodayExpr is the `today` keyword.
 type TodayExpr struct{}
 
-func (*AttrExpr) exprNode()          {}
-func (*LiteralExpr) exprNode()       {}
-func (*IdentExpr) exprNode()         {}
-func (*BinaryExpr) exprNode()        {}
-func (*UnaryExpr) exprNode()         {}
-func (*ListExpr) exprNode()          {}
-func (*ContextExpr) exprNode()       {}
-func (*StepResultExpr) exprNode()    {}
-func (*CategoryTreeExpr) exprNode()  {}
-func (*TodayExpr) exprNode()         {}
+// LearnedThresholdExpr is `learned_threshold METHOD of EXPR over last N UNIT`.
+// Method is one of "p50", "p90", "p95", "p99" (or any "p<int>").
+// Subject is the attr/ident expression whose historical values feed the threshold.
+type LearnedThresholdExpr struct {
+	Method  string
+	Subject Expr
+	Window  Duration
+}
+
+func (*AttrExpr) exprNode()             {}
+func (*LiteralExpr) exprNode()          {}
+func (*IdentExpr) exprNode()            {}
+func (*BinaryExpr) exprNode()           {}
+func (*UnaryExpr) exprNode()            {}
+func (*ListExpr) exprNode()             {}
+func (*ContextExpr) exprNode()          {}
+func (*StepResultExpr) exprNode()       {}
+func (*CategoryTreeExpr) exprNode()     {}
+func (*TodayExpr) exprNode()            {}
+func (*LearnedThresholdExpr) exprNode() {}
 
 // ─── Conditions ───────────────────────────────────────────────────────────────
 

@@ -1088,6 +1088,25 @@ func (p *parser) parsePrimary() ast.Expr {
 		p.advance()
 		return &ast.TodayExpr{}
 
+	case lexer.TokenLearnedThreshold:
+		p.advance() // learned_threshold
+		method := p.expectIdent() // e.g. "p95"
+		if p.at(lexer.TokenIdent) && p.peek().Value == "of" {
+			p.advance()
+		} else {
+			p.errorf("expected 'of' after learned_threshold %s, got %q", method, p.peek().Value)
+		}
+		subject := p.parsePrimary()
+		p.expect(lexer.TokenOver)
+		p.expect(lexer.TokenLast)
+		n, _ := strconv.Atoi(p.expectNumberStr())
+		unit := p.expectDurationUnit()
+		return &ast.LearnedThresholdExpr{
+			Method:  method,
+			Subject: subject,
+			Window:  ast.Duration{Value: n, Unit: unit},
+		}
+
 	case lexer.TokenNumber:
 		val := p.advance().Value
 		n, _ := strconv.ParseFloat(val, 64)

@@ -232,6 +232,37 @@ detect "Unusual" {
 	}
 }
 
+func TestPlanDetectLearnedThresholdEmitsMLStep(t *testing.T) {
+	plan := planBlock(t, `
+detect "High mileage" {
+  for records where type == "item"
+    and attr "km" > learned_threshold p95 of attr "km" over last 90 days
+  flag matching items
+}`, "High mileage")
+
+	q := queryStep(t, plan, 0)
+	assertContains(t, q.Query, ":attr/km")
+	assertContains(t, q.Query, "?km")
+	assertContains(t, q.Query, ":find ?e ?km")
+
+	m := findMLStep(plan, FuncLearnedThreshold)
+	if m == nil {
+		t.Fatal("expected MLComputation with learned_threshold")
+	}
+	if attr, _ := m.Params["attr"].(string); attr != "km" {
+		t.Errorf("Params[attr]: got %q, want %q", attr, "km")
+	}
+	if method, _ := m.Params["method"].(string); method != "p95" {
+		t.Errorf("Params[method]: got %q, want %q", method, "p95")
+	}
+	if op, _ := m.Params["op"].(string); op != ">" {
+		t.Errorf("Params[op]: got %q, want %q", op, ">")
+	}
+	if idx, _ := m.Params["value_index"].(int); idx != 1 {
+		t.Errorf("Params[value_index]: got %d, want 1", idx)
+	}
+}
+
 func TestPlanDetectWithAnomalyMLStep(t *testing.T) {
 	plan := planBlock(t, `
 detect "Unusual" {

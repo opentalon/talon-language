@@ -13,6 +13,7 @@ type Registry struct {
 func NewRegistry() *Registry {
 	r := &Registry{primitives: map[string]Primitive{}}
 	r.Register(NewZScoreAnomaly())
+	r.Register(NewLearnedThreshold())
 	return r
 }
 

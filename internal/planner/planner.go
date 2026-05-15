@@ -10,13 +10,14 @@ import (
 
 // GoComputation function names.
 const (
-	FuncAnomalyZscore       = "anomaly_zscore"
-	FuncPredictDecisionTree = "predict_decision_tree"
+	FuncAnomalyZscore        = "anomaly_zscore"
+	FuncLearnedThreshold     = "learned_threshold"
+	FuncPredictDecisionTree  = "predict_decision_tree"
 	FuncForecastExpSmoothing = "forecast_exponential_smoothing"
-	FuncClusterDBSCAN       = "cluster_dbscan"
-	FuncSimilarityCosine    = "similarity_cosine"
-	FuncClassifyKNN         = "classify_knn"
-	FuncRenderTemplate      = "render_template"
+	FuncClusterDBSCAN        = "cluster_dbscan"
+	FuncSimilarityCosine     = "similarity_cosine"
+	FuncClassifyKNN          = "classify_knn"
+	FuncRenderTemplate       = "render_template"
 )
 
 // ─── Plan step types ──────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ func (*Filter) stepType() string         { return "Filter" }
 func IsMLFunction(fn string) bool {
 	switch fn {
 	case FuncAnomalyZscore,
+		FuncLearnedThreshold,
 		FuncPredictDecisionTree,
 		FuncForecastExpSmoothing,
 		FuncClusterDBSCAN,
@@ -181,6 +183,23 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 				"attr":        ab.AttrName,
 				"window":      ab.Window,
 				"value_index": indexOf(qb.findVars, ab.ValueVar),
+			},
+			Into: into,
+		})
+		last = into
+	}
+
+	for i, tb := range qb.thresholdConds {
+		into := fmt.Sprintf("threshold_%d", i)
+		plan.Steps = append(plan.Steps, &MLComputation{
+			Function: FuncLearnedThreshold,
+			Input:    last,
+			Params: map[string]any{
+				"attr":        tb.AttrName,
+				"method":      tb.Method,
+				"op":          tb.Op,
+				"window":      tb.Window,
+				"value_index": indexOf(qb.findVars, tb.ValueVar),
 			},
 			Into: into,
 		})
@@ -430,13 +449,14 @@ func (p *planner) planWorkflow(b *ast.WorkflowBlock) *QueryPlan {
 // ─── Query builder ────────────────────────────────────────────────────────────
 
 type queryBuilder struct {
-	defines      map[string]*ast.DefineBlock
-	entityVar    string
-	findVars     []string
-	whereClauses []string
-	goConditions []ast.Condition
-	anomalyConds []anomalyBinding
-	usedVars     map[string]int // base name → count (for dedup)
+	defines        map[string]*ast.DefineBlock
+	entityVar      string
+	findVars       []string
+	whereClauses   []string
+	goConditions   []ast.Condition
+	anomalyConds   []anomalyBinding
+	thresholdConds []thresholdBinding
+	usedVars       map[string]int // base name → count (for dedup)
 }
 
 // anomalyBinding records an `attr X is anomaly` clause lifted out of the
@@ -447,6 +467,17 @@ type anomalyBinding struct {
 	AttrName string         // "weekly_consumption" — what label templates show
 	ValueVar string         // "?weekly_consumption"
 	Window   ast.Duration   // 12 weeks, 30 days…
+}
+
+// thresholdBinding records an `attr X OP learned_threshold ...` compare clause
+// lifted out of the Datalog selector into an MLComputation step.
+type thresholdBinding struct {
+	AttrPath string
+	AttrName string
+	ValueVar string
+	Method   string       // "p95"
+	Op       string       // ">", "<", ">=", "<="
+	Window   ast.Duration // recorded for explanation/audit; not enforced in phase 2
 }
 
 func (p *planner) newQueryBuilder() *queryBuilder {
@@ -536,6 +567,11 @@ func (b *queryBuilder) subClauses(cond ast.Condition) []string {
 }
 
 func (b *queryBuilder) addCompare(c *ast.CompareCondition) {
+	if lt, ok := c.Right.(*ast.LearnedThresholdExpr); ok {
+		b.addLearnedThresholdCompare(c, lt)
+		return
+	}
+
 	leftPath, leftIsField := exprToFieldPath(c.Left)
 	rightPath, rightIsField := exprToFieldPath(c.Right)
 	leftLit, leftIsLit := exprToDatalogLiteral(c.Left)
@@ -629,6 +665,30 @@ func (b *queryBuilder) addIsCondition(c *ast.IsCondition) {
 		}
 	}
 	// if no define found, validator already reported the error
+}
+
+// addLearnedThresholdCompare lifts `attr X OP learned_threshold ...` out of
+// the Datalog selector. The Datalog query is widened to return the bound
+// value var so the primitive can compute the percentile and per-row decision.
+func (b *queryBuilder) addLearnedThresholdCompare(c *ast.CompareCondition, lt *ast.LearnedThresholdExpr) {
+	path, ok := exprToFieldPath(c.Left)
+	if !ok {
+		b.goConditions = append(b.goConditions, c)
+		return
+	}
+	attrName := attrVarName(c.Left)
+	v := b.varFor(attrName)
+	b.whereClauses = append(b.whereClauses,
+		fmt.Sprintf("[%s %s %s]", b.entityVar, path, v))
+	b.findVars = appendUniq(b.findVars, v)
+	b.thresholdConds = append(b.thresholdConds, thresholdBinding{
+		AttrPath: path,
+		AttrName: attrName,
+		ValueVar: v,
+		Method:   lt.Method,
+		Op:       c.Op,
+		Window:   lt.Window,
+	})
 }
 
 // addAnomalyCondition lifts `attr X is anomaly` out of the Datalog selector:

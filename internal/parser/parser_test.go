@@ -532,6 +532,47 @@ define "helper" {
 	block[*ast.DefineBlock](t, prog, 2)
 }
 
+// ─── learned_threshold expression ─────────────────────────────────────────────
+
+func TestParseLearnedThresholdInCompare(t *testing.T) {
+	prog := mustParse(t, `
+detect "High mileage" {
+  for records where type == "item"
+    and attr "km" > learned_threshold p95 of attr "km" over last 90 days
+  flag matching items
+  priority HIGH
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if len(b.Selector.Conditions) != 1 {
+		t.Fatalf("want 1 selector cond, got %d", len(b.Selector.Conditions))
+	}
+	log, ok := b.Selector.Conditions[0].(*ast.LogicalCondition)
+	if !ok {
+		t.Fatalf("want LogicalCondition, got %T", b.Selector.Conditions[0])
+	}
+	cmp, ok := log.Right.(*ast.CompareCondition)
+	if !ok {
+		t.Fatalf("want CompareCondition on right, got %T", log.Right)
+	}
+	if cmp.Op != ">" {
+		t.Errorf("op: got %q", cmp.Op)
+	}
+	lt, ok := cmp.Right.(*ast.LearnedThresholdExpr)
+	if !ok {
+		t.Fatalf("want LearnedThresholdExpr, got %T", cmp.Right)
+	}
+	if lt.Method != "p95" {
+		t.Errorf("method: got %q", lt.Method)
+	}
+	sub, ok := lt.Subject.(*ast.AttrExpr)
+	if !ok || sub.Name != "km" {
+		t.Errorf("subject: got %+v", lt.Subject)
+	}
+	if lt.Window.Value != 90 || lt.Window.Unit != "days" {
+		t.Errorf("window: got %+v", lt.Window)
+	}
+}
+
 // ─── Nested recommend inside detect ───────────────────────────────────────────
 
 func TestParseNestedRecommend(t *testing.T) {
