@@ -1398,9 +1398,21 @@ func (p *parser) parseTestAssertion() ast.TestAssertion {
 		val := p.advance().Value // HIGH, LOW, etc.
 		return ast.TestAssertion{Kind: "priority", Op: op, Value: val}
 
+	case lexer.TokenThreshold:
+		p.advance() // threshold
+		op := p.advance().Value // "~=", ">", etc.
+		val := p.advance().Value
+		return ast.TestAssertion{Kind: "threshold", Op: op, Value: val}
+
 	case lexer.TokenIdent:
-		// e.g. "count == 2"
+		// e.g. "count == 2" or "score 808 > 2.5"
 		kind := p.advance().Value
+		if kind == "score" {
+			id, _ := strconv.Atoi(p.expectNumberStr())
+			op := p.advance().Value
+			val := p.advance().Value
+			return ast.TestAssertion{Kind: "score", ID: id, Op: op, Value: val}
+		}
 		op := p.advance().Value
 		val := p.advance().Value
 		return ast.TestAssertion{Kind: kind, Op: op, Value: val}

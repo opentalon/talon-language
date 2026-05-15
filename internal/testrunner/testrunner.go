@@ -131,6 +131,8 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 	var flagged []int
 	var flaggedSet bool
 	trace := make([]TraceStep, 0, len(plan.Steps))
+	mlByEntity := map[int]mlruntime.Explanation{}
+	var lastThreshold *mlruntime.Threshold
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.DatalevinQuery:
@@ -149,6 +151,12 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 		case *planner.MLComputation:
 			narrowed, explanations := narrowByML(reg, s, flagged, entities)
 			flagged = narrowed
+			for _, e := range explanations {
+				mlByEntity[e.EntityID] = e
+				if e.Threshold != nil {
+					lastThreshold = e.Threshold
+				}
+			}
 			vars[s.Into] = map[string]any{
 				"function": s.Function,
 				"input":    vars[s.Input],
@@ -187,7 +195,7 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 
 	// Check assertions
 	for _, assertion := range tb.Expect {
-		if err := checkAssertion(assertion, flagged, plan); err != "" {
+		if err := checkAssertion(assertion, flagged, plan, mlByEntity, lastThreshold); err != "" {
 			result.Errors = append(result.Errors, err)
 		}
 	}
@@ -461,7 +469,7 @@ func evalPredicate(op string, left interface{}, rightStr string) bool {
 	return false
 }
 
-func checkAssertion(a ast.TestAssertion, flagged []int, _ *planner.QueryPlan) string {
+func checkAssertion(a ast.TestAssertion, flagged []int, _ *planner.QueryPlan, mlByEntity map[int]mlruntime.Explanation, threshold *mlruntime.Threshold) string {
 	switch a.Kind {
 	case "flagged":
 		if !intSliceContains(flagged, a.ID) {
@@ -476,8 +484,83 @@ func checkAssertion(a ast.TestAssertion, flagged []int, _ *planner.QueryPlan) st
 		if a.Op == "==" && len(flagged) != expected {
 			return fmt.Sprintf("expected %d flagged, got %d", expected, len(flagged))
 		}
+	case "score":
+		exp, ok := mlByEntity[a.ID]
+		if !ok || len(exp.Rules) == 0 {
+			return fmt.Sprintf("no ML score recorded for entity %d", a.ID)
+		}
+		want, err := strconv.ParseFloat(a.Value, 64)
+		if err != nil {
+			return fmt.Sprintf("score assertion: invalid number %q", a.Value)
+		}
+		got, ok := numericValue(exp.Rules[0].Observed)
+		if !ok {
+			return fmt.Sprintf("entity %d score observed not numeric: %v", a.ID, exp.Rules[0].Observed)
+		}
+		if !compareScalars(a.Op, got, want) {
+			return fmt.Sprintf("entity %d score: %v %s %v failed", a.ID, got, a.Op, want)
+		}
+	case "threshold":
+		if threshold == nil {
+			return "threshold assertion: no ML threshold recorded"
+		}
+		want, err := strconv.ParseFloat(a.Value, 64)
+		if err != nil {
+			return fmt.Sprintf("threshold assertion: invalid number %q", a.Value)
+		}
+		if !compareScalars(a.Op, threshold.Value, want) {
+			return fmt.Sprintf("threshold: %v %s %v failed", threshold.Value, a.Op, want)
+		}
 	}
 	return ""
+}
+
+// numericValue extracts a float64 from common JSON-ish numeric types.
+func numericValue(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	}
+	return 0, false
+}
+
+// compareScalars applies a Talon comparison/approximation operator.
+// `~=` allows 5% relative or 0.01 absolute tolerance, whichever is larger.
+func compareScalars(op string, got, want float64) bool {
+	switch op {
+	case ">":
+		return got > want
+	case ">=":
+		return got >= want
+	case "<":
+		return got < want
+	case "<=":
+		return got <= want
+	case "==", "=":
+		return got == want
+	case "!=", "not=":
+		return got != want
+	case "~=":
+		tol := 0.05 * absFloat(want)
+		if tol < 0.01 {
+			tol = 0.01
+		}
+		return absFloat(got-want) <= tol
+	}
+	return false
+}
+
+func absFloat(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 func intSliceContains(s []int, v int) bool {

@@ -38,6 +38,7 @@ const (
 	TokenStar
 	TokenSlash
 	TokenPercent
+	TokenApprox
 
 	// Keywords — block types
 	TokenDetect
@@ -429,6 +430,14 @@ func (s *scanner) scanSymbol(line, col int) {
 		} else {
 			s.diags.AddError(s.file, line, col, "unexpected character '!'", "did you mean '!='?")
 			s.emit(TokenIllegal, "!", line, col)
+		}
+	case '~':
+		if !s.atEnd() && s.peek() == '=' {
+			s.advance()
+			s.emit(TokenApprox, "~=", line, col)
+		} else {
+			s.diags.AddError(s.file, line, col, "unexpected character '~'", "did you mean '~='?")
+			s.emit(TokenIllegal, "~", line, col)
 		}
 	default:
 		s.diags.AddError(s.file, line, col, fmt.Sprintf("unexpected character %q", ch), "")

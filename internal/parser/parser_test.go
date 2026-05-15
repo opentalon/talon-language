@@ -532,6 +532,47 @@ define "helper" {
 	block[*ast.DefineBlock](t, prog, 2)
 }
 
+// ─── test-block ML assertions ─────────────────────────────────────────────────
+
+func TestParseTestAssertionsScoreAndThreshold(t *testing.T) {
+	prog := mustParse(t, `
+test "anomaly trace" {
+  given {
+    record 1 type "stock_item" status "active"
+    attr 1 "weekly_consumption" 50
+  }
+  when detect "Unusual consumption"
+  expect {
+    flagged 1
+    score 1 > 2.5
+    threshold ~= 95
+    threshold >= 90
+  }
+}`)
+	if len(prog.Blocks) != 1 {
+		t.Fatalf("blocks: %d", len(prog.Blocks))
+	}
+	tb, ok := prog.Blocks[0].(*ast.TestBlock)
+	if !ok {
+		t.Fatalf("block type %T", prog.Blocks[0])
+	}
+	if len(tb.Expect) != 4 {
+		t.Fatalf("want 4 assertions, got %d", len(tb.Expect))
+	}
+	score := tb.Expect[1]
+	if score.Kind != "score" || score.ID != 1 || score.Op != ">" || score.Value != "2.5" {
+		t.Errorf("score: %+v", score)
+	}
+	thr := tb.Expect[2]
+	if thr.Kind != "threshold" || thr.Op != "~=" || thr.Value != "95" {
+		t.Errorf("threshold ~=: %+v", thr)
+	}
+	thr2 := tb.Expect[3]
+	if thr2.Kind != "threshold" || thr2.Op != ">=" || thr2.Value != "90" {
+		t.Errorf("threshold >=: %+v", thr2)
+	}
+}
+
 // ─── learned_threshold expression ─────────────────────────────────────────────
 
 func TestParseLearnedThresholdInCompare(t *testing.T) {

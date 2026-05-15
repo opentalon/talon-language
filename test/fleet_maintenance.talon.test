@@ -149,6 +149,8 @@ test "Anomaly detection flags only outlier consumption" {
     not flagged 807
     flagged 808
     not flagged 809
+    score 808 > 2.5
+    threshold == 2.5
   }
 }
 
