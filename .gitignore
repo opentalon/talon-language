@@ -1,2 +1,4 @@
 /talon
 datalevin-server/.cpcache/
+node_modules/
+dist/
