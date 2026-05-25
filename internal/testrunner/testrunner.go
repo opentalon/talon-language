@@ -2,9 +2,12 @@ package testrunner
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/diagnostic"
@@ -14,9 +17,10 @@ import (
 
 // TestResult is the outcome of one test block.
 type TestResult struct {
-	Name   string
-	Passed bool
-	Errors []string
+	Name     string
+	Passed   bool
+	Errors   []string
+	Duration time.Duration
 }
 
 // TraceStep records one plan step's execution during a traced run.
@@ -114,6 +118,7 @@ type entity struct {
 
 func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) (TestResult, []TraceStep) {
 	result := TestResult{Name: tb.Name}
+	start := time.Now()
 
 	// Build in-memory entities from given block
 	entities := buildEntities(tb.Given)
@@ -201,6 +206,7 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 	}
 
 	result.Passed = len(result.Errors) == 0
+	result.Duration = time.Since(start)
 	return result, trace
 }
 
@@ -572,21 +578,123 @@ func intSliceContains(s []int, v int) bool {
 	return false
 }
 
-// PrintResults formats test results for CLI output.
-func PrintResults(results []TestResult) (passed, failed int) {
+// PrintResults formats test results for CLI output. When verbose is true,
+// each test prints PASS/FAIL with duration; otherwise only FAIL lines and
+// their error detail are printed (mirrors `go test` defaults).
+func PrintResults(results []TestResult, verbose bool) (passed, failed int) {
 	for _, r := range results {
 		if r.Passed {
 			passed++
-			fmt.Printf("  PASS  %s\n", r.Name)
+			if verbose {
+				fmt.Printf("  PASS  %s (%s)\n", r.Name, fmtDuration(r.Duration))
+			}
 		} else {
 			failed++
-			fmt.Printf("  FAIL  %s\n", r.Name)
+			if verbose {
+				fmt.Printf("  FAIL  %s (%s)\n", r.Name, fmtDuration(r.Duration))
+			} else {
+				fmt.Printf("  FAIL  %s\n", r.Name)
+			}
 			for _, e := range r.Errors {
 				fmt.Printf("        %s\n", e)
 			}
 		}
 	}
 	return
+}
+
+func fmtDuration(d time.Duration) string {
+	if d < time.Microsecond {
+		return fmt.Sprintf("%dns", d.Nanoseconds())
+	}
+	if d < time.Millisecond {
+		return fmt.Sprintf("%dµs", d.Microseconds())
+	}
+	return fmt.Sprintf("%dms", d.Milliseconds())
+}
+
+// FilterByName returns the subset of results whose names contain the given
+// substring. Empty pattern returns input unchanged.
+func FilterByName(results []TestResult, pattern string) []TestResult {
+	if pattern == "" {
+		return results
+	}
+	out := results[:0:0]
+	for _, r := range results {
+		if strings.Contains(r.Name, pattern) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// JUnitSuite groups the results for one .talon.test file.
+type JUnitSuite struct {
+	File    string
+	Results []TestResult
+}
+
+type junitTestsuites struct {
+	XMLName xml.Name         `xml:"testsuites"`
+	Suites  []junitTestsuite `xml:"testsuite"`
+}
+
+type junitTestsuite struct {
+	Name     string          `xml:"name,attr"`
+	Tests    int             `xml:"tests,attr"`
+	Failures int             `xml:"failures,attr"`
+	Time     string          `xml:"time,attr"`
+	Cases    []junitTestcase `xml:"testcase"`
+}
+
+type junitTestcase struct {
+	Name      string        `xml:"name,attr"`
+	Classname string        `xml:"classname,attr"`
+	Time      string        `xml:"time,attr"`
+	Failure   *junitFailure `xml:"failure,omitempty"`
+}
+
+type junitFailure struct {
+	Message string `xml:"message,attr"`
+	Body    string `xml:",chardata"`
+}
+
+// WriteJUnit writes a JUnit-style XML report covering all given suites.
+func WriteJUnit(w io.Writer, suites []JUnitSuite) error {
+	var doc junitTestsuites
+	for _, s := range suites {
+		ts := junitTestsuite{Name: s.File, Tests: len(s.Results)}
+		var total time.Duration
+		for _, r := range s.Results {
+			tc := junitTestcase{
+				Name:      r.Name,
+				Classname: s.File,
+				Time:      fmt.Sprintf("%.3f", r.Duration.Seconds()),
+			}
+			if !r.Passed {
+				ts.Failures++
+				msg := strings.Join(r.Errors, "; ")
+				tc.Failure = &junitFailure{
+					Message: msg,
+					Body:    strings.Join(r.Errors, "\n"),
+				}
+			}
+			ts.Cases = append(ts.Cases, tc)
+			total += r.Duration
+		}
+		ts.Time = fmt.Sprintf("%.3f", total.Seconds())
+		doc.Suites = append(doc.Suites, ts)
+	}
+	if _, err := io.WriteString(w, xml.Header); err != nil {
+		return err
+	}
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	if err := enc.Encode(doc); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, "\n")
+	return err
 }
 
 // narrowByML runs an MLComputation against the entity values pulled from the

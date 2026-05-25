@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -117,97 +118,223 @@ func runBuild() {
 }
 
 func runTest() {
-	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon test <rules.talon> <tests.talon.test>")
-		os.Exit(diagnostic.ExitUsage)
+	args := os.Args[2:]
+	var paths []string
+	runFilter := ""
+	verbose := false
+	junitOut := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-run" && i+1 < len(args):
+			runFilter = args[i+1]
+			i++
+		case a == "-v":
+			verbose = true
+		case a == "--junit" && i+1 < len(args):
+			junitOut = args[i+1]
+			i++
+		case strings.HasPrefix(a, "-"):
+			fmt.Fprintf(os.Stderr, "talon test: unknown flag %q\n", a)
+			fmt.Fprintln(os.Stderr, "usage: talon test [paths...] [-run NAME] [-v] [--junit FILE]")
+			os.Exit(diagnostic.ExitUsage)
+		default:
+			paths = append(paths, a)
+		}
 	}
 
-	rulesPath := os.Args[2]
-	testPath := os.Args[3]
+	pairs, err := resolveTestPairs(paths)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon test: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+	if len(pairs) == 0 {
+		fmt.Fprintln(os.Stderr, "talon test: no .talon.test files found")
+		os.Exit(diagnostic.ExitError)
+	}
 
-	// Read and compile rules
+	var suites []testrunner.JUnitSuite
+	totalPassed, totalFailed := 0, 0
+	for _, p := range pairs {
+		results, ok := runTestPair(p.rules, p.test, runFilter, verbose)
+		if !ok {
+			os.Exit(diagnostic.ExitError)
+		}
+		suites = append(suites, testrunner.JUnitSuite{
+			File:    filepath.Base(p.test),
+			Results: results,
+		})
+		for _, r := range results {
+			if r.Passed {
+				totalPassed++
+			} else {
+				totalFailed++
+			}
+		}
+	}
+	fmt.Printf("\n%d passed, %d failed\n", totalPassed, totalFailed)
+
+	if junitOut != "" {
+		f, err := os.Create(junitOut)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "talon test: junit: %v\n", err)
+			os.Exit(diagnostic.ExitError)
+		}
+		if err := testrunner.WriteJUnit(f, suites); err != nil {
+			f.Close()
+			fmt.Fprintf(os.Stderr, "talon test: junit: %v\n", err)
+			os.Exit(diagnostic.ExitError)
+		}
+		if err := f.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "talon test: junit: %v\n", err)
+			os.Exit(diagnostic.ExitError)
+		}
+	}
+
+	if totalFailed > 0 {
+		os.Exit(diagnostic.ExitError)
+	}
+}
+
+type testPair struct {
+	rules string
+	test  string
+}
+
+// resolveTestPairs maps the user-supplied paths to rules/test file pairs.
+// Two positional args of the form <rules.talon> <tests.talon.test> are paired
+// directly so the legacy CLI keeps working. Otherwise each path is treated as
+// a directory or `.talon.test` file; rules files are matched to tests by base
+// name (`foo.talon` ↔ `foo.talon.test`).
+func resolveTestPairs(paths []string) ([]testPair, error) {
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+	if len(paths) == 2 {
+		a, b := paths[0], paths[1]
+		ca, cb := classifyTalonPath(a), classifyTalonPath(b)
+		if ca == "rules" && cb == "test" {
+			return []testPair{{rules: a, test: b}}, nil
+		}
+		if ca == "test" && cb == "rules" {
+			return []testPair{{rules: b, test: a}}, nil
+		}
+	}
+
+	var rulesFiles, testFiles []string
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() {
+			switch classifyTalonPath(p) {
+			case "rules":
+				rulesFiles = append(rulesFiles, p)
+			case "test":
+				testFiles = append(testFiles, p)
+			default:
+				return nil, fmt.Errorf("not a .talon or .talon.test file: %s", p)
+			}
+			continue
+		}
+		err = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			switch classifyTalonPath(path) {
+			case "rules":
+				rulesFiles = append(rulesFiles, path)
+			case "test":
+				testFiles = append(testFiles, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	rulesByBase := map[string]string{}
+	for _, r := range rulesFiles {
+		base := strings.TrimSuffix(filepath.Base(r), ".talon")
+		rulesByBase[base] = r
+	}
+
+	var pairs []testPair
+	for _, t := range testFiles {
+		base := strings.TrimSuffix(filepath.Base(t), ".talon.test")
+		r, ok := rulesByBase[base]
+		if !ok {
+			sibling := strings.TrimSuffix(t, ".test")
+			if _, err := os.Stat(sibling); err == nil {
+				r = sibling
+			} else {
+				return nil, fmt.Errorf("no rules file found for %s (need %s.talon nearby)", t, base)
+			}
+		}
+		pairs = append(pairs, testPair{rules: r, test: t})
+	}
+	return pairs, nil
+}
+
+func classifyTalonPath(p string) string {
+	switch {
+	case strings.HasSuffix(p, ".talon.test"):
+		return "test"
+	case strings.HasSuffix(p, ".talon"):
+		return "rules"
+	}
+	return ""
+}
+
+func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner.TestResult, bool) {
 	rulesSrc, err := os.ReadFile(rulesPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "talon test: %v\n", err)
-		os.Exit(diagnostic.ExitError)
+		return nil, false
 	}
-
 	rulesFile := filepath.Base(rulesPath)
-	tokens, ld := lexer.Lex(rulesFile, string(rulesSrc))
-	if ld.HasErrors() {
-		for _, d := range ld {
-			fmt.Fprintf(os.Stderr, "error: %s\n", d)
-		}
-		os.Exit(diagnostic.ExitError)
+	plans, ok := compile(rulesFile, string(rulesSrc))
+	if !ok {
+		return nil, false
 	}
 
-	rulesProg, pd := parser.Parse(rulesFile, tokens)
-	if pd.HasErrors() {
-		for _, d := range pd {
-			fmt.Fprintf(os.Stderr, "error: %s\n", d)
-		}
-		os.Exit(diagnostic.ExitError)
-	}
-
-	vd := validator.Validate(rulesFile, rulesProg)
-	if vd.HasErrors() {
-		for _, d := range vd {
-			fmt.Fprintf(os.Stderr, "error: %s\n", d)
-		}
-		os.Exit(diagnostic.ExitError)
-	}
-
-	plans, planDiags := planner.Plan(rulesProg)
-	if planDiags.HasErrors() {
-		for _, d := range planDiags {
-			fmt.Fprintf(os.Stderr, "error: %s\n", d)
-		}
-		os.Exit(diagnostic.ExitError)
-	}
-
-	// Read and parse test file
 	testSrc, err := os.ReadFile(testPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "talon test: %v\n", err)
-		os.Exit(diagnostic.ExitError)
+		return nil, false
 	}
-
 	testFile := filepath.Base(testPath)
 	testTokens, tld := lexer.Lex(testFile, string(testSrc))
 	if tld.HasErrors() {
 		for _, d := range tld {
 			fmt.Fprintf(os.Stderr, "error: %s\n", d)
 		}
-		os.Exit(diagnostic.ExitError)
+		return nil, false
 	}
-
 	testProg, tpd := parser.Parse(testFile, testTokens)
 	if tpd.HasErrors() {
 		for _, d := range tpd {
 			fmt.Fprintf(os.Stderr, "error: %s\n", d)
 		}
-		os.Exit(diagnostic.ExitError)
+		return nil, false
 	}
-
-	// Validate test references
-	tvd := testrunner.Validate(testProg, plans)
-	if tvd.HasErrors() {
+	if tvd := testrunner.Validate(testProg, plans); tvd.HasErrors() {
 		for _, d := range tvd {
 			fmt.Fprintf(os.Stderr, "error: %s\n", d)
 		}
-		os.Exit(diagnostic.ExitError)
+		return nil, false
 	}
 
-	// Run tests
 	results := testrunner.Run(testProg, plans)
-	fmt.Printf("==> %s: %d test(s)\n\n", testFile, len(results))
-
-	passed, failed := testrunner.PrintResults(results)
-	fmt.Printf("\n%d passed, %d failed\n", passed, failed)
-
-	if failed > 0 {
-		os.Exit(diagnostic.ExitError)
-	}
+	filtered := testrunner.FilterByName(results, filter)
+	fmt.Printf("==> %s: %d test(s)\n", testFile, len(filtered))
+	testrunner.PrintResults(filtered, verbose)
+	return filtered, true
 }
 
 func runExecute() {

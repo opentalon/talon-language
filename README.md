@@ -332,7 +332,7 @@ test "Up-to-date service is not flagged" {
 | Tool | What it does |
 |------|-------------|
 | `talon build` | Compile `.talon` files, report errors |
-| `talon test` | Run `.talon.test` files |
+| `talon test` | Run `.talon.test` files (supports `-run NAME`, `-v`, `--junit FILE`, dir walk) |
 | `talon repl` | Interactive REPL — assert facts, evaluate rules, trace execution |
 | `talon trace` | Step-by-step evaluation trace for debugging |
 | `talon mod` | Package manager (`init`, `add`, `tidy`, `verify`) |
