@@ -1073,7 +1073,17 @@ func (p *parser) parsePrimary() ast.Expr {
 		field := p.expectIdent()
 		for p.at(lexer.TokenDot) {
 			p.advance()
-			field += "." + p.expectIdent()
+			next := p.expectIdent()
+			if next == "map" && p.at(lexer.TokenLParen) {
+				p.advance() // consume (
+				mapField := p.expectIdent()
+				p.expect(lexer.TokenRParen)
+				return &ast.MapExpr{
+					Source: &ast.StepResultExpr{StepName: name, Field: field},
+					Field:  mapField,
+				}
+			}
+			field += "." + next
 		}
 		return &ast.StepResultExpr{StepName: name, Field: field}
 

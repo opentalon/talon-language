@@ -297,6 +297,51 @@ workflow "Onboard new team member" {
 	}
 }
 
+func TestParseWorkflowMapExpr(t *testing.T) {
+	prog := mustParse(t, `
+workflow "Delete items" {
+  step "find" {
+    mcp "srv" "list" {
+      query "test"
+      collect_all true
+    }
+  }
+  step "delete" depends_on "find" {
+    mcp "srv" "batch-delete" {
+      ids step("find").result.items.map(id)
+    }
+  }
+}`)
+	b := block[*ast.WorkflowBlock](t, prog, 0)
+	if len(b.Steps) != 2 {
+		t.Fatalf("Steps: expected 2, got %d", len(b.Steps))
+	}
+	// Verify collect_all arg on step 0
+	ca, ok := b.Steps[0].MCPCall.Args["collect_all"]
+	if !ok {
+		t.Fatal("missing collect_all arg")
+	}
+	if lit, ok := ca.(*ast.LiteralExpr); !ok || lit.Value != true {
+		t.Errorf("collect_all: got %v", ca)
+	}
+	// Verify .map(id) produces a MapExpr
+	ids := b.Steps[1].MCPCall.Args["ids"]
+	me, ok := ids.(*ast.MapExpr)
+	if !ok {
+		t.Fatalf("ids arg: expected MapExpr, got %T", ids)
+	}
+	if me.Field != "id" {
+		t.Errorf("MapExpr.Field: got %q", me.Field)
+	}
+	src, ok := me.Source.(*ast.StepResultExpr)
+	if !ok {
+		t.Fatalf("MapExpr.Source: expected StepResultExpr, got %T", me.Source)
+	}
+	if src.StepName != "find" || src.Field != "result.items" {
+		t.Errorf("StepResultExpr: got step=%q field=%q", src.StepName, src.Field)
+	}
+}
+
 // ─── top-level ML blocks ───────────────────────────────────────────────────────
 
 func TestParseForecastBlock(t *testing.T) {
