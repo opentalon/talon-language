@@ -431,7 +431,8 @@ func (p *planner) planCombine(b *ast.CombineBlock) *QueryPlan {
 
 func (p *planner) planWorkflow(b *ast.WorkflowBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
-	for _, step := range b.Steps {
+	sorted := topoSortSteps(b.Steps)
+	for _, step := range sorted {
 		plan.Steps = append(plan.Steps, &GoComputation{
 			Function: "mcp_call",
 			Input:    "",
@@ -444,6 +445,52 @@ func (p *planner) planWorkflow(b *ast.WorkflowBlock) *QueryPlan {
 		})
 	}
 	return plan
+}
+
+// topoSortSteps returns workflow steps in topological order using Kahn's algorithm.
+// The validator guarantees no cycles, so this always succeeds.
+func topoSortSteps(steps []ast.WorkflowStep) []ast.WorkflowStep {
+	byName := map[string]ast.WorkflowStep{}
+	inDegree := map[string]int{}
+	for _, s := range steps {
+		byName[s.Name] = s
+		inDegree[s.Name] = 0
+	}
+	for _, s := range steps {
+		for _, dep := range s.DependsOn {
+			inDegree[s.Name]++
+			_ = dep // dep → s edge
+		}
+	}
+
+	var queue []string
+	for _, s := range steps {
+		if inDegree[s.Name] == 0 {
+			queue = append(queue, s.Name)
+		}
+	}
+
+	// Build adjacency: dep → []dependents
+	adj := map[string][]string{}
+	for _, s := range steps {
+		for _, dep := range s.DependsOn {
+			adj[dep] = append(adj[dep], s.Name)
+		}
+	}
+
+	var sorted []ast.WorkflowStep
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		sorted = append(sorted, byName[name])
+		for _, next := range adj[name] {
+			inDegree[next]--
+			if inDegree[next] == 0 {
+				queue = append(queue, next)
+			}
+		}
+	}
+	return sorted
 }
 
 // ─── Query builder ────────────────────────────────────────────────────────────

@@ -217,6 +217,12 @@ type CategoryTreeExpr struct {
 // TodayExpr is the `today` keyword.
 type TodayExpr struct{}
 
+// MapExpr is `expr.map(field)` — extracts a field from each element of an array.
+type MapExpr struct {
+	Source Expr   // the array expression, e.g. step("find").result.items
+	Field  string // the field to extract, e.g. "id"
+}
+
 // LearnedThresholdExpr is `learned_threshold METHOD of EXPR over last N UNIT`.
 // Method is one of "p50", "p90", "p95", "p99" (or any "p<int>").
 // Subject is the attr/ident expression whose historical values feed the threshold.
@@ -236,6 +242,7 @@ func (*ContextExpr) exprNode()          {}
 func (*StepResultExpr) exprNode()       {}
 func (*CategoryTreeExpr) exprNode()     {}
 func (*TodayExpr) exprNode()            {}
+func (*MapExpr) exprNode()              {}
 func (*LearnedThresholdExpr) exprNode() {}
 
 // ─── Conditions ───────────────────────────────────────────────────────────────

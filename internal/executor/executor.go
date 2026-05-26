@@ -28,8 +28,10 @@ type StepResult struct {
 
 // Executor runs compiled QueryPlans against a Datalevin server.
 type Executor struct {
-	Client   *datalevin.Client
-	Registry *mlruntime.Registry
+	Client      *datalevin.Client
+	Registry    *mlruntime.Registry
+	MCP         MCPCaller
+	ConfirmHook ConfirmationHook
 }
 
 // NewExecutor creates an executor backed by the given Datalevin client
@@ -144,7 +146,7 @@ func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map
 	case *planner.DatalevinQuery:
 		return e.execQuery(ctx, s, vars)
 	case *planner.GoComputation:
-		return e.execComputation(s, vars)
+		return e.execComputation(ctx, s, vars)
 	case *planner.MLComputation:
 		return e.execMLComputation(s, vars)
 	case *planner.Filter:
@@ -172,24 +174,24 @@ func (e *Executor) execQuery(ctx context.Context, dq *planner.DatalevinQuery, va
 	}, nil
 }
 
-func (e *Executor) execComputation(gc *planner.GoComputation, vars map[string]any) (StepResult, error) {
+func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputation, vars map[string]any) (StepResult, error) {
 	input := vars[gc.Input]
 
 	switch gc.Function {
 	case planner.FuncRenderTemplate:
-		// Template rendering: pass through input with template metadata
 		vars[gc.Into] = map[string]any{
 			"input":    input,
 			"template": gc.Params["template"],
 		}
 	case "resolve_block_matches":
-		// Pass through — the referenced block's results would be resolved at runtime
 		vars[gc.Into] = input
 	case "mcp_call":
-		// MCP calls are stubbed — would call external tool servers
-		vars[gc.Into] = map[string]any{"status": "stub", "step": gc.Params["step"]}
+		result, err := e.execMCPCall(ctx, gc, vars)
+		if err != nil {
+			return StepResult{}, err
+		}
+		vars[gc.Into] = result
 	default:
-		// Optimize, etc. — pass through input with function metadata
 		vars[gc.Into] = map[string]any{
 			"function": gc.Function,
 			"input":    input,
@@ -203,6 +205,136 @@ func (e *Executor) execComputation(gc *planner.GoComputation, vars map[string]an
 		Name:   gc.Function,
 		Output: vars[gc.Into],
 	}, nil
+}
+
+func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, vars map[string]any) (any, error) {
+	mcpCall, ok := gc.Params["mcp"].(*ast.MCPCall)
+	if !ok {
+		return map[string]any{"status": "stub", "step": gc.Params["step"]}, nil
+	}
+
+	if e.MCP == nil {
+		return map[string]any{"status": "stub", "step": gc.Params["step"]}, nil
+	}
+
+	stepName, _ := gc.Params["step"].(string)
+
+	// Confirmation hook
+	if e.ConfirmHook != nil {
+		proceed, err := e.ConfirmHook(ctx, stepName, mcpCall.Server, mcpCall.Tool)
+		if err != nil {
+			return nil, fmt.Errorf("step %q: confirmation: %w", stepName, err)
+		}
+		if !proceed {
+			return map[string]any{"status": "skipped", "reason": "confirmation_denied"}, nil
+		}
+	}
+
+	// Resolve MCP args
+	args := resolveMCPArgs(mcpCall.Args, vars)
+
+	// Check for collect_all
+	collectAll := false
+	if ca, ok := args["collect_all"]; ok {
+		if b, ok := ca.(bool); ok && b {
+			collectAll = true
+		}
+		delete(args, "collect_all")
+	}
+
+	if !collectAll {
+		return e.MCP.Call(ctx, mcpCall.Server, mcpCall.Tool, args)
+	}
+
+	// Auto-paginate: call repeatedly until has_more is false
+	return e.collectAll(ctx, mcpCall.Server, mcpCall.Tool, args)
+}
+
+func (e *Executor) collectAll(ctx context.Context, server, tool string, args map[string]any) (any, error) {
+	var allItems []any
+	page := 1
+	for {
+		args["page"] = page
+		result, err := e.MCP.Call(ctx, server, tool, args)
+		if err != nil {
+			return nil, err
+		}
+		m, ok := result.(map[string]any)
+		if !ok {
+			return result, nil
+		}
+		if items, ok := m["items"].([]any); ok {
+			allItems = append(allItems, items...)
+		}
+		hasMore, _ := m["has_more"].(bool)
+		if !hasMore {
+			break
+		}
+		page++
+	}
+	return map[string]any{"items": allItems}, nil
+}
+
+// resolveMCPArgs evaluates each MCP argument expression against step results.
+func resolveMCPArgs(exprArgs map[string]ast.Expr, vars map[string]any) map[string]any {
+	args := map[string]any{}
+	for k, expr := range exprArgs {
+		args[k] = resolveExprValue(expr, vars)
+	}
+	return args
+}
+
+func resolveExprValue(expr ast.Expr, vars map[string]any) any {
+	switch e := expr.(type) {
+	case *ast.LiteralExpr:
+		return e.Value
+	case *ast.StepResultExpr:
+		return resolveStepField(vars, e.StepName, e.Field)
+	case *ast.MapExpr:
+		src := resolveExprValue(e.Source, vars)
+		return resolveMap(src, e.Field)
+	case *ast.ContextExpr:
+		return resolveStepField(vars, "context", e.Field)
+	case *ast.IdentExpr:
+		return e.Name
+	default:
+		return nil
+	}
+}
+
+// resolveStepField navigates step("name").result.field by traversing the
+// stored step result using dot-separated field paths.
+func resolveStepField(vars map[string]any, stepName, field string) any {
+	result := vars[stepName+"_result"]
+	if result == nil {
+		return nil
+	}
+	for _, part := range strings.Split(field, ".") {
+		m, ok := result.(map[string]any)
+		if !ok {
+			return nil
+		}
+		result = m[part]
+	}
+	return result
+}
+
+// resolveMap extracts a field from each element of an array.
+// e.g. items.map(id) → [item1["id"], item2["id"], ...]
+func resolveMap(src any, field string) any {
+	arr, ok := src.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(arr))
+	for _, elem := range arr {
+		m, ok := elem.(map[string]any)
+		if !ok {
+			continue
+		}
+		out = append(out, m[field])
+	}
+	return out
 }
 
 // execMLComputation dispatches an MLComputation step to the registry.

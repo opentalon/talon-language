@@ -31,6 +31,7 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkReferences()
 	v.checkTypes()
 	v.checkCycles()
+	v.checkWorkflows()
 	return v.diags
 }
 
@@ -184,6 +185,84 @@ func (v *validator) checkCycles() {
 	for name := range v.defines {
 		if states[name] == unvisited {
 			dfs(name, nil)
+		}
+	}
+}
+
+// ─── Workflow validation ──────────────────────────────────────────────────────
+
+func (v *validator) checkWorkflows() {
+	for _, b := range v.prog.Blocks {
+		wf, ok := b.(*ast.WorkflowBlock)
+		if !ok {
+			continue
+		}
+
+		stepNames := map[string]bool{}
+		for _, step := range wf.Steps {
+			// Each step must have an MCP call.
+			if step.MCPCall == nil {
+				v.errAt(wf.Pos, fmt.Sprintf("step %q in workflow %q has no mcp call", step.Name, wf.Name), "")
+			}
+			// Step names must be unique within the workflow.
+			if stepNames[step.Name] {
+				v.errAt(wf.Pos, fmt.Sprintf("duplicate step name %q in workflow %q", step.Name, wf.Name), "")
+			}
+			stepNames[step.Name] = true
+		}
+
+		// Validate depends_on references.
+		for _, step := range wf.Steps {
+			for _, dep := range step.DependsOn {
+				if !stepNames[dep] {
+					v.errAt(wf.Pos,
+						fmt.Sprintf("step %q depends on undefined step %q in workflow %q", step.Name, dep, wf.Name),
+						suggest(dep, names(stepNames)))
+				}
+			}
+		}
+
+		// Cycle detection via DFS.
+		type dfsState int
+		const (
+			unvisited dfsState = iota
+			inStack
+			done
+		)
+		states := make(map[string]dfsState, len(wf.Steps))
+		adj := map[string][]string{}
+		for _, step := range wf.Steps {
+			for _, dep := range step.DependsOn {
+				adj[dep] = append(adj[dep], step.Name)
+			}
+		}
+
+		var dfs func(name string, path []string)
+		dfs = func(name string, path []string) {
+			if states[name] == inStack {
+				for i, p := range path {
+					if p == name {
+						chain := append(append([]string{}, path[i:]...), name)
+						v.errAt(wf.Pos,
+							fmt.Sprintf("circular dependency in workflow %q: %s", wf.Name, strings.Join(chain, " → ")), "")
+						return
+					}
+				}
+			}
+			if states[name] != unvisited {
+				return
+			}
+			states[name] = inStack
+			for _, next := range adj[name] {
+				dfs(next, append(path, name))
+			}
+			states[name] = done
+		}
+
+		for _, step := range wf.Steps {
+			if states[step.Name] == unvisited {
+				dfs(step.Name, nil)
+			}
 		}
 	}
 }

@@ -472,3 +472,50 @@ define "helper" {
 		t.Error("define should not have a plan")
 	}
 }
+
+// ─── Workflow planning ───────────────────────────────────────────────────────
+
+func goStep(t *testing.T, plan *QueryPlan, i int) *GoComputation {
+	t.Helper()
+	if i >= len(plan.Steps) {
+		t.Fatalf("step[%d]: out of range (len=%d)", i, len(plan.Steps))
+	}
+	gc, ok := plan.Steps[i].(*GoComputation)
+	if !ok {
+		t.Fatalf("step[%d]: expected *GoComputation, got %T", i, plan.Steps[i])
+	}
+	return gc
+}
+
+func TestPlanWorkflowTopoSort(t *testing.T) {
+	plan := planBlock(t, `
+workflow "Deploy" {
+  step "notify" depends_on "deploy" {
+    mcp "slack" "post" { channel "ops" }
+  }
+  step "deploy" depends_on "build" {
+    mcp "ci" "deploy" { env "prod" }
+  }
+  step "build" {
+    mcp "ci" "build" { branch "main" }
+  }
+}`, "Deploy")
+
+	if len(plan.Steps) != 3 {
+		t.Fatalf("expected 3 steps, got %d", len(plan.Steps))
+	}
+
+	// Topological order: build → deploy → notify
+	s0 := goStep(t, plan, 0)
+	s1 := goStep(t, plan, 1)
+	s2 := goStep(t, plan, 2)
+	if s0.Params["step"] != "build" {
+		t.Errorf("step[0]: expected build, got %v", s0.Params["step"])
+	}
+	if s1.Params["step"] != "deploy" {
+		t.Errorf("step[1]: expected deploy, got %v", s1.Params["step"])
+	}
+	if s2.Params["step"] != "notify" {
+		t.Errorf("step[2]: expected notify, got %v", s2.Params["step"])
+	}
+}

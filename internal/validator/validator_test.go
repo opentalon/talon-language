@@ -260,3 +260,54 @@ detect "Check" {
 		t.Error("expected type warning for string comparison with >")
 	}
 }
+
+// ─── Workflow validation ────────────────────────────────────────────────────────
+
+func TestValidateWorkflowClean(t *testing.T) {
+	mustClean(t, `
+workflow "Onboard" {
+  step "create" {
+    mcp "hr" "create-person" {
+      name "Alice"
+    }
+  }
+  step "assign" depends_on "create" {
+    mcp "inv" "assign-item" {
+      person_id step("create").result.id
+    }
+  }
+}`)
+}
+
+func TestValidateWorkflowDuplicateStep(t *testing.T) {
+	mustError(t, `
+workflow "Dup" {
+  step "a" {
+    mcp "s" "t" { x 1 }
+  }
+  step "a" {
+    mcp "s" "t" { y 2 }
+  }
+}`, "duplicate step name")
+}
+
+func TestValidateWorkflowUndefinedDep(t *testing.T) {
+	mustError(t, `
+workflow "Bad dep" {
+  step "a" depends_on "missing" {
+    mcp "s" "t" { x 1 }
+  }
+}`, "undefined step")
+}
+
+func TestValidateWorkflowCycle(t *testing.T) {
+	mustError(t, `
+workflow "Cycle" {
+  step "a" depends_on "b" {
+    mcp "s" "t" { x 1 }
+  }
+  step "b" depends_on "a" {
+    mcp "s" "t" { x 1 }
+  }
+}`, "circular dependency")
+}
