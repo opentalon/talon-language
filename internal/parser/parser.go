@@ -57,6 +57,10 @@ func (p *parser) parseBlock() ast.Block {
 	case lexer.TokenClassify:
 		return p.parseClassifyBlock()
 	case lexer.TokenFind:
+		// `find similar ...` vs `find related ...`
+		if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenRelated {
+			return p.parseRelatedBlock()
+		}
 		return p.parseSimilarBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
@@ -113,7 +117,11 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 	case lexer.TokenCluster:
 		b.Cluster = p.parseNestedClusterClause()
 	case lexer.TokenFind:
-		b.Similar = p.parseNestedSimilarClause()
+		if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenRelated {
+			b.Related = p.parseNestedRelatedClause()
+		} else {
+			b.Similar = p.parseNestedSimilarClause()
+		}
 	case lexer.TokenRecommend:
 		rec := p.parseRecommend()
 		b.Recommend = rec
@@ -638,6 +646,123 @@ func (p *parser) parseSimilarBlock() *ast.SimilarBlock {
 	}
 	p.expect(lexer.TokenRBrace)
 	return b
+}
+
+func (p *parser) parseRelatedBlock() *ast.RelatedBlock {
+	tok := p.advance() // find
+	if p.at(lexer.TokenRelated) {
+		p.advance()
+	} else {
+		p.errorf("expected 'related' after 'find', got %q", p.peek().Value)
+	}
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.RelatedBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	if p.at(lexer.TokenFor) {
+		b.Selector = p.parseSelector()
+	}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !p.parseRelatedBody(b) {
+			p.synchronizeInBlock()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseRelatedBody consumes one clause inside a find-related block.
+// Returns false on unrecognised tokens so the outer loop can recover.
+func (p *parser) parseRelatedBody(b *ast.RelatedBlock) bool {
+	switch p.peek().Type {
+	case lexer.TokenIdent:
+		switch p.peek().Value {
+		case "to":
+			p.advance()
+			b.To = p.parseExpr()
+		case "seeds":
+			p.advance()
+			b.Seeds = p.parseSeedList()
+		case "top_k":
+			p.advance()
+			n, _ := strconv.Atoi(p.expectNumberStr())
+			b.TopK = &n
+		case "damping":
+			p.advance()
+			n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+			b.Damping = &n
+		case "tolerance":
+			p.advance()
+			n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+			b.Tol = &n
+		case "max_iterations":
+			p.advance()
+			n, _ := strconv.Atoi(p.expectNumberStr())
+			b.MaxIter = &n
+		default:
+			p.errorf("unexpected %q inside find related block", p.peek().Value)
+			return false
+		}
+	case lexer.TokenLabel:
+		b.Label = p.parseLabelClause()
+	case lexer.TokenPriority:
+		pr := p.parsePriority()
+		b.Priority = &pr
+	default:
+		p.errorf("unexpected token %q inside find related block", p.peek().Value)
+		return false
+	}
+	return true
+}
+
+func (p *parser) parseSeedList() []ast.Expr {
+	p.expect(lexer.TokenLBracket)
+	var seeds []ast.Expr
+	for !p.at(lexer.TokenRBracket) && !p.at(lexer.TokenEOF) {
+		seeds = append(seeds, p.parseExpr())
+		if p.at(lexer.TokenComma) {
+			p.advance()
+		}
+	}
+	p.expect(lexer.TokenRBracket)
+	return seeds
+}
+
+func (p *parser) parseNestedRelatedClause() *ast.RelatedClause {
+	p.advance() // find
+	if p.at(lexer.TokenRelated) {
+		p.advance()
+	}
+	clause := &ast.RelatedClause{}
+	for {
+		// Consume optional clauses by ident keyword
+		if p.at(lexer.TokenIdent) {
+			switch p.peek().Value {
+			case "to":
+				p.advance()
+				clause.To = p.parseExpr()
+				continue
+			case "seeds":
+				p.advance()
+				clause.Seeds = p.parseSeedList()
+				continue
+			case "top_k":
+				p.advance()
+				n, _ := strconv.Atoi(p.expectNumberStr())
+				clause.TopK = &n
+				continue
+			case "damping":
+				p.advance()
+				n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+				clause.Damping = &n
+				continue
+			}
+		}
+		break
+	}
+	return clause
 }
 
 // ─── Clauses ──────────────────────────────────────────────────────────────────
@@ -1418,6 +1543,10 @@ func (p *parser) parseTestBlock() *ast.TestBlock {
 		case lexer.TokenWhen:
 			p.advance()                    // when
 			b.WhenKind = p.advance().Value // detect, rule, forecast, etc.
+			// Two-word forms like `find similar` / `find related`.
+			if b.WhenKind == "find" && (p.at(lexer.TokenSimilar) || p.at(lexer.TokenRelated)) {
+				b.WhenKind += " " + p.advance().Value
+			}
 			b.WhenBlock = p.expectString()
 		case lexer.TokenExpect:
 			p.advance() // expect

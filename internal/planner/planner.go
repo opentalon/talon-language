@@ -17,6 +17,7 @@ const (
 	FuncClusterDBSCAN        = "cluster_dbscan"
 	FuncSimilarityCosine     = "similarity_cosine"
 	FuncClassifyKNN          = "classify_knn"
+	FuncPPRTopK              = "ppr_topk"
 	FuncRenderTemplate       = "render_template"
 	FuncOptimizePareto       = "optimize_pareto"
 	FuncOptimizeGA           = "optimize_ga"
@@ -70,10 +71,22 @@ type Filter struct {
 	Into      string
 }
 
+// GraphSnapshot is a plan step that asks the executor to build (or load
+// from cache) a *factstore.GraphSnapshot and bind it to a variable for
+// downstream PPR computation. The Options field carries the same fields
+// as factstore.SnapshotOptions, but is left as map[string]any to keep
+// the planner free of factstore imports — the executor unpacks it.
+type GraphSnapshot struct {
+	CacheKey string
+	Options  map[string]any
+	Into     string
+}
+
 func (*DatalevinQuery) stepType() string { return "DatalevinQuery" }
 func (*GoComputation) stepType() string  { return "GoComputation" }
 func (*MLComputation) stepType() string  { return "MLComputation" }
 func (*Filter) stepType() string         { return "Filter" }
+func (*GraphSnapshot) stepType() string  { return "GraphSnapshot" }
 
 // IsMLFunction reports whether fn names one of the 7 ML primitives.
 func IsMLFunction(fn string) bool {
@@ -84,7 +97,8 @@ func IsMLFunction(fn string) bool {
 		FuncForecastExpSmoothing,
 		FuncClusterDBSCAN,
 		FuncSimilarityCosine,
-		FuncClassifyKNN:
+		FuncClassifyKNN,
+		FuncPPRTopK:
 		return true
 	}
 	return false
@@ -145,6 +159,8 @@ func (p *planner) planAll() (map[string]*QueryPlan, diagnostic.List) {
 			plans[bb.Name] = p.planClassifyBlock(bb)
 		case *ast.SimilarBlock:
 			plans[bb.Name] = p.planSimilarBlock(bb)
+		case *ast.RelatedBlock:
+			plans[bb.Name] = p.planRelatedBlock(bb)
 		case *ast.CombineBlock:
 			plans[bb.Name] = p.planCombine(bb)
 		case *ast.WorkflowBlock:
@@ -238,6 +254,28 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 			Into:     "forecast_results",
 		})
 		last = "forecast_results"
+	}
+
+	if b.Related != nil {
+		plan.Steps = append(plan.Steps, &GraphSnapshot{
+			CacheKey: b.Name,
+			Options:  map[string]any{},
+			Into:     "graph",
+		})
+		plan.Steps = append(plan.Steps, &MLComputation{
+			Function: FuncPPRTopK,
+			Input:    last,
+			Params: map[string]any{
+				"graph_var":      "graph",
+				"seed_expr":      b.Related.To,
+				"seeds_expr":     b.Related.Seeds,
+				"top_k":          ptrOrNil(b.Related.TopK),
+				"damping":        ptrOrNil(b.Related.Damping),
+				"flag_predicate": "topk",
+			},
+			Into: "related_records",
+		})
+		last = "related_records"
 	}
 
 	if b.Label != nil {
@@ -413,6 +451,55 @@ func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
 		Into:     "similar_records",
 	})
 	return plan
+}
+
+func (p *planner) planRelatedBlock(b *ast.RelatedBlock) *QueryPlan {
+	plan := &QueryPlan{BlockName: b.Name}
+	qb := p.newQueryBuilder()
+	qb.addSelector(b.Selector)
+	plan.Steps = append(plan.Steps, &DatalevinQuery{
+		Query:    qb.build(),
+		BindVars: qb.bindVars(),
+		Into:     "candidates",
+	})
+	plan.Steps = append(plan.Steps, &GraphSnapshot{
+		CacheKey: b.Name,
+		Options:  map[string]any{},
+		Into:     "graph",
+	})
+	plan.Steps = append(plan.Steps, &MLComputation{
+		Function: FuncPPRTopK,
+		Input:    "candidates",
+		Params: map[string]any{
+			"graph_var":      "graph",
+			"seed_expr":      b.To,
+			"seeds_expr":     b.Seeds,
+			"top_k":          ptrOrNil(b.TopK),
+			"damping":        ptrOrNil(b.Damping),
+			"tolerance":      ptrOrNil(b.Tol),
+			"max_iterations": ptrOrNil(b.MaxIter),
+			"flag_predicate": "topk",
+		},
+		Into: "related_records",
+	})
+	if b.Label != nil {
+		plan.Steps = append(plan.Steps, &GoComputation{
+			Function: FuncRenderTemplate,
+			Input:    "related_records",
+			Params:   map[string]any{"template": b.Label.Raw},
+			Into:     "results",
+		})
+	}
+	return plan
+}
+
+// ptrOrNil returns the pointed-to value as any, or nil if the pointer is
+// nil. Used to pack optional planner params without nil-typed map entries.
+func ptrOrNil[T any](p *T) any {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 func (p *planner) planCombine(b *ast.CombineBlock) *QueryPlan {

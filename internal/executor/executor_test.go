@@ -291,3 +291,4 @@ func TestWorkflowMCPError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+

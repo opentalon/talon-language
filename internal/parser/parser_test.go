@@ -680,3 +680,88 @@ detect "Low stock" {
 		t.Errorf("Recommend.Name: got %q", b.Recommend.Name)
 	}
 }
+
+// ─── find related (PPR) ───────────────────────────────────────────────────────
+
+func TestParseFindRelatedBlockSeeds(t *testing.T) {
+	prog := mustParse(t, `
+find related "Co-consumed parts" {
+  for records where type == "stock_item"
+  seeds [808, 809]
+  top_k 5
+  damping 0.85
+  label "{item.name}: ppr {score}"
+  priority MEDIUM
+}`)
+	b := block[*ast.RelatedBlock](t, prog, 0)
+	if b.Name != "Co-consumed parts" {
+		t.Errorf("Name: got %q", b.Name)
+	}
+	if len(b.Seeds) != 2 {
+		t.Errorf("Seeds: got %d, want 2", len(b.Seeds))
+	}
+	if b.TopK == nil || *b.TopK != 5 {
+		t.Errorf("TopK: got %v", b.TopK)
+	}
+	if b.Damping == nil || *b.Damping != 0.85 {
+		t.Errorf("Damping: got %v", b.Damping)
+	}
+	if b.Priority == nil || *b.Priority != ast.PriorityMedium {
+		t.Errorf("Priority: got %v", b.Priority)
+	}
+}
+
+func TestParseFindRelatedBlockSingleTo(t *testing.T) {
+	prog := mustParse(t, `
+find related "Single seed" {
+  for records where type == "item"
+  to attr "id"
+  top_k 3
+  tolerance 0.0001
+  max_iterations 50
+}`)
+	b := block[*ast.RelatedBlock](t, prog, 0)
+	if b.To == nil {
+		t.Fatal("To: nil")
+	}
+	if b.Tol == nil || *b.Tol != 0.0001 {
+		t.Errorf("Tol: got %v", b.Tol)
+	}
+	if b.MaxIter == nil || *b.MaxIter != 50 {
+		t.Errorf("MaxIter: got %v", b.MaxIter)
+	}
+}
+
+func TestParseFindRelatedClauseInDetect(t *testing.T) {
+	prog := mustParse(t, `
+detect "Investigate related parts" {
+  for records where type == "stock_item"
+  flag matching items
+  find related to attr "id" top_k 5 damping 0.85
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if b.Related == nil {
+		t.Fatal("Related clause: nil")
+	}
+	if b.Related.To == nil {
+		t.Fatal("Related.To: nil")
+	}
+	if b.Related.TopK == nil || *b.Related.TopK != 5 {
+		t.Errorf("TopK: got %v", b.Related.TopK)
+	}
+}
+
+func TestParseFindSimilarStillWorks(t *testing.T) {
+	// Make sure adding `find related` did not break the existing
+	// `find similar` parser dispatch.
+	prog := mustParse(t, `
+find similar "Sim" {
+  for records where type == "item"
+  to attr "id"
+  within 0.2
+}`)
+	b := block[*ast.SimilarBlock](t, prog, 0)
+	if b.To == nil || b.Within == nil || *b.Within != 0.2 {
+		t.Errorf("similar block parse regressed: %+v", b)
+	}
+}

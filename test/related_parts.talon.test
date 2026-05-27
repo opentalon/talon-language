@@ -1,0 +1,44 @@
+// PPR (find related) test fixture.
+//
+// Graph layout — two cliques joined through a bridge node:
+//
+//   Clique A: 801, 802, 803    (share category "Filters")
+//   Bridge:   900               (sits in both categories)
+//   Clique B: 811, 812, 813    (share category "Tires")
+//
+// Seed = 801 (in clique A). With damping 0.85 we expect:
+//   - top result is from clique A (802 or 803) or the bridge 900
+//   - no clique-B node (811/812/813) appears in the top 3
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/related_parts.talon test/related_parts.talon.test
+
+test "PPR ranks clique-A neighbours above clique-B" {
+  given {
+    record 801 type "stock_item" status "active" category "Filters"
+    attr 801 "name" "Oil Filter A1"
+    record 802 type "stock_item" status "active" category "Filters"
+    attr 802 "name" "Oil Filter A2"
+    record 803 type "stock_item" status "active" category "Filters"
+    attr 803 "name" "Oil Filter A3"
+
+    record 900 type "stock_item" status "active" category "Filters"
+    attr 900 "name" "Universal kit"
+
+    record 811 type "stock_item" status "active" category "Tires"
+    attr 811 "name" "Tire B1"
+    record 812 type "stock_item" status "active" category "Tires"
+    attr 812 "name" "Tire B2"
+    record 813 type "stock_item" status "active" category "Tires"
+    attr 813 "name" "Tire B3"
+  }
+
+  when find related "Co-consumed stock items"
+
+  expect {
+    not flagged 811
+    not flagged 812
+    not flagged 813
+  }
+}

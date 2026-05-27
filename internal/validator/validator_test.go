@@ -311,3 +311,42 @@ workflow "Cycle" {
   }
 }`, "circular dependency")
 }
+
+// ─── find related (PPR) validation ────────────────────────────────────────────
+
+func TestValidateRelatedBlockRequiresSeeds(t *testing.T) {
+	mustError(t, `
+find related "Bad" {
+  for records where type == "item"
+}`, "requires a 'to' or 'seeds [...]'")
+}
+
+func TestValidateRelatedBlockBadDamping(t *testing.T) {
+	mustError(t, `
+find related "Bad damping" {
+  for records where type == "item"
+  to attr "id"
+  damping 1.0
+}`, "damping must be in")
+}
+
+func TestValidateRelatedBlockBadTopK(t *testing.T) {
+	mustError(t, `
+find related "Bad topk" {
+  for records where type == "item"
+  to attr "id"
+  top_k 0
+}`, "top_k must be > 0")
+}
+
+func TestValidateRelatedBlockClean(t *testing.T) {
+	mustClean(t, `
+find related "Good" {
+  for records where type == "item"
+  seeds [10, 20, 30]
+  top_k 5
+  damping 0.85
+  tolerance 0.0001
+  max_iterations 50
+}`)
+}

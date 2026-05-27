@@ -146,6 +146,7 @@ labels.
 | `classify` | k-NN over TF-IDF / hashed n-gram vectors | "matched 'engine fault' (sim=0.83) — 4 of 5 neighbours are class X" | **L** | ~700 |
 | `cluster by` | DBSCAN over numeric attrs (cosine or euclidean) | "cluster #3 centroid=[...], 12 members, eps=0.4" | **M** | ~500 |
 | `find similar` | Cosine similarity over the same feature vectors as `classify` | "sim=0.91 on [feature_a, feature_b]" | **M** | ~300 |
+| `find related` | Personalized PageRank over an entity-attribute graph projected from the FactStore | "ppr=0.18, 23 iters to converge, graph 7 nodes / 12 edges" | **M** | ~400 (see ADR-0002) |
 
 Total: ~3000-3500 LOC + tests, roughly one focused engineer-month.
 

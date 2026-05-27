@@ -18,6 +18,7 @@ Block     = DetectBlock
           | ClusterBlock
           | ClassifyBlock
           | SimilarBlock
+          | RelatedBlock
 
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)
 
@@ -35,6 +36,7 @@ DetectBody  = Selector
               [ ForecastClause ]
               [ ClusterClause ]
               [ SimilarClause ]
+              [ RelatedClause ]
               [ RecommendBlock ]
 
 (* ─── rule ───────────────────────────────────────────────────────────────────── *)
@@ -137,6 +139,21 @@ SimilarBody   = Selector
                 [ LabelClause ]
                 [ PriorityClause ]
 
+(* PPR-over-facts: associative-memory retrieval. See
+   docs/design/0002-ppr-fact-graph.md. *)
+RelatedBlock  = "find" "related" STRING "{" RelatedBody "}"
+
+RelatedBody   = Selector
+                ( "to" Expr | "seeds" "[" ExprList "]" )
+                [ "top_k" NUMBER ]
+                [ "damping" NUMBER ]
+                [ "tolerance" NUMBER ]
+                [ "max_iterations" NUMBER ]
+                [ LabelClause ]
+                [ PriorityClause ]
+
+ExprList      = Expr { "," Expr }
+
 (* ─── Nested ML clauses (inside detect) ─────────────────────────────────────── *)
 
 AnomalyClause   = "is" "anomaly" "compared_to" "last" NUMBER DurationUnit
@@ -148,6 +165,11 @@ ForecastClause  = "forecast" SeriesClause [ "predict" ForecastPredictExpr ]
 ClusterClause   = "cluster" "by" AttrList
 
 SimilarClause   = "find" "similar" "to" Expr [ "within" NUMBER ]
+
+RelatedClause   = "find" "related"
+                  ( "to" Expr | "seeds" "[" ExprList "]" )
+                  [ "top_k" NUMBER ]
+                  [ "damping" NUMBER ]
 
 (* ─── Shared clauses ─────────────────────────────────────────────────────────── *)
 
