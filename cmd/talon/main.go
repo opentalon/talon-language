@@ -13,6 +13,7 @@ import (
 	"github.com/opentalon/talon-language/internal/datalevin"
 	"github.com/opentalon/talon-language/internal/diagnostic"
 	"github.com/opentalon/talon-language/internal/executor"
+	"github.com/opentalon/talon-language/internal/explain"
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/planner"
@@ -23,7 +24,7 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: talon <command> [args]")
-		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, mod")
+		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, explain, mod")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -39,6 +40,8 @@ func main() {
 		os.Exit(diagnostic.ExitError)
 	case "trace":
 		runTrace()
+	case "explain":
+		runExplain()
 	case "mod":
 		fmt.Fprintln(os.Stderr, "talon mod: not yet implemented")
 		os.Exit(diagnostic.ExitError)
@@ -587,5 +590,106 @@ func printStep(num int, step planner.PlanStep) {
 		}
 	case *planner.Filter:
 		fmt.Printf("    step %d  Filter         %s → %s\n", num, s.Input, s.Into)
+	}
+}
+
+// runExplain renders Tier-1 explanations for every decision produced by
+// the given rules + tests files. See docs/design/0003-explainability.md.
+func runExplain() {
+	if len(os.Args) < 4 {
+		fmt.Fprintln(os.Stderr, "usage: talon explain <rules.talon> <tests.talon.test> [--test NAME] [--json]")
+		os.Exit(diagnostic.ExitUsage)
+	}
+
+	rulesPath := os.Args[2]
+	testPath := os.Args[3]
+	wantTest := ""
+	asJSON := false
+	for i := 4; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--test":
+			if i+1 < len(os.Args) {
+				wantTest = os.Args[i+1]
+				i++
+			}
+		case "--json":
+			asJSON = true
+		}
+	}
+
+	rulesSrc, err := os.ReadFile(rulesPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon explain: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+	rulesFile := filepath.Base(rulesPath)
+	plans, ok := compile(rulesFile, string(rulesSrc))
+	if !ok {
+		os.Exit(diagnostic.ExitError)
+	}
+
+	// Re-parse the rules to recover the AST for cross-block decision linking.
+	rulesTokens, _ := lexer.Lex(rulesFile, string(rulesSrc))
+	rulesProg, _ := parser.Parse(rulesFile, rulesTokens)
+
+	testSrc, err := os.ReadFile(testPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon explain: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+	testFile := filepath.Base(testPath)
+	testTokens, tld := lexer.Lex(testFile, string(testSrc))
+	if tld.HasErrors() {
+		for _, d := range tld {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+	testProg, tpd := parser.Parse(testFile, testTokens)
+	if tpd.HasErrors() {
+		for _, d := range tpd {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+
+	// Merge: Decisions needs both the rule blocks and the test blocks.
+	merged := *rulesProg
+	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
+
+	decisions := testrunner.Decisions(&merged, plans)
+
+	// Stable ordering by test name.
+	names := make([]string, 0, len(decisions))
+	for n := range decisions {
+		if wantTest != "" && n != wantTest {
+			continue
+		}
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		fmt.Fprintln(os.Stderr, "talon explain: no decisions produced")
+		os.Exit(diagnostic.ExitError)
+	}
+
+	if asJSON {
+		out := map[string][]explain.Decision{}
+		for _, n := range names {
+			out[n] = decisions[n]
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(out)
+		return
+	}
+
+	for _, n := range names {
+		ds := decisions[n]
+		if len(ds) == 0 {
+			continue
+		}
+		fmt.Printf("== %s ==\n", n)
+		fmt.Println(explain.RenderAll(ds))
 	}
 }
