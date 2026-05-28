@@ -6,9 +6,13 @@ The `talon` CLI is the canonical embedding of the compile + execute pipeline. Th
 
 ## Scope
 
-Today: **workflow-only programs** — those whose blocks consist of MCP step chains and pure Go computations (`workflow "..." { step "..." { mcp "..." "..." { ... } } }`).
+Two entry points cover different parts of the language:
 
-Programs that contain Datalevin-backed queries or ML primitives need a live Datalevin client and are not yet supported by this SDK. A separate entry point for the full language surface will follow.
+- **`RunWorkflow(ctx, src, opts...)`** — workflow-only programs (`workflow "..." { step "..." { mcp "..." "..." { ... } } }`). No fact-store dependency. Returns `ErrRequiresFactStore` if the program contains `detect` / query blocks.
+- **`Run(ctx, src, opts...)`** — the full language: `detect`, queries, ML primitives, and workflows. Requires a `FactStore` wired via `WithFactStore(...)` or, for the default Datalevin backend, `WithDatalevinURL(...)`.
+- **`Seed(ctx, store, src)`** — populate a `FactStore` from a `.talon.test` source. Typically called once at startup; `Run` is called many times against the same seeded store.
+
+The `FactStore` interface is **backend-neutral**. The shipped implementation is Datalevin (`internal/datalevin.Client` satisfies it), but a future SQL- or vector-store-backed implementation can plug in without touching call sites.
 
 ## Usage
 
@@ -43,25 +47,42 @@ func run(ctx context.Context, src string) error {
 }
 ```
 
+### Full-language example with a fact store
+
+```go
+result, err := talon.Run(ctx, src,
+    talon.WithDatalevinURL("http://localhost:8898"),
+    talon.WithMCP(&myCaller{}),
+)
+```
+
+Or with a custom backend / test fake:
+
+```go
+result, err := talon.Run(ctx, src, talon.WithFactStore(myStore))
+```
+
 ### Options
 
 | Option | Purpose |
 |---|---|
-| `WithMCP(MCPCaller)` | Required for workflows containing MCP steps. Without it, MCP steps return `{"status":"stub"}` and the host is never contacted. |
+| `WithMCP(MCPCaller)` | Required for programs containing MCP steps. Without it, MCP steps return `{"status":"stub"}` and the host is never contacted. |
 | `WithConfirmHook(ConfirmationHook)` | Per-step gate. Return `false` to skip the step; the step result is recorded as `{"status":"skipped","reason":"confirmation_denied"}`. |
-| `WithFilename(name)` | Labels diagnostics with this filename. Defaults to `"<workflow>"`. |
+| `WithFilename(name)` | Labels diagnostics with this filename. Defaults to `"<workflow>"` for `RunWorkflow`, `"<talon>"` for `Run`, `"<seed>"` for `Seed`. |
+| `WithFactStore(s FactStore)` | (`Run`/`Seed`) Installs a FactStore — required for programs with `detect` / query blocks. |
+| `WithDatalevinURL(url)` | (`Run`/`Seed`) Sugar over `WithFactStore` — constructs the default Datalevin HTTP client and Health-checks it on first store access. |
 
 ### Errors
 
 - Failures during the lex / parse / validate / plan stages return a `*CompileError`. The `Stage` field identifies which stage failed; `Diags` carries the full diagnostic list.
-- Failures during execution (e.g. an MCPCaller returning an error) return a plain `error` from the underlying executor.
+- `ErrRequiresFactStore` (sentinel) — `RunWorkflow` rejected a program containing `detect`/query blocks, or `Run` was called without a FactStore on a program that needs one. Switch entry points / wire up `WithFactStore`.
+- Runtime failures from `MCPCaller.Call`, `FactStore.Query`, etc. surface as plain errors from the underlying executor.
 
 ## Out of scope
 
-- Datalevin-backed execution
-- ML primitives (`detect`, `forecast`, `cluster`, etc.)
-- Test-runner / REPL / trace / explain helpers — those live in the `talon` CLI
+- ML primitive registry customisation — internal default is used.
+- Test-runner / REPL / trace / explain helpers — those live in the `talon` CLI.
 
 ## Stability
 
-This package is the first published SDK surface. Symbols may evolve as more language features become reachable from outside; any breaking change will get a major-version bump.
+Two entry points are now published. `RunWorkflow` semantics are locked from v0.1.0; `Run` / `Seed` / `FactStore` / `WithFactStore` / `WithDatalevinURL` / `ErrRequiresFactStore` are new in v0.2.0. Any breaking change gets a major-version bump.
