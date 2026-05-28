@@ -44,11 +44,17 @@ const (
 	SeverityInfo    = diagnostic.Info
 )
 
-// Result is the aggregate outcome of [RunWorkflow]. Each entry in Blocks
-// corresponds to one workflow block in the source (keyed by block name —
-// e.g. `workflow "Foo" { ... }` produces key "Foo").
+// Result is the aggregate outcome of [RunWorkflow] or [Run]. Each
+// entry in Blocks corresponds to one workflow / detect block in the
+// source (keyed by block name — e.g. `workflow "Foo" { ... }` produces
+// key "Foo").
 type Result struct {
 	Blocks map[string]*BlockResult
+
+	// ResolvedNames maps entity id → display name, populated only by
+	// [Run] when a FactStore is wired up (the fact store holds the
+	// `:attr/name` bindings). Empty for [RunWorkflow] results.
+	ResolvedNames map[int]string
 }
 
 // CompileError reports failures from the lex / parse / validate / plan
@@ -75,13 +81,17 @@ func (e *CompileError) Error() string {
 	return b.String()
 }
 
-// Option configures a [RunWorkflow] invocation.
+// Option configures a [RunWorkflow] or [Run] invocation. The same
+// Option type is shared between both entry points; inapplicable
+// options (e.g. WithMCP on a Run with no MCP steps) are silently
+// no-ops, matching the executor's tolerance today.
 type Option func(*runConfig)
 
 type runConfig struct {
-	file    string
-	mcp     MCPCaller
-	confirm ConfirmationHook
+	file      string
+	mcp       MCPCaller
+	confirm   ConfirmationHook
+	factStore FactStore
 }
 
 // WithMCP installs the MCP caller. Required for workflows that contain
@@ -145,6 +155,15 @@ func RunWorkflow(ctx context.Context, src string, opts ...Option) (*Result, erro
 		return nil, &CompileError{Stage: "plan", Diags: planDiags}
 	}
 
+	// Detect-style programs (anything that needs the fact store) must
+	// go through Run, not RunWorkflow — calling on through here would
+	// panic in the executor at the first Query call on a nil Client.
+	// Surface a typed error so callers can distinguish "wrong entry
+	// point" from a real compile / runtime failure.
+	if needsFactStore(plans) {
+		return nil, ErrRequiresFactStore
+	}
+
 	exec := &executor.Executor{
 		MCP:         cfg.mcp,
 		ConfirmHook: cfg.confirm,
@@ -155,4 +174,19 @@ func RunWorkflow(ctx context.Context, src string, opts ...Option) (*Result, erro
 	}
 
 	return &Result{Blocks: blocks}, nil
+}
+
+// needsFactStore reports whether any compiled plan contains a step
+// that the executor will dispatch against the FactStore (today: any
+// DatalevinQuery step). Used by RunWorkflow to reject programs that
+// require a fact store rather than silently no-op'ing the steps.
+func needsFactStore(plans map[string]*planner.QueryPlan) bool {
+	for _, plan := range plans {
+		for _, step := range plan.Steps {
+			if _, ok := step.(*planner.DatalevinQuery); ok {
+				return true
+			}
+		}
+	}
+	return false
 }
