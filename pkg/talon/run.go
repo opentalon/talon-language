@@ -46,22 +46,27 @@ func WithFactStore(s FactStore) Option {
 // [WithFactStore] directly instead.
 func WithDatalevinURL(url string) Option {
 	return func(cfg *runConfig) {
-		cfg.factStore = NewDatalevinFactStore(url)
+		cfg.factStore = NewFactStore(url)
 	}
 }
 
-// NewDatalevinFactStore returns a FactStore backed by the default
-// Datalevin HTTP transport against the given URL. The store runs a
-// Health() check on the first store access, so misconfigured deploys
-// surface a clean error at Run / Seed time rather than panicking
-// deep inside the executor.
+// NewFactStore returns a FactStore backed by the default shipped
+// implementation (today: Datalevin over HTTP) connected to the given
+// URL. The store runs a Health() check lazily on the first store
+// access, so misconfigured deploys surface a clean error at
+// Run / Seed time rather than panicking deep inside the executor —
+// and construction never blocks on the backend being up.
 //
-// Callers that only need to thread a backend through a single Run
-// can use [WithDatalevinURL] directly. NewDatalevinFactStore is for
-// long-lived backends — typically a plugin or service that holds the
-// store across many Run / Seed calls and wants to keep one
-// connection-checked client around.
-func NewDatalevinFactStore(url string) FactStore {
+// The function name is intentionally backend-neutral: when a SQL or
+// vector-store-backed implementation lands, this constructor stays
+// the same and dispatches on URL scheme (e.g. `datalevin://...`,
+// `postgres://...`). Callers using a custom or fake FactStore should
+// pass it to [WithFactStore] directly instead.
+//
+// NewFactStore is for long-lived backends — typically a plugin or
+// service that holds the store across many Run / Seed calls. For
+// one-shot use within a single Run, prefer [WithDatalevinURL].
+func NewFactStore(url string) FactStore {
 	return &healthCheckedClient{client: datalevin.NewClient(url), url: url}
 }
 

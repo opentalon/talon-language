@@ -184,15 +184,15 @@ func TestRun_WithDatalevinURL_FailsFastOnUnreachable(t *testing.T) {
 	}
 }
 
-func TestNewDatalevinFactStore_FailsAtFirstUse(t *testing.T) {
+func TestNewFactStore_FailsAtFirstUse(t *testing.T) {
 	// Construction returns a usable handle even with an unreachable
 	// URL — the health check fires lazily on first Query/Transact/
 	// Schema. That contract lets callers (e.g. talon-plugin) build
 	// the store at startup without blocking on the backend being
 	// up; the error surfaces the moment any operation needs it.
-	fs := talon.NewDatalevinFactStore("http://127.0.0.1:1")
+	fs := talon.NewFactStore("http://127.0.0.1:1")
 	if fs == nil {
-		t.Fatal("NewDatalevinFactStore returned nil")
+		t.Fatal("NewFactStore returned nil")
 	}
 	_, err := fs.Query(context.Background(), "[:find ?e :where [?e :x ?]]")
 	if err == nil {
@@ -210,6 +210,6 @@ var (
 	_ = talon.Seed
 	_ = talon.WithFactStore
 	_ = talon.WithDatalevinURL
-	_ = talon.NewDatalevinFactStore
+	_ = talon.NewFactStore
 	_ = talon.ErrRequiresFactStore
 )
