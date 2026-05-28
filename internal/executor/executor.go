@@ -6,10 +6,33 @@ import (
 	"strings"
 
 	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/datalevin"
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
+
+// FactStore is what the executor needs from a backing knowledge
+// store: read facts via Query, write facts via Transact, declare a
+// schema via Schema. Today the only shipped backend is Datalevin
+// (internal/datalevin/client.go), and the concrete *datalevin.Client
+// satisfies this interface unchanged. The interface name is
+// intentionally backend-neutral so a future SQL- or vector-store-
+// backed implementation can plug in without touching every call site.
+//
+// Method shapes do still reflect Datalog conventions (Query takes a
+// query string, Transact takes a list of fact maps). When a non-
+// Datalog backend lands, that backend's FactStore impl is responsible
+// for translating the planner's Datalog into its native dialect; the
+// interface itself is the point we'd refactor against.
+//
+// Health is intentionally absent — only the CLI calls it (cmd/talon/
+// main.go), on the concrete client, before constructing the executor.
+// Keeping it out of the FactStore interface lets fakes implement just
+// what the executor exercises.
+type FactStore interface {
+	Query(ctx context.Context, query string) ([][]any, error)
+	Transact(ctx context.Context, txData []map[string]any) error
+	Schema(ctx context.Context, attrs map[string]map[string]string) error
+}
 
 // BlockResult is the outcome of executing one block's query plan.
 type BlockResult struct {
@@ -26,17 +49,17 @@ type StepResult struct {
 	Output any
 }
 
-// Executor runs compiled QueryPlans against a Datalevin server.
+// Executor runs compiled QueryPlans against a FactStore backend.
 type Executor struct {
-	Client      *datalevin.Client
+	Client      FactStore
 	Registry    *mlruntime.Registry
 	MCP         MCPCaller
 	ConfirmHook ConfirmationHook
 }
 
-// NewExecutor creates an executor backed by the given Datalevin client
-// and a registry pre-populated with the default ML primitives.
-func NewExecutor(client *datalevin.Client) *Executor {
+// NewExecutor creates an executor backed by the given FactStore and
+// a registry pre-populated with the default ML primitives.
+func NewExecutor(client FactStore) *Executor {
 	return &Executor{Client: client, Registry: mlruntime.NewRegistry()}
 }
 
