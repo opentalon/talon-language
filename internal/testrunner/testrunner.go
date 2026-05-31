@@ -134,10 +134,6 @@ type entity struct {
 	fields map[string]interface{} // ":record/type" → "item", ":attr/km" → 45000, etc.
 }
 
-func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) (TestResult, []TraceStep) {
-	return runOneTuned(tb, plans, reg, nil, nil)
-}
-
 // runOneTuned is the full-context runner: tunings carries any auto-tuned
 // parameters (block name → *tuningResult) the testrunner discovered for
 // detect blocks with `tune against test "..."` clauses. progBlocks is the

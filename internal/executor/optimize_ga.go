@@ -30,8 +30,7 @@ func (e *Executor) execOptimizeGA(_ context.Context, gc *planner.GoComputation, 
 	if selectSize <= 0 {
 		return nil, fmt.Errorf("optimize_ga: select_size must be > 0, got %d", selectSize)
 	}
-	seedAny, _ := gc.Params["seed"]
-	seed, _ := seedAny.(int64)
+	seed, _ := gc.Params["seed"].(int64)
 	attrIdx, _ := gc.Params["attr_indices"].(map[string]int)
 
 	if len(rows) == 0 {

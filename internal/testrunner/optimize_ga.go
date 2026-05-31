@@ -19,7 +19,6 @@ type gaNarrowing struct {
 	subsets         []gaSubset
 	objs            []optimize.Objective
 	entityToSubsets map[int][]int // entity_id → indices into subsets
-	violationByMask map[string]float64
 	result          map[string]any
 }
 
