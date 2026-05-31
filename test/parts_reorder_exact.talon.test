@@ -1,0 +1,55 @@
+// ILP exact-optimum test: pick 3 active stock_items maximizing total
+// downstream blast radius under a $5000 reorder budget.
+//
+// Inventory (cost, blast_radius):
+//   501  $1200   8   ratio 0.0067
+//   502  $800   12   ratio 0.015   ← best ratio
+//   503  $600    6   ratio 0.010
+//   504  $4800   1   ratio 0.0002  (eats budget for 1 job)
+//   506  $1500  10   ratio 0.0067
+//
+// Constraint: total cost ≤ $5000.
+// The exact optimum maximizing total blast radius over 3 items under
+// budget is {502, 506, 501}: cost 800+1500+1200=3500, blast 12+10+8=30.
+// Or {502, 506, 503}: 800+1500+600=2900, blast 12+10+6=28 — worse.
+// Or {502, 501, 503}: 800+1200+600=2600, blast 12+8+6=26 — worse.
+// Item 504 alone consumes most of the budget for 1 job; never optimal.
+
+test "Reorder picks the provably optimal subset" {
+  given {
+    record 501 type "stock_item" status "active"
+    attr 501 "name" "Brake Pads"
+    attr 501 "reorder_cost" 1200
+    attr 501 "downstream_blast_radius" 8
+
+    record 502 type "stock_item" status "active"
+    attr 502 "name" "Oil Filters"
+    attr 502 "reorder_cost" 800
+    attr 502 "downstream_blast_radius" 12
+
+    record 503 type "stock_item" status "active"
+    attr 503 "name" "Air Filters"
+    attr 503 "reorder_cost" 600
+    attr 503 "downstream_blast_radius" 6
+
+    record 504 type "stock_item" status "active"
+    attr 504 "name" "Spark Plugs"
+    attr 504 "reorder_cost" 4800
+    attr 504 "downstream_blast_radius" 1
+
+    record 506 type "stock_item" status "active"
+    attr 506 "name" "Fuel Filters"
+    attr 506 "reorder_cost" 1500
+    attr 506 "downstream_blast_radius" 10
+  }
+
+  when combine "Reorder exact"
+
+  expect {
+    flagged 501
+    flagged 502
+    flagged 506
+    not flagged 503
+    not flagged 504
+  }
+}

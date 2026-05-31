@@ -62,7 +62,7 @@ RecommendBody  = WhenClause
 CombineBlock = "combine" STRING "{" CombineBody "}"
 
 CombineBody  = Selector
-               OptimizeClause
+               OptimizeClause { OptimizeClause }
                ReturnClause
                [ LabelClause ]
                [ PriorityClause ]

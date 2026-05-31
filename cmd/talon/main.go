@@ -306,6 +306,12 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 		return nil, false
 	}
 
+	// Re-parse rules so the testrunner can see ML-tuning clauses (`tune
+	// against test`) on detect blocks alongside the test fixtures. Without
+	// the merge, computeTunings sees only TestBlocks and skips ABC.
+	rulesTokens, _ := lexer.Lex(rulesFile, string(rulesSrc))
+	rulesProg, _ := parser.Parse(rulesFile, rulesTokens)
+
 	testSrc, err := os.ReadFile(testPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "talon test: %v\n", err)
@@ -333,7 +339,9 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 		return nil, false
 	}
 
-	results := testrunner.Run(testProg, plans)
+	merged := *rulesProg
+	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
+	results := testrunner.Run(&merged, plans)
 	filtered := testrunner.FilterByName(results, filter)
 	fmt.Printf("==> %s: %d test(s)\n", testFile, len(filtered))
 	testrunner.PrintResults(filtered, verbose)
@@ -517,7 +525,12 @@ func runTrace() {
 		os.Exit(diagnostic.ExitError)
 	}
 
-	traces := testrunner.Trace(testProg, plans)
+	// Re-parse the rules so trace sees `tune against test` clauses.
+	rulesTokens, _ := lexer.Lex(rulesFile, string(rulesSrc))
+	rulesProg, _ := parser.Parse(rulesFile, rulesTokens)
+	mergedTrace := *rulesProg
+	mergedTrace.Blocks = append(mergedTrace.Blocks, testProg.Blocks...)
+	traces := testrunner.Trace(&mergedTrace, plans)
 	if wantTest != "" {
 		filtered := traces[:0]
 		for _, t := range traces {

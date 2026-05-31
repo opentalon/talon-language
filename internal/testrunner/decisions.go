@@ -8,6 +8,7 @@ import (
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/explain"
+	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
 
@@ -19,6 +20,7 @@ import (
 // produced by that test's `when` clause.
 func Decisions(prog *ast.Program, plans map[string]*planner.QueryPlan) map[string][]explain.Decision {
 	blocks := indexBlocks(prog)
+	tunings := computeTunings(prog, plans)
 	out := map[string][]explain.Decision{}
 
 	for _, b := range prog.Blocks {
@@ -32,7 +34,7 @@ func Decisions(prog *ast.Program, plans map[string]*planner.QueryPlan) map[strin
 		if !ok {
 			continue
 		}
-		decisions := buildDecisionsForBlock(root, blocks, plans, entities, time.Now().UTC())
+		decisions := buildDecisionsForBlock(root, blocks, plans, entities, time.Now().UTC(), tunings)
 		out[tb.Name] = decisions
 	}
 	return out
@@ -61,13 +63,14 @@ func buildDecisionsForBlock(
 	plans map[string]*planner.QueryPlan,
 	entities map[int]*entity,
 	now time.Time,
+	tunings map[string]*tuningResult,
 ) []explain.Decision {
 	plan, ok := plans[b.BlockName()]
 	if !ok {
 		return nil
 	}
 
-	flagged, evidenceByEntity := executeForDecisions(plan, entities)
+	flagged, evidenceByEntity, dn := executeForDecisions(plan, entities, tunings, b.BlockName())
 
 	// Recommend blocks usually have no flagged entities of their own —
 	// they fire when an upstream detect matches. Derive their flagged set
@@ -78,7 +81,7 @@ func buildDecisionsForBlock(
 			if !ok {
 				continue
 			}
-			upFlagged, upEvidence := executeForDecisions(plans[up], entities)
+			upFlagged, upEvidence, _ := executeForDecisions(plans[up], entities, tunings, up)
 			for _, id := range upFlagged {
 				if _, seen := evidenceByEntity[id]; !seen {
 					flagged = append(flagged, id)
@@ -92,6 +95,38 @@ func buildDecisionsForBlock(
 	var out []explain.Decision
 	for _, id := range flagged {
 		ent := entities[id]
+		why := whyLines(b, ent)
+		if dn.Pareto != nil {
+			if sol, ok := dn.Pareto.byEntity[id]; ok {
+				why = paretoWhy(sol, dn.Pareto.objs, len(dn.Pareto.byEntity))
+			}
+		}
+		if dn.GA != nil {
+			if w := gaWhy(id, *dn.GA); w != nil {
+				why = w
+			}
+		}
+		if dn.ACO != nil {
+			if w := acoWhy(id, *dn.ACO); w != nil {
+				why = w
+			}
+		}
+		if dn.ILP != nil && dn.ILP.feasible {
+			if w := ilpWhy(id, *dn.ILP); w != nil {
+				why = w
+			}
+		}
+		// Surface auto-tuning provenance into the Decision so explain output
+		// can render "threshold = 2.7 (tuned via ABC on labeled fixture
+		// 'foo' — F1=0.93)" instead of just the threshold value.
+		if tr, ok := tunings[b.BlockName()]; ok {
+			why = appendTuningWhy(why, tr)
+		}
+		evidence := evidenceByEntity[id]
+		if tr, ok := tunings[b.BlockName()]; ok {
+			evidence = appendTuningEvidence(evidence, tr)
+		}
+
 		d := explain.Decision{
 			BlockName:  b.BlockName(),
 			BlockKind:  blockKind(b),
@@ -99,8 +134,8 @@ func buildDecisionsForBlock(
 			EntityName: entityName(ent),
 			FiredAt:    now,
 			Priority:   blockPriority(b),
-			Why:        whyLines(b, ent),
-			Evidence:   evidenceByEntity[id],
+			Why:        why,
+			Evidence:   evidence,
 		}
 		d.Action = renderTemplate(blockLabel(b), ent)
 
@@ -111,7 +146,7 @@ func buildDecisionsForBlock(
 			if !ok {
 				continue
 			}
-			ups := buildDecisionsForBlock(up, blocks, plans, entities, now)
+			ups := buildDecisionsForBlock(up, blocks, plans, entities, now, tunings)
 			for _, u := range ups {
 				if u.EntityID == id {
 					d.TriggeredBy = append(d.TriggeredBy, u)
@@ -135,12 +170,31 @@ func buildDecisionsForBlock(
 // returns the final flagged entity IDs plus the per-entity Evidence facts
 // observed during evaluation. This is a thinner variant of runOne that
 // skips trace assembly and assertion checking.
-func executeForDecisions(plan *planner.QueryPlan, entities map[int]*entity) (
-	[]int, map[int][]explain.Fact,
-) {
+//
+// If the plan ends with a FuncOptimizePareto step, the per-entity evidence
+// is populated with population-relative facts (rank, dominated_by, crowding)
+// instead of the generic field dump; pareto carries non-nil so callers can
+// render Pareto-specific "why" lines.
+// decisionNarrowings collects every kind of narrowing the executor produced
+// for one block's plan; per-block "why" and "evidence" pick from these in
+// preference order.
+type decisionNarrowings struct {
+	Pareto *paretoNarrowing
+	GA     *gaNarrowing
+	ACO    *acoNarrowing
+	ILP    *ilpNarrowing
+}
+
+func executeForDecisions(
+	plan *planner.QueryPlan,
+	entities map[int]*entity,
+	tunings map[string]*tuningResult,
+	blockName string,
+) ([]int, map[int][]explain.Fact, decisionNarrowings) {
 	vars := map[string]any{}
 	var flagged []int
 	flaggedSet := false
+	var dn decisionNarrowings
 
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
@@ -152,14 +206,84 @@ func executeForDecisions(plan *planner.QueryPlan, entities map[int]*entity) (
 				flaggedSet = true
 			}
 		case *planner.MLComputation:
-			narrowed, _ := narrowByML(nil, s, flagged, entities) // no registry: keep all
+			// Same tuning hook as runOneTuned — when a Decision pipeline
+			// crosses a detect block with `tune against test`, inject the
+			// ABC-discovered parameter (anomaly threshold, learned percentile,
+			// etc.) before invoking the primitive.
+			reg := mlruntime.NewRegistry()
+			stepToRun := s
+			if tunings != nil {
+				if tr, ok := tunings[blockName]; ok && tr.Function == s.Function {
+					cp := *s
+					cp.Params = cloneParams(s.Params)
+					cp.Params[tr.ParamName] = tr.ParamValue
+					stepToRun = &cp
+				}
+			}
+			narrowed, _ := narrowByML(reg, stepToRun, flagged, entities)
 			if narrowed != nil {
 				flagged = narrowed
+			}
+		case *planner.GoComputation:
+			switch s.Function {
+			case planner.FuncOptimizePareto:
+				n := narrowByPareto(s, flagged, entities)
+				if n.frontier != nil {
+					flagged = n.frontier
+				}
+				dn.Pareto = &n
+			case planner.FuncOptimizeGA:
+				n := narrowByGA(s, flagged, entities)
+				if n.flagged != nil {
+					flagged = n.flagged
+				}
+				dn.GA = &n
+			case planner.FuncOptimizeACO:
+				n := narrowByACO(s, flagged, entities)
+				if n.flagged != nil {
+					flagged = n.flagged
+				}
+				dn.ACO = &n
+			case planner.FuncOptimizeILP:
+				n := narrowByILP(s, flagged, entities)
+				if n.flagged != nil {
+					flagged = n.flagged
+				}
+				dn.ILP = &n
 			}
 		}
 	}
 
 	evidence := map[int][]explain.Fact{}
+	if dn.Pareto != nil && dn.Pareto.byEntity != nil {
+		for _, id := range flagged {
+			sol, ok := dn.Pareto.byEntity[id]
+			if !ok {
+				continue
+			}
+			evidence[id] = paretoEvidence(sol, dn.Pareto.objs)
+		}
+		return flagged, evidence, dn
+	}
+	if dn.GA != nil && dn.GA.entityToSubsets != nil {
+		for _, id := range flagged {
+			evidence[id] = gaEvidence(id, *dn.GA)
+		}
+		return flagged, evidence, dn
+	}
+	if dn.ACO != nil && dn.ACO.posByID != nil {
+		for _, id := range flagged {
+			evidence[id] = acoEvidence(id, *dn.ACO)
+		}
+		return flagged, evidence, dn
+	}
+	if dn.ILP != nil && dn.ILP.feasible {
+		for _, id := range flagged {
+			evidence[id] = ilpEvidence(id, *dn.ILP)
+		}
+		return flagged, evidence, dn
+	}
+
 	for _, id := range flagged {
 		ent := entities[id]
 		if ent == nil {
@@ -175,7 +299,7 @@ func executeForDecisions(plan *planner.QueryPlan, entities map[int]*entity) (
 			})
 		}
 	}
-	return flagged, evidence
+	return flagged, evidence, dn
 }
 
 // whyLines walks the block's selector conditions and produces one human-

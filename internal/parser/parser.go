@@ -119,11 +119,32 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 		b.Recommend = rec
 	case lexer.TokenWhen:
 		b.Pattern = p.parsePatternExpr()
+	case lexer.TokenTune:
+		b.Tune = p.parseTuneClause()
 	default:
 		p.errorf("unexpected token %q inside detect block", p.peek().Value)
 		return false
 	}
 	return true
+}
+
+// parseTuneClause parses `tune against test "NAME"`. The named test must be
+// defined in a .talon.test file passed to `talon test` / `talon explain`;
+// its given/expect data becomes the labeled fixture ABC tunes against.
+func (p *parser) parseTuneClause() *ast.TuneClause {
+	p.advance() // tune
+	if !p.at(lexer.TokenAgainst) {
+		p.errorf("expected 'against' after 'tune', got %q", p.peek().Value)
+		return nil
+	}
+	p.advance()
+	if !p.at(lexer.TokenTest) {
+		p.errorf("expected 'test' after 'tune against', got %q", p.peek().Value)
+		return nil
+	}
+	p.advance()
+	name := p.expectString()
+	return &ast.TuneClause{AgainstTest: name}
 }
 
 // ─── rule ─────────────────────────────────────────────────────────────────────
@@ -241,7 +262,50 @@ func (p *parser) parseCombine() *ast.CombineBlock {
 		case lexer.TokenMinimize, lexer.TokenMaximize:
 			dir := p.advance().Value
 			attr := p.parseExpr()
-			b.Optimize = ast.OptimizeClause{Direction: dir, Attr: attr}
+			b.Optimize = append(b.Optimize, ast.OptimizeClause{Direction: dir, Attr: attr})
+		case lexer.TokenSelect:
+			p.advance()
+			n, _ := strconv.Atoi(p.expectNumberStr())
+			// optional `from records`
+			if p.at(lexer.TokenFrom) {
+				p.advance()
+				if p.at(lexer.TokenRecords) {
+					p.advance()
+				}
+			}
+			b.Select = &ast.SelectClause{Size: n}
+		case lexer.TokenSubjectTo:
+			tok := p.advance()
+			left := p.parseExpr()
+			op := p.parseCompareOp()
+			right := p.parseExpr()
+			b.Constraints = append(b.Constraints, ast.ConstraintClause{
+				Pos:   ast.Pos{Line: tok.Line, Col: tok.Col},
+				Left:  left,
+				Op:    op,
+				Right: right,
+			})
+		case lexer.TokenSeed:
+			p.advance()
+			n, _ := strconv.ParseInt(p.expectNumberStr(), 10, 64)
+			b.Seed = &n
+		case lexer.TokenSequence:
+			p.advance()
+			b.Sequence = true
+		case lexer.TokenCoordinates:
+			p.advance()
+			x := p.parseExpr()
+			p.expect(lexer.TokenComma)
+			y := p.parseExpr()
+			b.Coordinates = &ast.CoordinatesClause{X: x, Y: y}
+		case lexer.TokenSolver:
+			p.advance()
+			if p.at(lexer.TokenLinear) {
+				p.advance()
+				b.Solver = "linear"
+			} else {
+				p.errorf("expected solver type (linear), got %q", p.peek().Value)
+			}
 		case lexer.TokenReturn:
 			p.advance()
 			b.Return = append(b.Return, p.expectIdent())
@@ -261,6 +325,34 @@ func (p *parser) parseCombine() *ast.CombineBlock {
 	}
 	p.expect(lexer.TokenRBrace)
 	return b
+}
+
+// parseCompareOp consumes one of ==, !=, <, <=, >, >= and returns the source
+// form. Used by subject_to clauses where the LHS is an aggregate expression
+// and the RHS is typically a numeric literal.
+func (p *parser) parseCompareOp() string {
+	switch p.peek().Type {
+	case lexer.TokenEq:
+		p.advance()
+		return "=="
+	case lexer.TokenNeq:
+		p.advance()
+		return "!="
+	case lexer.TokenLt:
+		p.advance()
+		return "<"
+	case lexer.TokenLte:
+		p.advance()
+		return "<="
+	case lexer.TokenGt:
+		p.advance()
+		return ">"
+	case lexer.TokenGte:
+		p.advance()
+		return ">="
+	}
+	p.errorf("expected comparison operator, got %q", p.peek().Value)
+	return "=="
 }
 
 // ─── define ───────────────────────────────────────────────────────────────────
@@ -1099,7 +1191,7 @@ func (p *parser) parsePrimary() ast.Expr {
 		return &ast.TodayExpr{}
 
 	case lexer.TokenLearnedThreshold:
-		p.advance() // learned_threshold
+		p.advance()               // learned_threshold
 		method := p.expectIdent() // e.g. "p95"
 		if p.at(lexer.TokenIdent) && p.peek().Value == "of" {
 			p.advance()
@@ -1147,6 +1239,21 @@ func (p *parser) parsePrimary() ast.Expr {
 		expr := p.parseExpr()
 		p.expect(lexer.TokenRParen)
 		return expr
+
+	case lexer.TokenTotal, lexer.TokenCount, lexer.TokenAvg:
+		fn := p.advance().Value
+		p.expect(lexer.TokenLParen)
+		var arg ast.Expr
+		// `count(records)` or `count()` is valid; otherwise expression required.
+		if p.at(lexer.TokenRecords) || p.at(lexer.TokenRParen) {
+			if p.at(lexer.TokenRecords) {
+				p.advance()
+			}
+		} else {
+			arg = p.parseExpr()
+		}
+		p.expect(lexer.TokenRParen)
+		return &ast.AggregateExpr{Fn: fn, Arg: arg}
 
 	// Keywords used as bare attribute names
 	case lexer.TokenStatus, lexer.TokenCategory, lexer.TokenTypeKw,
@@ -1309,7 +1416,7 @@ func (p *parser) parseTestBlock() *ast.TestBlock {
 			}
 			p.expect(lexer.TokenRBrace)
 		case lexer.TokenWhen:
-			p.advance() // when
+			p.advance()                    // when
 			b.WhenKind = p.advance().Value // detect, rule, forecast, etc.
 			b.WhenBlock = p.expectString()
 		case lexer.TokenExpect:
@@ -1397,19 +1504,19 @@ func (p *parser) parseTestAssertion() ast.TestAssertion {
 		return ast.TestAssertion{}
 
 	case lexer.TokenLabel:
-		p.advance() // label
+		p.advance()             // label
 		op := p.advance().Value // "contains", "==", etc.
 		val := p.expectString()
 		return ast.TestAssertion{Kind: "label", Op: op, Value: val}
 
 	case lexer.TokenPriority:
-		p.advance() // priority
-		op := p.advance().Value // "=="
+		p.advance()              // priority
+		op := p.advance().Value  // "=="
 		val := p.advance().Value // HIGH, LOW, etc.
 		return ast.TestAssertion{Kind: "priority", Op: op, Value: val}
 
 	case lexer.TokenThreshold:
-		p.advance() // threshold
+		p.advance()             // threshold
 		op := p.advance().Value // "~=", ">", etc.
 		val := p.advance().Value
 		return ast.TestAssertion{Kind: "threshold", Op: op, Value: val}

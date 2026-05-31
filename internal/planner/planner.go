@@ -18,6 +18,10 @@ const (
 	FuncSimilarityCosine     = "similarity_cosine"
 	FuncClassifyKNN          = "classify_knn"
 	FuncRenderTemplate       = "render_template"
+	FuncOptimizePareto       = "optimize_pareto"
+	FuncOptimizeGA           = "optimize_ga"
+	FuncOptimizeACO          = "optimize_aco"
+	FuncOptimizeILP          = "optimize_ilp"
 )
 
 // ─── Plan step types ──────────────────────────────────────────────────────────
@@ -415,18 +419,225 @@ func (p *planner) planCombine(b *ast.CombineBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
+
+	switch {
+	case b.Sequence:
+		return p.planCombineACO(plan, qb, b)
+	case b.Solver == "linear":
+		return p.planCombineILP(plan, qb, b)
+	case b.Select != nil:
+		return p.planCombineGA(plan, qb, b)
+	default:
+		return p.planCombinePareto(plan, qb, b)
+	}
+}
+
+// planCombinePareto emits the v1 plan: bind each objective attr (must be
+// *AttrExpr) into the :find clause and call optimize_pareto on the rows.
+func (p *planner) planCombinePareto(plan *QueryPlan, qb *queryBuilder, b *ast.CombineBlock) *QueryPlan {
+	indices := make([]int, 0, len(b.Optimize))
+	for _, oc := range b.Optimize {
+		attr, ok := oc.Attr.(*ast.AttrExpr)
+		if !ok {
+			indices = append(indices, -1)
+			continue
+		}
+		v := qb.varFor(attr.Name)
+		qb.whereClauses = append(qb.whereClauses,
+			fmt.Sprintf("[%s :attr/%s %s]", qb.entityVar, sanitizeIdent(attr.Name), v))
+		qb.findVars = appendUniq(qb.findVars, v)
+		indices = append(indices, indexOf(qb.findVars, v))
+	}
+
 	plan.Steps = append(plan.Steps, &DatalevinQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
 	plan.Steps = append(plan.Steps, &GoComputation{
-		Function: "optimize_" + b.Optimize.Direction,
+		Function: FuncOptimizePareto,
 		Input:    "candidates",
-		Params:   map[string]any{"attr": b.Optimize.Attr, "return": b.Return},
-		Into:     "combination",
+		Params: map[string]any{
+			"objectives":              b.Optimize,
+			"return":                  b.Return,
+			"block":                   b.Name,
+			"find_vars":               qb.findVars,
+			"objective_value_indices": indices,
+		},
+		Into: "frontier",
 	})
 	return plan
+}
+
+// planCombineGA emits the v2 plan: bind every attr referenced by objectives
+// and constraints into the Datalog query, then call optimize_ga with the
+// subset size and constraint specs. The GA step receives the rows along with
+// a name→column-index map so it can evaluate aggregates per candidate subset.
+func (p *planner) planCombineGA(plan *QueryPlan, qb *queryBuilder, b *ast.CombineBlock) *QueryPlan {
+	attrIndices := map[string]int{}
+	bindAttr := func(name string) {
+		if _, seen := attrIndices[name]; seen {
+			return
+		}
+		v := qb.varFor(name)
+		qb.whereClauses = append(qb.whereClauses,
+			fmt.Sprintf("[%s :attr/%s %s]", qb.entityVar, sanitizeIdent(name), v))
+		qb.findVars = appendUniq(qb.findVars, v)
+		attrIndices[name] = indexOf(qb.findVars, v)
+	}
+
+	for _, oc := range b.Optimize {
+		if name, ok := refAttrName(oc.Attr); ok {
+			bindAttr(name)
+		}
+	}
+	for _, c := range b.Constraints {
+		if name, ok := refAttrName(c.Left); ok {
+			bindAttr(name)
+		}
+	}
+
+	plan.Steps = append(plan.Steps, &DatalevinQuery{
+		Query:    qb.build(),
+		BindVars: qb.bindVars(),
+		Into:     "candidates",
+	})
+
+	seed := int64(0)
+	if b.Seed != nil {
+		seed = *b.Seed
+	}
+
+	plan.Steps = append(plan.Steps, &GoComputation{
+		Function: FuncOptimizeGA,
+		Input:    "candidates",
+		Params: map[string]any{
+			"objectives":   b.Optimize,
+			"constraints":  b.Constraints,
+			"select_size":  b.Select.Size,
+			"seed":         seed,
+			"return":       b.Return,
+			"block":        b.Name,
+			"find_vars":    qb.findVars,
+			"attr_indices": attrIndices,
+		},
+		Into: "frontier",
+	})
+	return plan
+}
+
+// planCombineACO emits the routing plan: bind the two coordinate attrs into
+// the find clause and dispatch to optimize_aco which builds a distance
+// matrix and runs ant-colony search.
+func (p *planner) planCombineACO(plan *QueryPlan, qb *queryBuilder, b *ast.CombineBlock) *QueryPlan {
+	xAttr, _ := b.Coordinates.X.(*ast.AttrExpr)
+	yAttr, _ := b.Coordinates.Y.(*ast.AttrExpr)
+	attrIndices := map[string]int{}
+	if xAttr != nil {
+		bindCombineAttr(qb, xAttr.Name, attrIndices)
+	}
+	if yAttr != nil {
+		bindCombineAttr(qb, yAttr.Name, attrIndices)
+	}
+
+	plan.Steps = append(plan.Steps, &DatalevinQuery{
+		Query:    qb.build(),
+		BindVars: qb.bindVars(),
+		Into:     "candidates",
+	})
+
+	seed := int64(0)
+	if b.Seed != nil {
+		seed = *b.Seed
+	}
+
+	plan.Steps = append(plan.Steps, &GoComputation{
+		Function: FuncOptimizeACO,
+		Input:    "candidates",
+		Params: map[string]any{
+			"x_attr":       xAttrName(xAttr),
+			"y_attr":       xAttrName(yAttr),
+			"seed":         seed,
+			"return":       b.Return,
+			"block":        b.Name,
+			"find_vars":    qb.findVars,
+			"attr_indices": attrIndices,
+		},
+		Into: "tour",
+	})
+	return plan
+}
+
+// planCombineILP emits the exact-solver plan: same Datalevin binding as the
+// GA path, but dispatches to optimize_ilp which solves the single-objective
+// 0/1 subset problem via branch-and-bound.
+func (p *planner) planCombineILP(plan *QueryPlan, qb *queryBuilder, b *ast.CombineBlock) *QueryPlan {
+	attrIndices := map[string]int{}
+	for _, oc := range b.Optimize {
+		if name, ok := refAttrName(oc.Attr); ok {
+			bindCombineAttr(qb, name, attrIndices)
+		}
+	}
+	for _, c := range b.Constraints {
+		if name, ok := refAttrName(c.Left); ok {
+			bindCombineAttr(qb, name, attrIndices)
+		}
+	}
+
+	plan.Steps = append(plan.Steps, &DatalevinQuery{
+		Query:    qb.build(),
+		BindVars: qb.bindVars(),
+		Into:     "candidates",
+	})
+
+	plan.Steps = append(plan.Steps, &GoComputation{
+		Function: FuncOptimizeILP,
+		Input:    "candidates",
+		Params: map[string]any{
+			"objectives":   b.Optimize,
+			"constraints":  b.Constraints,
+			"select_size":  b.Select.Size,
+			"return":       b.Return,
+			"block":        b.Name,
+			"find_vars":    qb.findVars,
+			"attr_indices": attrIndices,
+		},
+		Into: "frontier",
+	})
+	return plan
+}
+
+func bindCombineAttr(qb *queryBuilder, name string, attrIndices map[string]int) {
+	if _, seen := attrIndices[name]; seen {
+		return
+	}
+	v := qb.varFor(name)
+	qb.whereClauses = append(qb.whereClauses,
+		fmt.Sprintf("[%s :attr/%s %s]", qb.entityVar, sanitizeIdent(name), v))
+	qb.findVars = appendUniq(qb.findVars, v)
+	attrIndices[name] = indexOf(qb.findVars, v)
+}
+
+func xAttrName(a *ast.AttrExpr) string {
+	if a == nil {
+		return ""
+	}
+	return a.Name
+}
+
+// refAttrName returns the underlying attr name an objective or constraint
+// expression references (either a bare *AttrExpr or an *AggregateExpr
+// wrapping one). Aggregates of records (e.g. count(records)) return ("", false).
+func refAttrName(e ast.Expr) (string, bool) {
+	switch x := e.(type) {
+	case *ast.AttrExpr:
+		return x.Name, true
+	case *ast.AggregateExpr:
+		if a, ok := x.Arg.(*ast.AttrExpr); ok {
+			return a.Name, true
+		}
+	}
+	return "", false
 }
 
 func (p *planner) planWorkflow(b *ast.WorkflowBlock) *QueryPlan {
@@ -510,10 +721,10 @@ type queryBuilder struct {
 // Datalog selector into an MLComputation step. The Datalog query is widened
 // to also return the bound value var so the primitive can score it.
 type anomalyBinding struct {
-	AttrPath string         // ":attr/weekly_consumption"
-	AttrName string         // "weekly_consumption" — what label templates show
-	ValueVar string         // "?weekly_consumption"
-	Window   ast.Duration   // 12 weeks, 30 days…
+	AttrPath string       // ":attr/weekly_consumption"
+	AttrName string       // "weekly_consumption" — what label templates show
+	ValueVar string       // "?weekly_consumption"
+	Window   ast.Duration // 12 weeks, 30 days…
 }
 
 // thresholdBinding records an `attr X OP learned_threshold ...` compare clause
@@ -603,9 +814,9 @@ func (b *queryBuilder) addNot(c *ast.NotCondition) {
 
 func (b *queryBuilder) subClauses(cond ast.Condition) []string {
 	child := &queryBuilder{
-		defines:  b.defines,
+		defines:   b.defines,
 		entityVar: b.entityVar,
-		usedVars: copyMap(b.usedVars),
+		usedVars:  copyMap(b.usedVars),
 	}
 	child.addCondition(cond)
 	// merge any go conditions back up

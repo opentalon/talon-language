@@ -1,0 +1,82 @@
+// Labeled fixture: 12 active vehicles with km values, plus 2 outliers
+// the tenant flagged as needing early service even though they're
+// below p95. ABC must lower the percentile to recover them.
+//
+// km distribution:
+//   normal cluster: 30000-45000 km (10 vehicles)
+//   tenant-flagged:  60000, 65000 (z above the cluster but below p95
+//                                  with this small sample)
+//   inactive:        80000 (excluded by selector)
+//
+// With p95 default, only the very top outlier would flag. After tuning,
+// ABC finds a percentile that catches BOTH labeled vehicles without
+// flagging the routine cluster.
+
+test "labeled_high_mileage" {
+  given {
+    record 301 type "item" category "Vehicles" status "active"
+    attr 301 "name" "Truck A"
+    attr 301 "km" 32000
+
+    record 302 type "item" category "Vehicles" status "active"
+    attr 302 "name" "Van B"
+    attr 302 "km" 35000
+
+    record 303 type "item" category "Vehicles" status "active"
+    attr 303 "name" "SUV C"
+    attr 303 "km" 33000
+
+    record 304 type "item" category "Vehicles" status "active"
+    attr 304 "name" "Sedan D"
+    attr 304 "km" 38000
+
+    record 305 type "item" category "Vehicles" status "active"
+    attr 305 "name" "Pickup E"
+    attr 305 "km" 41000
+
+    record 306 type "item" category "Vehicles" status "active"
+    attr 306 "name" "Van F"
+    attr 306 "km" 43000
+
+    record 307 type "item" category "Vehicles" status "active"
+    attr 307 "name" "Truck G"
+    attr 307 "km" 36000
+
+    record 308 type "item" category "Vehicles" status "active"
+    attr 308 "name" "Coupe H"
+    attr 308 "km" 39000
+
+    record 309 type "item" category "Vehicles" status "active"
+    attr 309 "name" "Cargo I"
+    attr 309 "km" 45000
+
+    record 310 type "item" category "Vehicles" status "active"
+    attr 310 "name" "Bus J"
+    attr 310 "km" 42000
+
+    // Tenant-flagged early-service candidates: km above the normal
+    // cluster but the default p95 percentile may not catch both.
+    record 311 type "item" category "Vehicles" status "active"
+    attr 311 "name" "Old Truck"
+    attr 311 "km" 60000
+
+    record 312 type "item" category "Vehicles" status "active"
+    attr 312 "name" "Heavy Hauler"
+    attr 312 "km" 65000
+
+    // Selector-excluded.
+    record 313 type "item" category "Vehicles" status "inactive"
+    attr 313 "name" "Retired"
+    attr 313 "km" 80000
+  }
+
+  when detect "Tuned high mileage"
+
+  expect {
+    flagged 311
+    flagged 312
+    not flagged 301
+    not flagged 305
+    not flagged 313
+  }
+}
