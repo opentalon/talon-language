@@ -1,19 +1,51 @@
 {
-  "name": "@talon-lang/runtime",
+  "name": "@opentalon/talon-runtime",
   "version": "0.1.0",
   "description": "Reactive rule engine for Talon — path-based store with extensible actions",
+  "type": "module",
   "main": "dist/index.js",
-  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
     "vitest": "^3.2.1"
   },
-  "files": ["dist"],
-  "license": "Apache-2.0"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "talon",
+    "rule-engine",
+    "reactive",
+    "dsl",
+    "expert-system",
+    "rules"
+  ],
+  "author": "OpenTalon",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opentalon/talon-language.git",
+    "directory": "packages/runtime"
+  },
+  "homepage": "https://github.com/opentalon/talon-language/tree/master/packages/runtime#readme",
+  "bugs": {
+    "url": "https://github.com/opentalon/talon-language/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
