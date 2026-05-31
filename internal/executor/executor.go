@@ -37,9 +37,9 @@ type FactStore interface {
 // BlockResult is the outcome of executing one block's query plan.
 type BlockResult struct {
 	BlockName string
-	Flagged   [][]any          // entities matched by the first DatalevinQuery
-	Vars      map[string]any   // all intermediate result variables
-	Steps     []StepResult     // per-step results for tracing
+	Flagged   [][]any        // entities matched by the first DatalevinQuery
+	Vars      map[string]any // all intermediate result variables
+	Steps     []StepResult   // per-step results for tracing
 }
 
 // StepResult records one step's execution.
@@ -210,6 +210,30 @@ func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputatio
 		vars[gc.Into] = input
 	case "mcp_call":
 		result, err := e.execMCPCall(ctx, gc, vars)
+		if err != nil {
+			return StepResult{}, err
+		}
+		vars[gc.Into] = result
+	case planner.FuncOptimizePareto:
+		result, err := e.execOptimizePareto(ctx, gc, vars)
+		if err != nil {
+			return StepResult{}, err
+		}
+		vars[gc.Into] = result
+	case planner.FuncOptimizeGA:
+		result, err := e.execOptimizeGA(ctx, gc, vars)
+		if err != nil {
+			return StepResult{}, err
+		}
+		vars[gc.Into] = result
+	case planner.FuncOptimizeACO:
+		result, err := e.execOptimizeACO(ctx, gc, vars)
+		if err != nil {
+			return StepResult{}, err
+		}
+		vars[gc.Into] = result
+	case planner.FuncOptimizeILP:
+		result, err := e.execOptimizeILP(ctx, gc, vars)
 		if err != nil {
 			return StepResult{}, err
 		}

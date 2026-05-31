@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/validator"
@@ -517,5 +518,122 @@ workflow "Deploy" {
 	}
 	if s2.Params["step"] != "notify" {
 		t.Errorf("step[2]: expected notify, got %v", s2.Params["step"])
+	}
+}
+
+// ─── Combine / Pareto planning ───────────────────────────────────────────────
+
+func TestPlanCombine_ParetoEmitsTwoSteps(t *testing.T) {
+	plan := planBlock(t, `
+combine "Dispatch picks" {
+  for records where type == "item" and status == "active"
+  minimize attr "cost_per_km"
+  maximize attr "urgency_score"
+  return id, cost_per_km, urgency_score
+}`, "Dispatch picks")
+
+	if len(plan.Steps) != 2 {
+		t.Fatalf("expected 2 steps (DatalevinQuery + GoComputation), got %d", len(plan.Steps))
+	}
+
+	q := queryStep(t, plan, 0)
+	// The objective attrs must be bound into the find clause so rows
+	// carry the per-objective value the optimizer reads.
+	assertContains(t, q.Query, "?cost_per_km")
+	assertContains(t, q.Query, "?urgency_score")
+	assertContains(t, q.Query, ":attr/cost_per_km")
+	assertContains(t, q.Query, ":attr/urgency_score")
+
+	gc := goStep(t, plan, 1)
+	if gc.Function != FuncOptimizePareto {
+		t.Errorf("step[1].Function = %q, want %q", gc.Function, FuncOptimizePareto)
+	}
+	objs, ok := gc.Params["objectives"].([]ast.OptimizeClause)
+	if !ok {
+		t.Fatalf("objectives param: want []ast.OptimizeClause, got %T", gc.Params["objectives"])
+	}
+	if len(objs) != 2 {
+		t.Fatalf("objectives: want 2, got %d", len(objs))
+	}
+	if objs[0].Direction != "minimize" || objs[1].Direction != "maximize" {
+		t.Errorf("directions: want [minimize maximize], got [%s %s]", objs[0].Direction, objs[1].Direction)
+	}
+	indices, ok := gc.Params["objective_value_indices"].([]int)
+	if !ok {
+		t.Fatalf("objective_value_indices param: want []int, got %T", gc.Params["objective_value_indices"])
+	}
+	if len(indices) != 2 {
+		t.Fatalf("indices: want 2, got %v", indices)
+	}
+	for i, idx := range indices {
+		if idx <= 0 {
+			t.Errorf("indices[%d] = %d, want positive column (?e is at 0)", i, idx)
+		}
+	}
+}
+
+func TestPlanCombine_SingleObjectiveStillWorks(t *testing.T) {
+	plan := planBlock(t, `
+combine "Cheapest" {
+  for records where type == "item"
+  minimize attr "cost_per_km"
+  return id
+}`, "Cheapest")
+
+	gc := goStep(t, plan, 1)
+	if gc.Function != FuncOptimizePareto {
+		t.Errorf("Function = %q, want %q", gc.Function, FuncOptimizePareto)
+	}
+	objs := gc.Params["objectives"].([]ast.OptimizeClause)
+	if len(objs) != 1 {
+		t.Fatalf("objectives: want 1, got %d", len(objs))
+	}
+}
+
+func TestPlanCombine_GASubsetMode(t *testing.T) {
+	plan := planBlock(t, `
+combine "Reorder picks" {
+  for records where type == "stock_item" and status == "active"
+  select 3 from records
+  minimize total(attr "cost")
+  maximize total(attr "urgency")
+  subject_to total(attr "cost") <= 5000
+  return id
+  seed 42
+}`, "Reorder picks")
+
+	if len(plan.Steps) != 2 {
+		t.Fatalf("expected 2 steps, got %d", len(plan.Steps))
+	}
+
+	q := queryStep(t, plan, 0)
+	assertContains(t, q.Query, ":attr/cost")
+	assertContains(t, q.Query, ":attr/urgency")
+
+	gc := goStep(t, plan, 1)
+	if gc.Function != FuncOptimizeGA {
+		t.Errorf("Function: got %q, want %q", gc.Function, FuncOptimizeGA)
+	}
+	size, _ := gc.Params["select_size"].(int)
+	if size != 3 {
+		t.Errorf("select_size: got %d, want 3", size)
+	}
+	seed, _ := gc.Params["seed"].(int64)
+	if seed != 42 {
+		t.Errorf("seed: got %d, want 42", seed)
+	}
+	cons, _ := gc.Params["constraints"].([]ast.ConstraintClause)
+	if len(cons) != 1 {
+		t.Fatalf("constraints: want 1, got %d", len(cons))
+	}
+	if cons[0].Op != "<=" {
+		t.Errorf("constraint op: got %q, want <=", cons[0].Op)
+	}
+	attrIdx, _ := gc.Params["attr_indices"].(map[string]int)
+	if _, ok := attrIdx["cost"]; !ok {
+		t.Errorf("attr_indices missing cost: %v", attrIdx)
+	}
+	if _, ok := attrIdx["urgency"]; !ok {
+		t.Errorf("attr_indices missing urgency: %v", attrIdx)
 	}
 }

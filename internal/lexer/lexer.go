@@ -79,6 +79,18 @@ const (
 	TokenBest
 	TokenMinimize
 	TokenMaximize
+	TokenSelect
+	TokenSubjectTo
+	TokenTotal
+	TokenCount
+	TokenAvg
+	TokenSeed
+	TokenSequence
+	TokenCoordinates
+	TokenSolver
+	TokenLinear
+	TokenTune
+	TokenAgainst
 	TokenRequires
 	TokenApproval
 	TokenFrom
@@ -190,6 +202,18 @@ var keywords = map[string]TokenType{
 	"best":              TokenBest,
 	"minimize":          TokenMinimize,
 	"maximize":          TokenMaximize,
+	"select":            TokenSelect,
+	"subject_to":        TokenSubjectTo,
+	"total":             TokenTotal,
+	"count":             TokenCount,
+	"avg":               TokenAvg,
+	"seed":              TokenSeed,
+	"sequence":          TokenSequence,
+	"coordinates":       TokenCoordinates,
+	"solver":            TokenSolver,
+	"linear":            TokenLinear,
+	"tune":              TokenTune,
+	"against":           TokenAgainst,
 	"requires":          TokenRequires,
 	"approval":          TokenApproval,
 	"from":              TokenFrom,

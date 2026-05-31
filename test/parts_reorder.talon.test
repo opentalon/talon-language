@@ -1,0 +1,52 @@
+// Subset-GA test: pick 3 parts under $5000 budget that optimize cost,
+// urgency, and downstream coverage. The fixture is constructed so the
+// optimal Pareto-feasible subsets are determined by the budget — parts
+// 501, 502, 503 are cheap-and-urgent; 504 is expensive; 505 is
+// inactive (selector-excluded).
+
+test "Reorder picks respect budget and pick high-value subsets" {
+  given {
+    record 501 type "stock_item" status "active"
+    attr 501 "name" "Brake Pads"
+    attr 501 "reorder_cost" 1200
+    attr 501 "days_until_stockout" 3
+    attr 501 "downstream_blast_radius" 8
+
+    record 502 type "stock_item" status "active"
+    attr 502 "name" "Oil Filters"
+    attr 502 "reorder_cost" 800
+    attr 502 "days_until_stockout" 5
+    attr 502 "downstream_blast_radius" 12
+
+    record 503 type "stock_item" status "active"
+    attr 503 "name" "Air Filters"
+    attr 503 "reorder_cost" 600
+    attr 503 "days_until_stockout" 4
+    attr 503 "downstream_blast_radius" 6
+
+    record 504 type "stock_item" status "active"
+    attr 504 "name" "Spark Plugs"
+    attr 504 "reorder_cost" 4800
+    attr 504 "days_until_stockout" 30
+    attr 504 "downstream_blast_radius" 1
+
+    record 505 type "stock_item" status "inactive"
+    attr 505 "name" "Legacy Belt"
+    attr 505 "reorder_cost" 100
+    attr 505 "days_until_stockout" 1
+    attr 505 "downstream_blast_radius" 20
+
+    record 506 type "stock_item" status "active"
+    attr 506 "name" "Fuel Filters"
+    attr 506 "reorder_cost" 1500
+    attr 506 "days_until_stockout" 7
+    attr 506 "downstream_blast_radius" 10
+  }
+
+  when combine "Reorder picks"
+
+  expect {
+    not flagged 504
+    not flagged 505
+  }
+}

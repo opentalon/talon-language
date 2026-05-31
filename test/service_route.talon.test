@@ -1,0 +1,43 @@
+// ACO sequencing test: 4 vehicles at the corners of a 10x10 yard square.
+// The optimal tour traverses the perimeter (length 40); any other ordering
+// crosses the diagonal and is strictly longer.
+
+test "Service tour visits every overdue vehicle" {
+  given {
+    record 201 type "item" category "Vehicles" status "overdue"
+    attr 201 "name" "Truck A"
+    attr 201 "yard_x" 0
+    attr 201 "yard_y" 0
+
+    record 202 type "item" category "Vehicles" status "overdue"
+    attr 202 "name" "Van B"
+    attr 202 "yard_x" 10
+    attr 202 "yard_y" 0
+
+    record 203 type "item" category "Vehicles" status "overdue"
+    attr 203 "name" "SUV C"
+    attr 203 "yard_x" 10
+    attr 203 "yard_y" 10
+
+    record 204 type "item" category "Vehicles" status "overdue"
+    attr 204 "name" "Sedan D"
+    attr 204 "yard_x" 0
+    attr 204 "yard_y" 10
+
+    // Excluded — status is "active", not "overdue".
+    record 205 type "item" category "Vehicles" status "active"
+    attr 205 "name" "Healthy Bus"
+    attr 205 "yard_x" 5
+    attr 205 "yard_y" 5
+  }
+
+  when combine "Service tour"
+
+  expect {
+    flagged 201
+    flagged 202
+    flagged 203
+    flagged 204
+    not flagged 205
+  }
+}

@@ -35,6 +35,15 @@ type DetectBlock struct {
 	Cluster    *ClusterClause
 	Similar    *SimilarClause
 	Recommend  *RecommendBlock
+	Tune       *TuneClause
+}
+
+// TuneClause names a labeled test fixture the executor uses to auto-tune
+// the block's ML primitive parameters (z-threshold today; extensible to
+// other primitives later) via Artificial Bee Colony optimization. See
+// docs/optimizers/abc-tuning.md for the design.
+type TuneClause struct {
+	AgainstTest string // referenced test block name
 }
 
 type RuleBlock struct {
@@ -62,13 +71,26 @@ type RecommendBlock struct {
 }
 
 type CombineBlock struct {
-	Pos      Pos
-	Name     string
-	Selector Selector
-	Optimize OptimizeClause
-	Return   []string
-	Label    *Template
-	Priority *Priority
+	Pos         Pos
+	Name        string
+	Selector    Selector
+	Optimize    []OptimizeClause
+	Constraints []ConstraintClause
+	Select      *SelectClause      // nil = rank individuals (v1); non-nil = pick subset of given size (v2)
+	Seed        *int64             // optional deterministic seed for GA / ACO
+	Sequence    bool               // true = ACO sequence mode (permutation)
+	Coordinates *CoordinatesClause // coordinate attrs for distance calc in sequence mode
+	Solver      string             // "" = auto (GA/Pareto), "linear" = ILP
+	Return      []string
+	Label       *Template
+	Priority    *Priority
+}
+
+// CoordinatesClause names the two attrs that form a 2-D position used by ACO
+// to compute pairwise euclidean distance along the sequence.
+type CoordinatesClause struct {
+	X Expr // *AttrExpr expected
+	Y Expr // *AttrExpr expected
 }
 
 type DefineBlock struct {
@@ -429,8 +451,33 @@ type SimilarClause struct {
 
 type OptimizeClause struct {
 	Direction string // "minimize", "maximize"
-	Attr      Expr
+	Attr      Expr   // may be *AggregateExpr in v2 subset mode
 }
+
+// SelectClause is `select K from records` inside a combine block.
+// Marks the block as a subset-selection problem rather than per-row Pareto.
+type SelectClause struct {
+	Size int
+}
+
+// ConstraintClause is `subject_to AGG OP LITERAL`. v2 supports a single
+// aggregate-vs-literal inequality form; richer expressions can land later
+// without breaking this shape (Expr is general).
+type ConstraintClause struct {
+	Pos   Pos
+	Left  Expr   // typically *AggregateExpr over selected subset
+	Op    string // "<=", ">=", "<", ">", "==", "!="
+	Right Expr   // typically *LiteralExpr (numeric)
+}
+
+// AggregateExpr is `total(...)`, `count(...)`, `avg(...)` evaluated over
+// the selected subset's rows.
+type AggregateExpr struct {
+	Fn  string // "total", "count", "avg"
+	Arg Expr   // typically *AttrExpr; for `count(records)` Arg may be nil
+}
+
+func (*AggregateExpr) exprNode() {}
 
 type ForEachClause struct {
 	Variable string
@@ -462,20 +509,20 @@ type TestBlock struct {
 	Expect    []TestAssertion
 }
 
-func (*TestBlock) blockNode()           {}
-func (b *TestBlock) BlockName() string  { return b.Name }
+func (*TestBlock) blockNode()          {}
+func (b *TestBlock) BlockName() string { return b.Name }
 
 // TestDatum is one line inside a given { } block.
 type TestDatum struct {
-	Kind   string            // "record" or "attr"
-	ID     int               // record/entity ID
+	Kind   string                 // "record" or "attr"
+	ID     int                    // record/entity ID
 	Fields map[string]interface{} // key → value pairs
 }
 
 // TestAssertion is one line inside an expect { } block.
 type TestAssertion struct {
-	Kind    string // "flagged", "not_flagged", "label", "priority", "count"
-	ID      int    // entity ID (for flagged/not_flagged)
-	Op      string // "contains", "==", etc.
-	Value   string // expected value
+	Kind  string // "flagged", "not_flagged", "label", "priority", "count"
+	ID    int    // entity ID (for flagged/not_flagged)
+	Op    string // "contains", "==", etc.
+	Value string // expected value
 }

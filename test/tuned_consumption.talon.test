@@ -1,0 +1,82 @@
+// Two test blocks:
+//
+//   1. labeled_consumption_history — the labeled fixture the rule learns
+//      against. Mix of routine and outlier consumption values, with
+//      `expect flagged X` lines marking the ground-truth positives.
+//      ABC reads these labels at evaluation time and tunes the z-threshold
+//      to maximize F1 on them.
+//
+//   2. Evaluation against fresh data — same shape of inventory but
+//      different values; the tuned threshold should generalize.
+//
+// The labeled fixture is deliberately shaped so the default z=2.5 misses
+// real positives (heavy-tailed distribution). After tuning, F1 climbs and
+// the evaluation flags the right entities.
+
+test "labeled_consumption_history" {
+  given {
+    record 401 type "stock_item" status "active"
+    attr 401 "name" "Brake Pads"
+    attr 401 "weekly_consumption" 48
+
+    record 402 type "stock_item" status "active"
+    attr 402 "name" "Oil Filters"
+    attr 402 "weekly_consumption" 51
+
+    record 403 type "stock_item" status "active"
+    attr 403 "name" "Air Filters"
+    attr 403 "weekly_consumption" 49
+
+    record 404 type "stock_item" status "active"
+    attr 404 "name" "Spark Plugs"
+    attr 404 "weekly_consumption" 50
+
+    record 405 type "stock_item" status "active"
+    attr 405 "name" "Cabin Filters"
+    attr 405 "weekly_consumption" 52
+
+    record 406 type "stock_item" status "active"
+    attr 406 "name" "Fuel Filters"
+    attr 406 "weekly_consumption" 48
+
+    record 407 type "stock_item" status "active"
+    attr 407 "name" "Belts"
+    attr 407 "weekly_consumption" 50
+
+    record 408 type "stock_item" status "active"
+    attr 408 "name" "Wiper Blades"
+    attr 408 "weekly_consumption" 49
+
+    record 409 type "stock_item" status "active"
+    attr 409 "name" "Hoses"
+    attr 409 "weekly_consumption" 51
+
+    record 410 type "stock_item" status "active"
+    attr 410 "name" "Belts (V)"
+    attr 410 "weekly_consumption" 50
+
+    // Mild outliers — the tenant labeled them as real anomalies in their
+    // historical incident log. Under default z=2.5 these would be missed
+    // because they're only ~2σ from the mean.
+    record 411 type "stock_item" status "active"
+    attr 411 "name" "Coolant"
+    attr 411 "weekly_consumption" 70
+
+    record 412 type "stock_item" status "active"
+    attr 412 "name" "Hydraulic Oil"
+    attr 412 "weekly_consumption" 72
+  }
+
+  when detect "Tuned consumption anomaly"
+
+  // Ground-truth labels: the tenant flagged 411 and 412 as real anomalies
+  // in their incident history. ABC tunes the threshold to recover both.
+  expect {
+    flagged 411
+    flagged 412
+    not flagged 401
+    not flagged 402
+    not flagged 403
+    not flagged 404
+  }
+}

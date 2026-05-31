@@ -54,16 +54,32 @@ func Run(prog *ast.Program, plans map[string]*planner.QueryPlan) []TestResult {
 // RunWithRegistry executes test blocks with an injected ML registry so
 // callers can swap primitives in tests.
 func RunWithRegistry(prog *ast.Program, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) []TestResult {
+	tunings := computeTunings(prog, plans)
+	progBlocks := indexProgBlocks(prog)
 	var results []TestResult
 	for _, b := range prog.Blocks {
 		tb, ok := b.(*ast.TestBlock)
 		if !ok {
 			continue
 		}
-		tr, _ := runOne(tb, plans, reg)
+		tr, _ := runOneTuned(tb, plans, reg, tunings, progBlocks)
 		results = append(results, tr)
 	}
 	return results
+}
+
+// indexProgBlocks builds a name→Block index of every non-test block in
+// the program. Used by the tuning + Decision pathways to look up the
+// AST block being executed.
+func indexProgBlocks(prog *ast.Program) map[string]ast.Block {
+	m := map[string]ast.Block{}
+	for _, b := range prog.Blocks {
+		if _, isTest := b.(*ast.TestBlock); isTest {
+			continue
+		}
+		m[b.BlockName()] = b
+	}
+	return m
 }
 
 // Trace executes all test blocks and returns rich per-step traces including
@@ -71,13 +87,15 @@ func RunWithRegistry(prog *ast.Program, plans map[string]*planner.QueryPlan, reg
 // store the regular test runner uses.
 func Trace(prog *ast.Program, plans map[string]*planner.QueryPlan) []TraceResult {
 	reg := mlruntime.NewRegistry()
+	tunings := computeTunings(prog, plans)
+	progBlocks := indexProgBlocks(prog)
 	var out []TraceResult
 	for _, b := range prog.Blocks {
 		tb, ok := b.(*ast.TestBlock)
 		if !ok {
 			continue
 		}
-		tr, steps := runOne(tb, plans, reg)
+		tr, steps := runOneTuned(tb, plans, reg, tunings, progBlocks)
 		flagged := flaggedFromSteps(steps)
 		out = append(out, TraceResult{
 			Name:    tr.Name,
@@ -116,7 +134,17 @@ type entity struct {
 	fields map[string]interface{} // ":record/type" → "item", ":attr/km" → 45000, etc.
 }
 
-func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlruntime.Registry) (TestResult, []TraceStep) {
+// runOneTuned is the full-context runner: tunings carries any auto-tuned
+// parameters (block name → *tuningResult) the testrunner discovered for
+// detect blocks with `tune against test "..."` clauses. progBlocks is the
+// name→Block index used to look up the active block for tuning lookup.
+func runOneTuned(
+	tb *ast.TestBlock,
+	plans map[string]*planner.QueryPlan,
+	reg *mlruntime.Registry,
+	tunings map[string]*tuningResult,
+	progBlocks map[string]ast.Block,
+) (TestResult, []TraceStep) {
 	result := TestResult{Name: tb.Name}
 	start := time.Now()
 
@@ -154,7 +182,20 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 				Rows:  ids,
 			})
 		case *planner.MLComputation:
-			narrowed, explanations := narrowByML(reg, s, flagged, entities)
+			// If the test's WhenBlock is a detect with a `tune against test`
+			// clause, ABC has already discovered the optimal parameter against
+			// the labeled fixture; inject it (matching by primitive function)
+			// before running the step.
+			stepToRun := s
+			if tunings != nil {
+				if tr, ok := tunings[tb.WhenBlock]; ok && tr.Function == s.Function {
+					cp := *s
+					cp.Params = cloneParams(s.Params)
+					cp.Params[tr.ParamName] = tr.ParamValue
+					stepToRun = &cp
+				}
+			}
+			narrowed, explanations := narrowByML(reg, stepToRun, flagged, entities)
 			flagged = narrowed
 			for _, e := range explanations {
 				mlByEntity[e.EntityID] = e
@@ -165,7 +206,7 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 			vars[s.Into] = map[string]any{
 				"function": s.Function,
 				"input":    vars[s.Input],
-				"params":   s.Params,
+				"params":   stepToRun.Params,
 				"flagged":  flagged,
 			}
 			trace = append(trace, TraceStep{
@@ -177,6 +218,66 @@ func runOne(tb *ast.TestBlock, plans map[string]*planner.QueryPlan, reg *mlrunti
 				Explanations: explanations,
 			})
 		case *planner.GoComputation:
+			if s.Function == planner.FuncOptimizePareto {
+				out := narrowByPareto(s, flagged, entities)
+				if out.frontier != nil {
+					flagged = out.frontier
+				}
+				vars[s.Into] = out.result
+				trace = append(trace, TraceStep{
+					Type:     "GoComputation",
+					Into:     s.Into,
+					Function: s.Function,
+					Params:   s.Params,
+					Rows:     flagged,
+				})
+				break
+			}
+			if s.Function == planner.FuncOptimizeGA {
+				out := narrowByGA(s, flagged, entities)
+				if out.flagged != nil {
+					flagged = out.flagged
+				}
+				vars[s.Into] = out.result
+				trace = append(trace, TraceStep{
+					Type:     "GoComputation",
+					Into:     s.Into,
+					Function: s.Function,
+					Params:   s.Params,
+					Rows:     flagged,
+				})
+				break
+			}
+			if s.Function == planner.FuncOptimizeACO {
+				out := narrowByACO(s, flagged, entities)
+				if out.flagged != nil {
+					flagged = out.flagged
+				}
+				vars[s.Into] = out.result
+				trace = append(trace, TraceStep{
+					Type:     "GoComputation",
+					Into:     s.Into,
+					Function: s.Function,
+					Params:   s.Params,
+					Rows:     flagged,
+				})
+				break
+			}
+			if s.Function == planner.FuncOptimizeILP {
+				out := narrowByILP(s, flagged, entities)
+				if out.flagged != nil {
+					flagged = out.flagged
+				}
+				vars[s.Into] = out.result
+				trace = append(trace, TraceStep{
+					Type:     "GoComputation",
+					Into:     s.Into,
+					Function: s.Function,
+					Params:   s.Params,
+					Rows:     flagged,
+				})
+				break
+			}
 			vars[s.Into] = map[string]any{
 				"function": s.Function,
 				"input":    vars[s.Input],

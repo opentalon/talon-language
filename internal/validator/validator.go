@@ -73,6 +73,7 @@ func (v *validator) checkCompleteness() {
 			if bb.Recommend != nil && bb.Recommend.Suggest == nil {
 				v.errAt(bb.Recommend.Pos, fmt.Sprintf("nested recommend %q requires a 'suggest' clause", bb.Recommend.Name), "")
 			}
+			v.checkDetectTune(bb)
 		case *ast.RuleBlock:
 			if bb.Block == nil && bb.Requires == nil && bb.Allow == nil {
 				v.errAt(bb.Pos, fmt.Sprintf("rule %q requires 'block', 'allow', or 'requires' clause", bb.Name), "")
@@ -89,8 +90,209 @@ func (v *validator) checkCompleteness() {
 			if bb.Series.Attr == nil {
 				v.errAt(bb.Pos, fmt.Sprintf("forecast %q requires a 'series' clause", bb.Name), "")
 			}
+		case *ast.CombineBlock:
+			v.checkCombine(bb)
 		}
 	}
+}
+
+// checkCombine validates combine-block specific constraints.
+//
+//   - At least one optimize clause.
+//   - No duplicate (direction, objective-key) pairs.
+//   - v1 ranking mode (no `select`): objectives must be `attr "name"`.
+//   - v2 subset mode (with `select K`): objectives may also be aggregates
+//     (`total(attr "x")`, `count(records)`, `avg(attr "y")`). Subject_to
+//     constraints must have an aggregate LHS and a numeric literal RHS.
+//   - `select K` requires K >= 1.
+func (v *validator) checkCombine(bb *ast.CombineBlock) {
+	// ACO sequence mode validates separately — no minimize/maximize required;
+	// the implicit objective is total euclidean distance along the sequence.
+	if bb.Sequence {
+		v.checkCombineSequence(bb)
+		return
+	}
+	if len(bb.Optimize) == 0 {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q requires at least one 'minimize' or 'maximize' clause", bb.Name), "")
+		return
+	}
+	subsetMode := bb.Select != nil
+	if subsetMode && bb.Select.Size < 1 {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: select size must be >= 1, got %d", bb.Name, bb.Select.Size), "")
+	}
+
+	// ILP solver requires single-objective subset selection with linear
+	// aggregate constraints. Multi-objective + ILP is intentionally rejected
+	// for v2.1 — exact multi-objective Pareto is exponential and the user
+	// should explicitly choose GA in that case.
+	if bb.Solver == "linear" {
+		if !subsetMode {
+			v.errAt(bb.Pos, fmt.Sprintf("combine %q: solver linear requires `select K from records`", bb.Name), "")
+		}
+		if len(bb.Optimize) > 1 {
+			v.errAt(bb.Pos, fmt.Sprintf("combine %q: solver linear supports a single objective (got %d) — remove the extra clause or drop `solver linear` to use the GA backend", bb.Name, len(bb.Optimize)), "")
+		}
+	}
+
+	seen := map[string]bool{}
+	for _, oc := range bb.Optimize {
+		key, ok := combineObjectiveKey(oc.Attr, subsetMode)
+		if !ok {
+			if subsetMode {
+				v.errAt(bb.Pos, fmt.Sprintf("combine %q: objective must be `attr \"name\"` or `total/count/avg(...)`", bb.Name), "")
+			} else {
+				v.errAt(bb.Pos, fmt.Sprintf("combine %q: objective must be `attr \"name\"` (use `select K from records` to enable aggregates)", bb.Name), "")
+			}
+			continue
+		}
+		fullKey := oc.Direction + ":" + key
+		if seen[fullKey] {
+			v.errAt(bb.Pos, fmt.Sprintf("combine %q: duplicate objective %s %s", bb.Name, oc.Direction, key), "")
+		}
+		seen[fullKey] = true
+	}
+
+	if !subsetMode && len(bb.Constraints) > 0 {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: `subject_to` requires `select K from records`", bb.Name), "")
+	}
+	for _, c := range bb.Constraints {
+		if _, ok := c.Left.(*ast.AggregateExpr); !ok {
+			v.errAt(c.Pos, fmt.Sprintf("combine %q: subject_to LHS must be an aggregate (total/count/avg)", bb.Name), "")
+		}
+		if lit, ok := c.Right.(*ast.LiteralExpr); !ok {
+			v.errAt(c.Pos, fmt.Sprintf("combine %q: subject_to RHS must be a numeric literal", bb.Name), "")
+		} else if _, ok := lit.Value.(float64); !ok {
+			v.errAt(c.Pos, fmt.Sprintf("combine %q: subject_to RHS must be numeric, got %T", bb.Name, lit.Value), "")
+		}
+	}
+}
+
+// checkDetectTune validates `tune against test "..."` clauses on detect blocks.
+// The referenced test must exist; the block must contain a tunable ML
+// primitive (today: anomaly only — extensible).
+func (v *validator) checkDetectTune(bb *ast.DetectBlock) {
+	if bb.Tune == nil {
+		return
+	}
+	if bb.Tune.AgainstTest == "" {
+		v.errAt(bb.Pos, fmt.Sprintf("detect %q: tune clause requires a test name", bb.Name), "")
+		return
+	}
+	// Only enforce existence when the program actually contains test blocks
+	// (i.e. we were given a .talon.test file). During `talon build` the rule
+	// file is validated in isolation, so the labeled fixture isn't visible
+	// yet; testrunner picks up the same check at run time.
+	if v.programHasTests() && !v.testExists(bb.Tune.AgainstTest) {
+		v.errAt(bb.Pos, fmt.Sprintf("detect %q: tune references unknown test %q", bb.Name, bb.Tune.AgainstTest), "")
+	}
+	if !detectHasTunablePrimitive(bb) {
+		v.errAt(bb.Pos, fmt.Sprintf("detect %q: tune clause requires a tunable ML primitive (today: anomaly)", bb.Name), "")
+	}
+}
+
+// testExists reports whether any TestBlock in the program (typically from
+// a .talon.test file merged in by the CLI) matches the given name.
+func (v *validator) testExists(name string) bool {
+	for _, b := range v.prog.Blocks {
+		if tb, ok := b.(*ast.TestBlock); ok && tb.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// programHasTests reports whether the program contains any TestBlock.
+// Used to gate validator checks that depend on labeled fixtures being
+// visible (which is only true once `talon test` merges the .talon.test).
+func (v *validator) programHasTests() bool {
+	for _, b := range v.prog.Blocks {
+		if _, ok := b.(*ast.TestBlock); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// detectHasTunablePrimitive reports whether a detect block contains a
+// primitive whose parameters ABC tuning currently supports. v1 tunes
+// `anomaly_zscore` (threshold) and `learned_threshold` (percentile).
+func detectHasTunablePrimitive(bb *ast.DetectBlock) bool {
+	if bb.Anomaly != nil {
+		return true
+	}
+	for _, cond := range bb.Selector.Conditions {
+		if hasTunableCondition(cond) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasTunableCondition walks the selector tree looking for primitive-tunable
+// shapes: anomaly compared_to OR learned_threshold comparisons.
+func hasTunableCondition(cond ast.Condition) bool {
+	switch c := cond.(type) {
+	case *ast.AnomalyCondition:
+		return true
+	case *ast.CompareCondition:
+		if _, ok := c.Right.(*ast.LearnedThresholdExpr); ok {
+			return true
+		}
+	case *ast.LogicalCondition:
+		return hasTunableCondition(c.Left) || hasTunableCondition(c.Right)
+	case *ast.NotCondition:
+		return hasTunableCondition(c.Inner)
+	}
+	return false
+}
+
+// checkCombineSequence validates the ACO sequence mode: requires a
+// `coordinates` clause naming two attr exprs; rejects `select`, `subject_to`,
+// `minimize`/`maximize`, and `solver linear` since none apply to routing.
+func (v *validator) checkCombineSequence(bb *ast.CombineBlock) {
+	if bb.Coordinates == nil {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: sequence mode requires `coordinates attr \"X\", attr \"Y\"`", bb.Name), "")
+		return
+	}
+	if _, ok := bb.Coordinates.X.(*ast.AttrExpr); !ok {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: coordinates X must be `attr \"name\"`", bb.Name), "")
+	}
+	if _, ok := bb.Coordinates.Y.(*ast.AttrExpr); !ok {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: coordinates Y must be `attr \"name\"`", bb.Name), "")
+	}
+	if len(bb.Optimize) > 0 {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: sequence mode optimizes total distance implicitly — remove `minimize`/`maximize` (or drop `sequence` to use GA)", bb.Name), "")
+	}
+	if bb.Select != nil {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: sequence mode visits every candidate — `select K` is not applicable", bb.Name), "")
+	}
+	if len(bb.Constraints) > 0 {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: sequence mode does not yet support `subject_to`", bb.Name), "")
+	}
+	if bb.Solver != "" {
+		v.errAt(bb.Pos, fmt.Sprintf("combine %q: sequence mode uses ACO; `solver` is not applicable", bb.Name), "")
+	}
+}
+
+// combineObjectiveKey produces a stable identifier for an objective expression
+// for duplicate detection, and reports whether the shape is allowed.
+func combineObjectiveKey(e ast.Expr, allowAggregate bool) (string, bool) {
+	switch x := e.(type) {
+	case *ast.AttrExpr:
+		return "attr:" + x.Name, true
+	case *ast.AggregateExpr:
+		if !allowAggregate {
+			return "", false
+		}
+		if attr, ok := x.Arg.(*ast.AttrExpr); ok {
+			return x.Fn + ":attr:" + attr.Name, true
+		}
+		if x.Arg == nil && x.Fn == "count" {
+			return "count:records", true
+		}
+		return "", false
+	}
+	return "", false
 }
 
 // ─── Reference resolution ─────────────────────────────────────────────────────
