@@ -1,7 +1,8 @@
 import { lex } from "./lexer"
 import { parse } from "./parser"
 import { evaluate, resolveExpr, resolvePath } from "./evaluator"
-import type { Rule, Define, Action, EvalContext } from "./ast"
+import type { Rule, Define, Action } from "./ast"
+import type { EvalContext } from "./evaluator"
 export type { EvalContext } from "./evaluator"
 
 export interface ActionResult {
