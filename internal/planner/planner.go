@@ -11,6 +11,7 @@ import (
 // GoComputation function names.
 const (
 	FuncAnomalyZscore        = "anomaly_zscore"
+	FuncAnomalyGrubbs        = "anomaly_grubbs"
 	FuncLearnedThreshold     = "learned_threshold"
 	FuncPredictDecisionTree  = "predict_decision_tree"
 	FuncForecastExpSmoothing = "forecast_exponential_smoothing"
@@ -75,10 +76,27 @@ func (*GoComputation) stepType() string  { return "GoComputation" }
 func (*MLComputation) stepType() string  { return "MLComputation" }
 func (*Filter) stepType() string         { return "Filter" }
 
+// anomalyFunctionFor maps an `is anomaly using <METHOD>` method string to
+// the planner function constant the executor dispatches on. Empty string
+// (no `using` clause given) falls back to z-score for back-compat with
+// the original `is anomaly compared_to ...` syntax.
+func anomalyFunctionFor(method string) string {
+	switch method {
+	case "grubbs":
+		return FuncAnomalyGrubbs
+	case "", "zscore":
+		return FuncAnomalyZscore
+	}
+	// Unknown method — validator already reported the error. Falling back
+	// to z-score keeps the plan well-formed so downstream steps can run.
+	return FuncAnomalyZscore
+}
+
 // IsMLFunction reports whether fn names one of the 7 ML primitives.
 func IsMLFunction(fn string) bool {
 	switch fn {
 	case FuncAnomalyZscore,
+		FuncAnomalyGrubbs,
 		FuncLearnedThreshold,
 		FuncPredictDecisionTree,
 		FuncForecastExpSmoothing,
@@ -181,7 +199,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 	for i, ab := range qb.anomalyConds {
 		into := fmt.Sprintf("anomaly_%d", i)
 		plan.Steps = append(plan.Steps, &MLComputation{
-			Function: FuncAnomalyZscore,
+			Function: anomalyFunctionFor(ab.Method),
 			Input:    last,
 			Params: map[string]any{
 				"attr":        ab.AttrName,
@@ -212,7 +230,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 
 	if b.Anomaly != nil {
 		plan.Steps = append(plan.Steps, &MLComputation{
-			Function: FuncAnomalyZscore,
+			Function: anomalyFunctionFor(b.Anomaly.Method),
 			Input:    last,
 			Params:   map[string]any{"window": b.Anomaly.Window},
 			Into:     "anomaly_results",
@@ -724,6 +742,7 @@ type anomalyBinding struct {
 	AttrPath string       // ":attr/weekly_consumption"
 	AttrName string       // "weekly_consumption" — what label templates show
 	ValueVar string       // "?weekly_consumption"
+	Method   string       // "zscore" (default), "grubbs"
 	Window   ast.Duration // 12 weeks, 30 days…
 }
 
@@ -968,6 +987,7 @@ func (b *queryBuilder) addAnomalyCondition(c *ast.AnomalyCondition) {
 		AttrPath: path,
 		AttrName: attrName,
 		ValueVar: v,
+		Method:   c.Method,
 		Window:   c.Window,
 	})
 }

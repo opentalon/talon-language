@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/datalevin"
 	"github.com/opentalon/talon-language/internal/diagnostic"
@@ -610,7 +614,7 @@ func printStep(num int, step planner.PlanStep) {
 // the given rules + tests files. See docs/design/0003-explainability.md.
 func runExplain() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon explain <rules.talon> <tests.talon.test> [--test NAME] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: talon explain <rules.talon> <tests.talon.test> [--test NAME] [--json|--csv]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -618,6 +622,7 @@ func runExplain() {
 	testPath := os.Args[3]
 	wantTest := ""
 	asJSON := false
+	asCSV := false
 	for i := 4; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--test":
@@ -627,6 +632,8 @@ func runExplain() {
 			}
 		case "--json":
 			asJSON = true
+		case "--csv":
+			asCSV = true
 		}
 	}
 
@@ -697,6 +704,14 @@ func runExplain() {
 		return
 	}
 
+	if asCSV {
+		if err := writeDecisionsCSV(os.Stdout, names, decisions); err != nil {
+			fmt.Fprintf(os.Stderr, "talon explain: csv: %v\n", err)
+			os.Exit(diagnostic.ExitError)
+		}
+		return
+	}
+
 	for _, n := range names {
 		ds := decisions[n]
 		if len(ds) == 0 {
@@ -705,4 +720,55 @@ func runExplain() {
 		fmt.Printf("== %s ==\n", n)
 		fmt.Println(explain.RenderAll(ds))
 	}
+}
+
+// writeDecisionsCSV emits one row per Decision in stable order so downstream
+// tools (R, Python, DuckDB, BigQuery) can read Talon results without parsing
+// the nested JSON shape. Evidence is serialized as a key=value-joined string
+// in a single column rather than exploded into a dynamic schema — that keeps
+// the CSV stable when rules add or remove evidence keys between runs.
+//
+// Column order is fixed and documented at docs/optimizers/csv-export.md.
+func writeDecisionsCSV(w io.Writer, names []string, decisions map[string][]explain.Decision) error {
+	cw := csv.NewWriter(w)
+	header := []string{
+		"test", "block", "kind", "entity_id", "entity_name",
+		"fired_at", "priority", "confidence", "action", "why", "evidence",
+	}
+	if err := cw.Write(header); err != nil {
+		return err
+	}
+	for _, name := range names {
+		for _, d := range decisions[name] {
+			row := []string{
+				name,
+				d.BlockName,
+				d.BlockKind,
+				strconv.Itoa(d.EntityID),
+				d.EntityName,
+				d.FiredAt.UTC().Format(time.RFC3339),
+				d.Priority,
+				d.Confidence,
+				d.Action,
+				strings.Join(d.Why, " | "),
+				flattenEvidence(d.Evidence),
+			}
+			if err := cw.Write(row); err != nil {
+				return err
+			}
+		}
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+// flattenEvidence joins (attribute, value) pairs into a single "k1=v1; k2=v2"
+// string. Keeps the CSV schema stable while preserving the underlying data.
+// For JSON-faithful evidence, callers should use --json instead.
+func flattenEvidence(facts []explain.Fact) string {
+	parts := make([]string, 0, len(facts))
+	for _, f := range facts {
+		parts = append(parts, fmt.Sprintf("%s=%v", f.Attribute, f.Value))
+	}
+	return strings.Join(parts, "; ")
 }

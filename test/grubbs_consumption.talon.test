@@ -1,0 +1,61 @@
+// Same fixture as fleet_maintenance's "Unusual consumption" but using
+// Grubbs instead of z-score. The single outlier at 250 vs the tight
+// cluster around 50 is Grubbs-significant at α=0.05 (G ≈ 2.65, G_crit(8)
+// = 2.126). Z-score with default threshold 2.5 catches the same case here,
+// but Grubbs provides a defensible statistical claim — "we reject the
+// null at 95% confidence" — that audit-conscious tenants prefer.
+
+test "Grubbs flags only outlier consumption" {
+  given {
+    record 801 type "stock_item" status "active"
+    attr 801 "name" "Brake Pads"
+    attr 801 "weekly_consumption" 48
+
+    record 802 type "stock_item" status "active"
+    attr 802 "name" "Oil Filters"
+    attr 802 "weekly_consumption" 51
+
+    record 803 type "stock_item" status "active"
+    attr 803 "name" "Air Filters"
+    attr 803 "weekly_consumption" 49
+
+    record 804 type "stock_item" status "active"
+    attr 804 "name" "Spark Plugs"
+    attr 804 "weekly_consumption" 50
+
+    record 805 type "stock_item" status "active"
+    attr 805 "name" "Cabin Filters"
+    attr 805 "weekly_consumption" 49
+
+    record 806 type "stock_item" status "active"
+    attr 806 "name" "Fuel Filters"
+    attr 806 "weekly_consumption" 50
+
+    record 807 type "stock_item" status "active"
+    attr 807 "name" "Belts"
+    attr 807 "weekly_consumption" 51
+
+    record 808 type "stock_item" status "active"
+    attr 808 "name" "Wiper Blades"
+    attr 808 "weekly_consumption" 250
+
+    // Selector-excluded — wrong type.
+    record 809 type "item" status "active"
+    attr 809 "name" "Truck A"
+    attr 809 "weekly_consumption" 999
+  }
+
+  when detect "Grubbs consumption outlier"
+
+  expect {
+    not flagged 801
+    not flagged 802
+    not flagged 803
+    not flagged 804
+    not flagged 805
+    not flagged 806
+    not flagged 807
+    flagged 808
+    not flagged 809
+  }
+}

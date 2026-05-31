@@ -106,6 +106,7 @@ const (
 
 	// Keywords — ML
 	TokenAnomaly
+	TokenUsing
 	TokenComparedTo
 	TokenSeries
 	TokenOver
@@ -227,6 +228,7 @@ var keywords = map[string]TokenType{
 	"mcp":               TokenMcp,
 	"invoke":            TokenInvoke,
 	"anomaly":           TokenAnomaly,
+	"using":             TokenUsing,
 	"compared_to":       TokenComparedTo,
 	"series":            TokenSeries,
 	"over":              TokenOver,

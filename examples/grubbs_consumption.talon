@@ -1,0 +1,22 @@
+// Grubbs' test for single-outlier detection. Same shape as the existing
+// `is anomaly compared_to last N weeks` (z-score), but with a *statistical
+// significance* claim instead of a hand-picked threshold.
+//
+// Where z-score asks "is |z| > 2.5?", Grubbs asks "is the most extreme
+// value significantly far from the rest at α=0.05?". The critical value
+// depends on the sample size — a small sample needs more standard
+// deviations to constitute a "significant outlier" than a large one,
+// which is the property z=2.5 gets wrong on small fixtures.
+//
+//   ./talon build examples/grubbs_consumption.talon
+//   ./talon test examples/grubbs_consumption.talon test/grubbs_consumption.talon.test
+//   ./talon explain examples/grubbs_consumption.talon test/grubbs_consumption.talon.test
+//   ./talon explain examples/grubbs_consumption.talon test/grubbs_consumption.talon.test --csv
+
+detect "Grubbs consumption outlier" {
+  for records where type == "stock_item"
+    and attr "weekly_consumption" is anomaly using grubbs compared_to last 12 weeks
+  flag matching items
+  label "{item.name}: {attr.weekly_consumption} — Grubbs-significant outlier"
+  priority HIGH
+}
