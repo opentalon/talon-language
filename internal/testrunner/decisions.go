@@ -209,7 +209,10 @@ func executeForDecisions(
 			// Same tuning hook as runOneTuned — when a Decision pipeline
 			// crosses a detect block with `tune against test`, inject the
 			// ABC-discovered parameter (anomaly threshold, learned percentile,
-			// etc.) before invoking the primitive.
+			// etc.) before invoking the primitive. The real registry ensures
+			// Decisions reflect post-ML narrowing rather than every selector
+			// candidate (which would make audit output worse than useless
+			// when an ML step is present).
 			reg := mlruntime.NewRegistry()
 			stepToRun := s
 			if tunings != nil {

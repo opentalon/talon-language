@@ -797,11 +797,28 @@ func (p *parser) parseForecastPredictClause() *ast.ForecastPredictClause {
 func (p *parser) parseAnomalyClause() *ast.AnomalyClause {
 	p.advance() // is
 	p.expect(lexer.TokenAnomaly)
+	method := parseAnomalyMethod(p)
 	p.expect(lexer.TokenComparedTo)
 	p.expect(lexer.TokenLast)
 	n, _ := strconv.Atoi(p.expectNumberStr())
 	unit := p.expectDurationUnit()
-	return &ast.AnomalyClause{Window: ast.Duration{Value: n, Unit: unit}}
+	return &ast.AnomalyClause{Method: method, Window: ast.Duration{Value: n, Unit: unit}}
+}
+
+// parseAnomalyMethod reads an optional `using METHOD` clause and returns the
+// method name. Falls back to "" (= zscore default) when the clause is absent.
+// Recognized: "zscore" (explicit), "grubbs". Other identifiers are accepted
+// at parse time and rejected by the validator with a helpful suggestion.
+func parseAnomalyMethod(p *parser) string {
+	if !p.at(lexer.TokenUsing) {
+		return ""
+	}
+	p.advance() // using
+	if !p.at(lexer.TokenIdent) {
+		p.errorf("expected anomaly method (zscore, grubbs) after 'using', got %q", p.peek().Value)
+		return ""
+	}
+	return p.advance().Value
 }
 
 func (p *parser) parseNestedPredictClause() *ast.PredictClause {
@@ -981,13 +998,14 @@ func (p *parser) parseAtomCondition() ast.Condition {
 		// standalone "is STRING" — no subject
 		p.advance()
 		if p.at(lexer.TokenAnomaly) {
-			// "is anomaly compared_to last N UNIT" inside a condition context
+			// "is anomaly [using METHOD] compared_to last N UNIT"
 			p.advance() // anomaly
+			method := parseAnomalyMethod(p)
 			p.expect(lexer.TokenComparedTo)
 			p.expect(lexer.TokenLast)
 			n, _ := strconv.Atoi(p.expectNumberStr())
 			unit := p.expectDurationUnit()
-			return &ast.AnomalyCondition{Window: ast.Duration{Value: n, Unit: unit}}
+			return &ast.AnomalyCondition{Method: method, Window: ast.Duration{Value: n, Unit: unit}}
 		}
 		name := p.expectString()
 		return &ast.IsCondition{Name: name}
@@ -1048,11 +1066,12 @@ func (p *parser) parseExprCondition() ast.Condition {
 		p.advance()
 		if p.at(lexer.TokenAnomaly) {
 			p.advance()
+			method := parseAnomalyMethod(p)
 			p.expect(lexer.TokenComparedTo)
 			p.expect(lexer.TokenLast)
 			n, _ := strconv.Atoi(p.expectNumberStr())
 			unit := p.expectDurationUnit()
-			return &ast.AnomalyCondition{Subject: expr, Window: ast.Duration{Value: n, Unit: unit}}
+			return &ast.AnomalyCondition{Subject: expr, Method: method, Window: ast.Duration{Value: n, Unit: unit}}
 		}
 		name := p.expectString()
 		return &ast.IsCondition{Subject: expr, Name: name}

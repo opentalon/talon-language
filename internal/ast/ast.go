@@ -312,9 +312,13 @@ type StringMatchCondition struct {
 	Value   string
 }
 
-// AnomalyCondition is `attr X is anomaly compared_to last N days`.
+// AnomalyCondition is `attr X is anomaly [using METHOD] compared_to last N days`.
+// Method defaults to "zscore" when the optional `using` clause is omitted;
+// the only other recognized value today is "grubbs" (Grubbs' single-outlier
+// test). Validator + planner route to the matching mlruntime primitive.
 type AnomalyCondition struct {
 	Subject Expr
+	Method  string // "zscore" (default) or "grubbs"
 	Window  Duration
 }
 
@@ -437,6 +441,7 @@ type ForecastPredictClause struct {
 }
 
 type AnomalyClause struct {
+	Method string // "zscore" (default) or "grubbs"
 	Window Duration
 }
 
