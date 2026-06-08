@@ -127,7 +127,7 @@ func WithFilename(name string) Option {
 // a workflow to inspect its plan without contacting the host.
 //
 // No Datalevin client is wired up here; programs that include
-// DatalevinQuery / MLComputation steps are not supported by this entry
+// FactQuery / MLComputation steps are not supported by this entry
 // point and will fail at execution time. A future Run / RunFull entry
 // point will accept a Datalevin client for the full language surface.
 func RunWorkflow(ctx context.Context, src string, opts ...Option) (*Result, error) {
@@ -178,12 +178,12 @@ func RunWorkflow(ctx context.Context, src string, opts ...Option) (*Result, erro
 
 // needsFactStore reports whether any compiled plan contains a step
 // that the executor will dispatch against the FactStore (today: any
-// DatalevinQuery step). Used by RunWorkflow to reject programs that
+// FactQuery step). Used by RunWorkflow to reject programs that
 // require a fact store rather than silently no-op'ing the steps.
 func needsFactStore(plans map[string]*planner.QueryPlan) bool {
 	for _, plan := range plans {
 		for _, step := range plan.Steps {
-			if _, ok := step.(*planner.DatalevinQuery); ok {
+			if _, ok := step.(*planner.FactQuery); ok {
 				return true
 			}
 		}

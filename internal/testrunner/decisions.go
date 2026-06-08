@@ -198,8 +198,8 @@ func executeForDecisions(
 
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
-		case *planner.DatalevinQuery:
-			ids := evalDatalogInMemory(s.Query, entities)
+		case *planner.FactQuery:
+			ids := evalQueryInMemory(s.Query, entities)
 			vars[s.Into] = ids
 			if !flaggedSet {
 				flagged = ids

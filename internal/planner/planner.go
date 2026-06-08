@@ -6,6 +6,7 @@ import (
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/talon-language/internal/factstore"
 )
 
 // GoComputation function names.
@@ -34,16 +35,19 @@ type QueryPlan struct {
 	Steps     []PlanStep
 }
 
-// PlanStep is implemented by DatalevinQuery, GoComputation, MLComputation, and Filter.
+// PlanStep is implemented by FactQuery, GoComputation, MLComputation, and Filter.
 type PlanStep interface {
 	stepType() string
 }
 
-// DatalevinQuery fetches or aggregates facts from Datalevin.
-type DatalevinQuery struct {
-	Query    string         // Datalevin Datalog query string
-	BindVars map[string]any // parameters bound at query time
-	Into     string         // result variable name
+// FactQuery is a structured read step against any FactStore implementation.
+// The planner emits these; the executor passes them to the backend. The
+// Datalevin client translates the structured form to its native Datalog at
+// the call boundary; MemoryStore interprets the form directly.
+type FactQuery struct {
+	Query    factstore.Query // structured query over patterns/predicates
+	BindVars map[string]any  // parameters bound at query time (reserved)
+	Into     string          // result variable name
 }
 
 // GoComputation runs a non-ML Go function over a result set
@@ -83,7 +87,7 @@ type GraphSnapshot struct {
 	Into     string
 }
 
-func (*DatalevinQuery) stepType() string { return "DatalevinQuery" }
+func (*FactQuery) stepType() string { return "FactQuery" }
 func (*GoComputation) stepType() string  { return "GoComputation" }
 func (*MLComputation) stepType() string  { return "MLComputation" }
 func (*Filter) stepType() string         { return "Filter" }
@@ -122,8 +126,10 @@ func IsMLFunction(fn string) bool {
 	return false
 }
 
-// EmitDatalevin returns the Datalog query string from a DatalevinQuery step.
-func EmitDatalevin(q *DatalevinQuery) string {
+// QueryOf returns the structured query for a FactQuery step. Kept as a
+// helper so external callers don't dereference the field directly (room
+// to swap representations later).
+func QueryOf(q *FactQuery) factstore.Query {
 	return q.Query
 }
 
@@ -196,7 +202,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
 
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -316,7 +322,7 @@ func (p *planner) planRule(b *ast.RuleBlock) *QueryPlan {
 	} else if b.When != nil {
 		qb.addCondition(b.When)
 	}
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -347,7 +353,7 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 
 	// calculate steps
 	for _, calc := range b.Calculate {
-		plan.Steps = append(plan.Steps, &DatalevinQuery{
+		plan.Steps = append(plan.Steps, &FactQuery{
 			Query:    p.buildCalculateQuery(calc),
 			BindVars: map[string]any{},
 			Into:     calc.Name,
@@ -369,7 +375,7 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -395,7 +401,7 @@ func (p *planner) planForecastBlock(b *ast.ForecastBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -421,7 +427,7 @@ func (p *planner) planClusterBlock(b *ast.ClusterBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -439,7 +445,7 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -457,7 +463,7 @@ func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -475,7 +481,7 @@ func (p *planner) planRelatedBlock(b *ast.RelatedBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}
 	qb := p.newQueryBuilder()
 	qb.addSelector(b.Selector)
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -548,13 +554,12 @@ func (p *planner) planCombinePareto(plan *QueryPlan, qb *queryBuilder, b *ast.Co
 			continue
 		}
 		v := qb.varFor(attr.Name)
-		qb.whereClauses = append(qb.whereClauses,
-			fmt.Sprintf("[%s :attr/%s %s]", qb.entityVar, sanitizeIdent(attr.Name), v))
+		qb.addPattern(":attr/"+sanitizeIdent(attr.Name), factstore.Var(v))
 		qb.findVars = appendUniq(qb.findVars, v)
 		indices = append(indices, indexOf(qb.findVars, v))
 	}
 
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -585,8 +590,7 @@ func (p *planner) planCombineGA(plan *QueryPlan, qb *queryBuilder, b *ast.Combin
 			return
 		}
 		v := qb.varFor(name)
-		qb.whereClauses = append(qb.whereClauses,
-			fmt.Sprintf("[%s :attr/%s %s]", qb.entityVar, sanitizeIdent(name), v))
+		qb.addPattern(":attr/"+sanitizeIdent(name), factstore.Var(v))
 		qb.findVars = appendUniq(qb.findVars, v)
 		attrIndices[name] = indexOf(qb.findVars, v)
 	}
@@ -602,7 +606,7 @@ func (p *planner) planCombineGA(plan *QueryPlan, qb *queryBuilder, b *ast.Combin
 		}
 	}
 
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -645,7 +649,7 @@ func (p *planner) planCombineACO(plan *QueryPlan, qb *queryBuilder, b *ast.Combi
 		bindCombineAttr(qb, yAttr.Name, attrIndices)
 	}
 
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -689,7 +693,7 @@ func (p *planner) planCombineILP(plan *QueryPlan, qb *queryBuilder, b *ast.Combi
 		}
 	}
 
-	plan.Steps = append(plan.Steps, &DatalevinQuery{
+	plan.Steps = append(plan.Steps, &FactQuery{
 		Query:    qb.build(),
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
@@ -717,8 +721,7 @@ func bindCombineAttr(qb *queryBuilder, name string, attrIndices map[string]int) 
 		return
 	}
 	v := qb.varFor(name)
-	qb.whereClauses = append(qb.whereClauses,
-		fmt.Sprintf("[%s :attr/%s %s]", qb.entityVar, sanitizeIdent(name), v))
+	qb.addPattern(":attr/"+sanitizeIdent(name), factstore.Var(v))
 	qb.findVars = appendUniq(qb.findVars, v)
 	attrIndices[name] = indexOf(qb.findVars, v)
 }
@@ -815,11 +818,36 @@ type queryBuilder struct {
 	defines        map[string]*ast.DefineBlock
 	entityVar      string
 	findVars       []string
-	whereClauses   []string
+	whereClauses   []factstore.Clause
 	goConditions   []ast.Condition
 	anomalyConds   []anomalyBinding
 	thresholdConds []thresholdBinding
 	usedVars       map[string]int // base name → count (for dedup)
+}
+
+// pattern is a builder helper for an EAV match clause where the entity is
+// bound to the builder's entity variable.
+func (b *queryBuilder) pattern(attr string, value factstore.Term) *factstore.Pattern {
+	return &factstore.Pattern{
+		Entity:    factstore.Term{Var: b.entityVar},
+		Attribute: attr,
+		Value:     value,
+	}
+}
+
+// addPattern appends a value-binding pattern. `value` is a variable name
+// (will become Term.Var) or a literal Go value (becomes Term.Literal).
+func (b *queryBuilder) addPattern(attr string, value factstore.Term) {
+	b.whereClauses = append(b.whereClauses, b.pattern(attr, value))
+}
+
+// addPredicate appends a comparison or string-match predicate.
+func (b *queryBuilder) addPredicate(op string, left, right factstore.Term) {
+	b.whereClauses = append(b.whereClauses, &factstore.Predicate{
+		Op:    op,
+		Left:  left,
+		Right: right,
+	})
 }
 
 // anomalyBinding records an `attr X is anomaly` clause lifted out of the
@@ -908,17 +936,17 @@ func (b *queryBuilder) addLogical(c *ast.LogicalCondition) {
 	// OR: collect sub-clauses from each side in a nested builder
 	left := b.subClauses(c.Left)
 	right := b.subClauses(c.Right)
-	b.whereClauses = append(b.whereClauses,
-		fmt.Sprintf("(or\n     %s\n     %s)", strings.Join(left, " "), strings.Join(right, " ")))
+	b.whereClauses = append(b.whereClauses, &factstore.Or{
+		Branches: [][]factstore.Clause{left, right},
+	})
 }
 
 func (b *queryBuilder) addNot(c *ast.NotCondition) {
 	sub := b.subClauses(c.Inner)
-	b.whereClauses = append(b.whereClauses,
-		fmt.Sprintf("(not %s)", strings.Join(sub, " ")))
+	b.whereClauses = append(b.whereClauses, &factstore.Not{Body: sub})
 }
 
-func (b *queryBuilder) subClauses(cond ast.Condition) []string {
+func (b *queryBuilder) subClauses(cond ast.Condition) []factstore.Clause {
 	child := &queryBuilder{
 		defines:   b.defines,
 		entityVar: b.entityVar,
@@ -938,48 +966,37 @@ func (b *queryBuilder) addCompare(c *ast.CompareCondition) {
 
 	leftPath, leftIsField := exprToFieldPath(c.Left)
 	rightPath, rightIsField := exprToFieldPath(c.Right)
-	leftLit, leftIsLit := exprToDatalogLiteral(c.Left)
-	rightLit, rightIsLit := exprToDatalogLiteral(c.Right)
-
-	// Determine the Datalevin operator
-	dlOp := datalevinOp(c.Op)
+	leftLitVal, leftIsLit := exprToGoLiteral(c.Left)
+	rightLitVal, rightIsLit := exprToGoLiteral(c.Right)
 
 	switch {
 	case leftIsField && rightIsLit:
 		if c.Op == "==" {
-			// Direct value binding: [?e :ns/attr "value"]
-			b.whereClauses = append(b.whereClauses,
-				fmt.Sprintf("[%s %s %s]", b.entityVar, leftPath, rightLit))
+			// Direct value binding: pattern matches the literal value.
+			b.addPattern(leftPath, factstore.Lit(rightLitVal))
 		} else {
-			// Need intermediate var
+			// Bind to a variable, then constrain via predicate.
 			v := b.varFor(attrVarName(c.Left))
-			b.whereClauses = append(b.whereClauses,
-				fmt.Sprintf("[%s %s %s]", b.entityVar, leftPath, v))
+			b.addPattern(leftPath, factstore.Var(v))
 			b.findVars = appendUniq(b.findVars, v)
-			b.whereClauses = append(b.whereClauses,
-				fmt.Sprintf("[(%s %s %s)]", dlOp, v, rightLit))
+			b.addPredicate(c.Op, factstore.Var(v), factstore.Lit(rightLitVal))
 		}
 
 	case leftIsField && rightIsField:
 		// attr1 OP attr2
 		lv := b.varFor(attrVarName(c.Left))
 		rv := b.varFor(attrVarName(c.Right))
-		b.whereClauses = append(b.whereClauses,
-			fmt.Sprintf("[%s %s %s]", b.entityVar, leftPath, lv))
-		b.whereClauses = append(b.whereClauses,
-			fmt.Sprintf("[%s %s %s]", b.entityVar, rightPath, rv))
+		b.addPattern(leftPath, factstore.Var(lv))
+		b.addPattern(rightPath, factstore.Var(rv))
 		b.findVars = appendUniq(b.findVars, lv, rv)
-		b.whereClauses = append(b.whereClauses,
-			fmt.Sprintf("[(%s %s %s)]", dlOp, lv, rv))
+		b.addPredicate(c.Op, factstore.Var(lv), factstore.Var(rv))
 
 	case leftIsLit && rightIsField:
-		// literal OP attr (reversed)
+		// literal OP attr (reversed) — bind the attr, predicate on the literal.
 		rv := b.varFor(attrVarName(c.Right))
-		b.whereClauses = append(b.whereClauses,
-			fmt.Sprintf("[%s %s %s]", b.entityVar, rightPath, rv))
+		b.addPattern(rightPath, factstore.Var(rv))
 		b.findVars = appendUniq(b.findVars, rv)
-		b.whereClauses = append(b.whereClauses,
-			fmt.Sprintf("[(%s %s %s)]", dlOp, leftLit, rv))
+		b.addPredicate(c.Op, factstore.Lit(leftLitVal), factstore.Var(rv))
 
 	default:
 		// Complex expr (binary arithmetic, context refs, etc.) → Go
@@ -1002,23 +1019,20 @@ func (b *queryBuilder) addMembership(c *ast.MembershipCondition) {
 		}
 	}
 	v := b.varFor(attrVarName(c.Expr))
-	b.whereClauses = append(b.whereClauses,
-		fmt.Sprintf("[%s %s %s]", b.entityVar, path, v))
+	b.addPattern(path, factstore.Var(v))
 	b.findVars = appendUniq(b.findVars, v)
-	lits := make([]string, 0, len(c.Members))
+
+	members := make([]any, 0, len(c.Members))
 	for _, m := range c.Members {
-		if lit, ok := exprToDatalogLiteral(m); ok {
-			lits = append(lits, lit)
+		if val, ok := exprToGoLiteral(m); ok {
+			members = append(members, val)
 		}
 	}
-	set := fmt.Sprintf("#{%s}", strings.Join(lits, " "))
+	op := "in"
 	if c.Negated {
-		b.whereClauses = append(b.whereClauses,
-			fmt.Sprintf("[(not (contains? %s %s))]", set, v))
-	} else {
-		b.whereClauses = append(b.whereClauses,
-			fmt.Sprintf("[(contains? %s %s)]", set, v))
+		op = "not_in"
 	}
+	b.addPredicate(op, factstore.Var(v), factstore.Lit(members))
 }
 
 func (b *queryBuilder) addIsCondition(c *ast.IsCondition) {
@@ -1032,8 +1046,8 @@ func (b *queryBuilder) addIsCondition(c *ast.IsCondition) {
 }
 
 // addLearnedThresholdCompare lifts `attr X OP learned_threshold ...` out of
-// the Datalog selector. The Datalog query is widened to return the bound
-// value var so the primitive can compute the percentile and per-row decision.
+// the selector. The query is widened to return the bound value var so the
+// primitive can compute the percentile and per-row decision.
 func (b *queryBuilder) addLearnedThresholdCompare(c *ast.CompareCondition, lt *ast.LearnedThresholdExpr) {
 	path, ok := exprToFieldPath(c.Left)
 	if !ok {
@@ -1042,8 +1056,7 @@ func (b *queryBuilder) addLearnedThresholdCompare(c *ast.CompareCondition, lt *a
 	}
 	attrName := attrVarName(c.Left)
 	v := b.varFor(attrName)
-	b.whereClauses = append(b.whereClauses,
-		fmt.Sprintf("[%s %s %s]", b.entityVar, path, v))
+	b.addPattern(path, factstore.Var(v))
 	b.findVars = appendUniq(b.findVars, v)
 	b.thresholdConds = append(b.thresholdConds, thresholdBinding{
 		AttrPath: path,
@@ -1055,10 +1068,10 @@ func (b *queryBuilder) addLearnedThresholdCompare(c *ast.CompareCondition, lt *a
 	})
 }
 
-// addAnomalyCondition lifts `attr X is anomaly` out of the Datalog selector:
-// it binds the value var into the query's :find clause so the resulting rows
-// carry the numeric series, and records a binding the planner uses to emit
-// an MLComputation step after the query.
+// addAnomalyCondition lifts `attr X is anomaly` out of the selector: it
+// binds the value var into the :find clause so the resulting rows carry
+// the numeric series, and records a binding the planner uses to emit an
+// MLComputation step after the query.
 func (b *queryBuilder) addAnomalyCondition(c *ast.AnomalyCondition) {
 	path, ok := exprToFieldPath(c.Subject)
 	if !ok {
@@ -1067,8 +1080,7 @@ func (b *queryBuilder) addAnomalyCondition(c *ast.AnomalyCondition) {
 	}
 	attrName := attrVarName(c.Subject)
 	v := b.varFor(attrName)
-	b.whereClauses = append(b.whereClauses,
-		fmt.Sprintf("[%s %s %s]", b.entityVar, path, v))
+	b.addPattern(path, factstore.Var(v))
 	b.findVars = appendUniq(b.findVars, v)
 	b.anomalyConds = append(b.anomalyConds, anomalyBinding{
 		AttrPath: path,
@@ -1086,29 +1098,19 @@ func (b *queryBuilder) addStringMatch(c *ast.StringMatchCondition) {
 		return
 	}
 	v := b.varFor(attrVarName(c.Subject))
-	b.whereClauses = append(b.whereClauses,
-		fmt.Sprintf("[%s %s %s]", b.entityVar, path, v))
+	b.addPattern(path, factstore.Var(v))
 	b.findVars = appendUniq(b.findVars, v)
-	lit := fmt.Sprintf("%q", c.Value)
-	var pred string
-	switch c.Op {
-	case "starts_with":
-		pred = fmt.Sprintf("[(clojure.string/starts-with? %s %s)]", v, lit)
-	case "ends_with":
-		pred = fmt.Sprintf("[(clojure.string/ends-with? %s %s)]", v, lit)
-	default: // contains
-		pred = fmt.Sprintf("[(clojure.string/includes? %s %s)]", v, lit)
-	}
-	b.whereClauses = append(b.whereClauses, pred)
+	b.addPredicate(c.Op, factstore.Var(v), factstore.Lit(c.Value))
 }
 
-func (b *queryBuilder) build() string {
-	findClause := strings.Join(b.findVars, " ")
-	var where strings.Builder
-	for _, clause := range b.whereClauses {
-		where.WriteString("\n " + clause)
+// build emits the structured Query the planner attaches to each FactQuery
+// plan step. Backends never see Datalog text — the Datalevin client owns
+// the only translator that turns this back into wire-format Datalog.
+func (b *queryBuilder) build() factstore.Query {
+	return factstore.Query{
+		Find:  append([]string(nil), b.findVars...),
+		Where: append([]factstore.Clause(nil), b.whereClauses...),
 	}
-	return fmt.Sprintf("[:find %s\n :where%s]", findClause, where.String())
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1133,27 +1135,16 @@ func exprToFieldPath(e ast.Expr) (path string, ok bool) {
 	return "", false
 }
 
-// exprToDatalogLiteral renders a literal expression as a Datalog value.
-func exprToDatalogLiteral(e ast.Expr) (string, bool) {
+// exprToGoLiteral extracts the underlying Go value from a literal AST node.
+// Returns (value, true) when the expression is a literal; (nil, false)
+// otherwise. The structured Query model carries Go values directly, so the
+// translator (Datalevin) or interpreter (MemoryStore) decides on rendering.
+func exprToGoLiteral(e ast.Expr) (any, bool) {
 	lit, ok := e.(*ast.LiteralExpr)
 	if !ok {
-		return "", false
+		return nil, false
 	}
-	switch v := lit.Value.(type) {
-	case string:
-		return fmt.Sprintf("%q", v), true
-	case float64:
-		if v == float64(int64(v)) {
-			return fmt.Sprintf("%d", int64(v)), true
-		}
-		return fmt.Sprintf("%g", v), true
-	case bool:
-		if v {
-			return "true", true
-		}
-		return "false", true
-	}
-	return fmt.Sprintf("%v", lit.Value), lit.Value != nil
+	return lit.Value, lit.Value != nil
 }
 
 // attrVarName returns a Datalevin variable base name for an expression.
@@ -1165,17 +1156,6 @@ func attrVarName(e ast.Expr) string {
 		return v.Name
 	}
 	return "val"
-}
-
-func datalevinOp(op string) string {
-	switch op {
-	case "==":
-		return "="
-	case "!=":
-		return "not="
-	default:
-		return op
-	}
 }
 
 func sanitizeIdent(s string) string {
@@ -1190,7 +1170,7 @@ func renderGoConditions(conds []ast.Condition) string {
 	return strings.Join(parts, " && ")
 }
 
-func (p *planner) buildCalculateQuery(calc ast.CalculateClause) string {
+func (p *planner) buildCalculateQuery(calc ast.CalculateClause) factstore.Query {
 	qb := p.newQueryBuilder()
 	for _, c := range calc.Where {
 		qb.addCondition(c)

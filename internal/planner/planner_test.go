@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/validator"
@@ -49,14 +50,14 @@ func keys(m map[string]*QueryPlan) []string {
 	return out
 }
 
-func queryStep(t *testing.T, plan *QueryPlan, i int) *DatalevinQuery {
+func queryStep(t *testing.T, plan *QueryPlan, i int) *FactQuery {
 	t.Helper()
 	if i >= len(plan.Steps) {
 		t.Fatalf("step[%d]: out of range (len=%d)", i, len(plan.Steps))
 	}
-	q, ok := plan.Steps[i].(*DatalevinQuery)
+	q, ok := plan.Steps[i].(*FactQuery)
 	if !ok {
-		t.Fatalf("step[%d]: expected *DatalevinQuery, got %T", i, plan.Steps[i])
+		t.Fatalf("step[%d]: expected *FactQuery, got %T", i, plan.Steps[i])
 	}
 	return q
 }
@@ -114,10 +115,10 @@ detect "Low stock" {
 		t.Fatal("expected at least one step")
 	}
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, ":find")
-	assertContains(t, q.Query, ":where")
-	assertContains(t, q.Query, `:record/type`)
-	assertContains(t, q.Query, `"stock_item"`)
+	assertContains(t, q.Query.String(), ":find")
+	assertContains(t, q.Query.String(), ":where")
+	assertContains(t, q.Query.String(), `:record/type`)
+	assertContains(t, q.Query.String(), `"stock_item"`)
 }
 
 func TestPlanDetectAttrComparison(t *testing.T) {
@@ -128,9 +129,9 @@ detect "Overdue km" {
 }`, "Overdue km")
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, ":attr/km")
-	assertContains(t, q.Query, "?km")
-	assertContains(t, q.Query, "> ?km 20000")
+	assertContains(t, q.Query.String(), ":attr/km")
+	assertContains(t, q.Query.String(), "?km")
+	assertContains(t, q.Query.String(), "> ?km 20000")
 }
 
 func TestPlanDetectMultiConditionAnd(t *testing.T) {
@@ -143,9 +144,9 @@ detect "Active items" {
 }`, "Active items")
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, `:record/type`)
-	assertContains(t, q.Query, `:record/status`)
-	assertContains(t, q.Query, `:attr/price`)
+	assertContains(t, q.Query.String(), `:record/type`)
+	assertContains(t, q.Query.String(), `:record/status`)
+	assertContains(t, q.Query.String(), `:attr/price`)
 }
 
 func TestPlanDetectStatusNotEqual(t *testing.T) {
@@ -156,8 +157,8 @@ detect "Not archived" {
 }`, "Not archived")
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, `not=`)
-	assertContains(t, q.Query, `"archived"`)
+	assertContains(t, q.Query.String(), `not=`)
+	assertContains(t, q.Query.String(), `"archived"`)
 }
 
 func TestPlanDetectMembership(t *testing.T) {
@@ -168,9 +169,9 @@ detect "In category" {
 }`, "In category")
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, `contains?`)
-	assertContains(t, q.Query, `"active"`)
-	assertContains(t, q.Query, `"pending"`)
+	assertContains(t, q.Query.String(), `contains?`)
+	assertContains(t, q.Query.String(), `"active"`)
+	assertContains(t, q.Query.String(), `"pending"`)
 }
 
 func TestPlanDetectOrCondition(t *testing.T) {
@@ -181,7 +182,7 @@ detect "Either" {
 }`, "Either")
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, "(or")
+	assertContains(t, q.Query.String(), "(or")
 }
 
 func TestPlanDetectNotCondition(t *testing.T) {
@@ -192,7 +193,7 @@ detect "Not inactive" {
 }`, "Not inactive")
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, "(not")
+	assertContains(t, q.Query.String(), "(not")
 }
 
 func TestPlanDetectAnomalyConditionEmitsMLStep(t *testing.T) {
@@ -205,9 +206,9 @@ detect "Unusual" {
 
 	q := queryStep(t, plan, 0)
 	// Query must bind the value var so the primitive can score it.
-	assertContains(t, q.Query, ":attr/weekly_consumption")
-	assertContains(t, q.Query, "?weekly_consumption")
-	assertContains(t, q.Query, ":find ?e ?weekly_consumption")
+	assertContains(t, q.Query.String(), ":attr/weekly_consumption")
+	assertContains(t, q.Query.String(), "?weekly_consumption")
+	assertContains(t, q.Query.String(), ":find ?e ?weekly_consumption")
 
 	m := findMLStep(plan, FuncAnomalyZscore)
 	if m == nil {
@@ -230,9 +231,9 @@ detect "High mileage" {
 }`, "High mileage")
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, ":attr/km")
-	assertContains(t, q.Query, "?km")
-	assertContains(t, q.Query, ":find ?e ?km")
+	assertContains(t, q.Query.String(), ":attr/km")
+	assertContains(t, q.Query.String(), "?km")
+	assertContains(t, q.Query.String(), ":find ?e ?km")
 
 	m := findMLStep(plan, FuncLearnedThreshold)
 	if m == nil {
@@ -261,7 +262,7 @@ detect "Unusual" {
 }`, "Unusual")
 
 	if len(plan.Steps) < 2 {
-		t.Fatalf("expected DatalevinQuery + MLComputation, got %d steps", len(plan.Steps))
+		t.Fatalf("expected FactQuery + MLComputation, got %d steps", len(plan.Steps))
 	}
 	queryStep(t, plan, 0)
 	m := mlStep(t, plan, 1)
@@ -303,8 +304,8 @@ detect "Expensive" {
 
 	q := queryStep(t, plan, 0)
 	// define's condition should be inlined: attr "price" > 10000
-	assertContains(t, q.Query, ":attr/price")
-	assertContains(t, q.Query, "10000")
+	assertContains(t, q.Query.String(), ":attr/price")
+	assertContains(t, q.Query.String(), "10000")
 }
 
 // ─── rule ──────────────────────────────────────────────────────────────────────
@@ -428,8 +429,8 @@ find related "Co-consumed parts" {
 	if len(plan.Steps) < 3 {
 		t.Fatalf("expected 3 steps, got %d: %+v", len(plan.Steps), plan.Steps)
 	}
-	if _, ok := plan.Steps[0].(*DatalevinQuery); !ok {
-		t.Errorf("step 0: want DatalevinQuery, got %T", plan.Steps[0])
+	if _, ok := plan.Steps[0].(*FactQuery); !ok {
+		t.Errorf("step 0: want FactQuery, got %T", plan.Steps[0])
 	}
 	gs, ok := plan.Steps[1].(*GraphSnapshot)
 	if !ok {
@@ -493,16 +494,19 @@ func TestIsMLFunction(t *testing.T) {
 	}
 }
 
-// ─── EmitDatalevin ─────────────────────────────────────────────────────────────
+// ─── QueryOf ───────────────────────────────────────────────────────────────────
 
-func TestEmitDatalevin(t *testing.T) {
-	q := &DatalevinQuery{
-		Query: "[:find ?e :where [?e :record/type \"item\"]]",
-		Into:  "results",
+func TestQueryOf(t *testing.T) {
+	inner := factstore.Query{
+		Find: []string{"?e"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: ":record/type", Value: factstore.Lit("item")},
+		},
 	}
-	got := EmitDatalevin(q)
-	if got != q.Query {
-		t.Errorf("EmitDatalevin: got %q, want %q", got, q.Query)
+	q := &FactQuery{Query: inner, Into: "results"}
+	got := QueryOf(q)
+	if len(got.Find) != 1 || got.Find[0] != "?e" {
+		t.Errorf("QueryOf returned %+v", got)
 	}
 }
 
@@ -592,16 +596,16 @@ combine "Dispatch picks" {
 }`, "Dispatch picks")
 
 	if len(plan.Steps) != 2 {
-		t.Fatalf("expected 2 steps (DatalevinQuery + GoComputation), got %d", len(plan.Steps))
+		t.Fatalf("expected 2 steps (FactQuery + GoComputation), got %d", len(plan.Steps))
 	}
 
 	q := queryStep(t, plan, 0)
 	// The objective attrs must be bound into the find clause so rows
 	// carry the per-objective value the optimizer reads.
-	assertContains(t, q.Query, "?cost_per_km")
-	assertContains(t, q.Query, "?urgency_score")
-	assertContains(t, q.Query, ":attr/cost_per_km")
-	assertContains(t, q.Query, ":attr/urgency_score")
+	assertContains(t, q.Query.String(), "?cost_per_km")
+	assertContains(t, q.Query.String(), "?urgency_score")
+	assertContains(t, q.Query.String(), ":attr/cost_per_km")
+	assertContains(t, q.Query.String(), ":attr/urgency_score")
 
 	gc := goStep(t, plan, 1)
 	if gc.Function != FuncOptimizePareto {
@@ -666,8 +670,8 @@ combine "Reorder picks" {
 	}
 
 	q := queryStep(t, plan, 0)
-	assertContains(t, q.Query, ":attr/cost")
-	assertContains(t, q.Query, ":attr/urgency")
+	assertContains(t, q.Query.String(), ":attr/cost")
+	assertContains(t, q.Query.String(), ":attr/urgency")
 
 	gc := goStep(t, plan, 1)
 	if gc.Function != FuncOptimizeGA {

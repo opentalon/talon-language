@@ -19,6 +19,7 @@ import (
 	"github.com/opentalon/talon-language/internal/diagnostic"
 	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/explain"
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/lexer"
 	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/parser"
@@ -372,21 +373,26 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 }
 
 func runExecute() {
-	// Parse args: talon run <file.talon> [--datalevin URL] [--seed file.talon.test]
+	// Parse args: talon run <file.talon> [--store backend] [--datalevin URL] [--seed file.talon.test]
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--datalevin URL] [--seed file.talon.test]")
+		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--store datalevin|memory] [--datalevin URL] [--seed file.talon.test]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
 	path := os.Args[2]
 	serverURL := "http://localhost:8898"
 	seedPath := ""
+	storeKind := "datalevin"
 	for i := 3; i < len(os.Args); i++ {
-		if os.Args[i] == "--datalevin" && i+1 < len(os.Args) {
+		switch {
+		case os.Args[i] == "--datalevin" && i+1 < len(os.Args):
 			serverURL = os.Args[i+1]
 			i++
-		} else if os.Args[i] == "--seed" && i+1 < len(os.Args) {
+		case os.Args[i] == "--seed" && i+1 < len(os.Args):
 			seedPath = os.Args[i+1]
+			i++
+		case os.Args[i] == "--store" && i+1 < len(os.Args):
+			storeKind = os.Args[i+1]
 			i++
 		}
 	}
@@ -404,17 +410,29 @@ func runExecute() {
 		os.Exit(diagnostic.ExitError)
 	}
 
-	// Connect to Datalevin
-	client := datalevin.NewClient(serverURL)
 	ctx := context.Background()
 
-	if err := client.Health(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "talon run: cannot reach datalevin-server at %s: %v\n", serverURL, err)
-		fmt.Fprintln(os.Stderr, "hint: start the server with: cd datalevin-server && clj -M:run")
-		os.Exit(diagnostic.ExitError)
+	// Wire the FactStore. `--store datalevin` (default) connects to the
+	// JVM sidecar; `--store memory` runs entirely in-process — useful
+	// for embedded deployments, demos, and CI.
+	var store factstore.FactStore
+	switch storeKind {
+	case "datalevin":
+		client := datalevin.NewClient(serverURL)
+		if err := client.Health(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "talon run: cannot reach datalevin-server at %s: %v\n", serverURL, err)
+			fmt.Fprintln(os.Stderr, "hint: start the server with: cd datalevin-server && clj -M:run")
+			os.Exit(diagnostic.ExitError)
+		}
+		store = client
+	case "memory":
+		store = factstore.NewMemoryStore()
+	default:
+		fmt.Fprintf(os.Stderr, "talon run: unknown --store %q (want datalevin or memory)\n", storeKind)
+		os.Exit(diagnostic.ExitUsage)
 	}
 
-	exec := executor.NewExecutor(client)
+	exec := executor.NewExecutor(store)
 
 	// Seed from .talon.test file if requested
 	if seedPath != "" {
@@ -612,10 +630,10 @@ func compile(file, src string) (map[string]*planner.QueryPlan, bool) {
 
 func printStep(num int, step planner.PlanStep) {
 	switch s := step.(type) {
-	case *planner.DatalevinQuery:
-		fmt.Printf("    step %d  DatalevinQuery → %s\n", num, s.Into)
-		// Indent the query
-		for _, line := range strings.Split(s.Query, "\n") {
+	case *planner.FactQuery:
+		fmt.Printf("    step %d  FactQuery → %s\n", num, s.Into)
+		// Render the structured query in Datalog form for readability.
+		for _, line := range strings.Split(s.Query.String(), "\n") {
 			fmt.Printf("            %s\n", line)
 		}
 	case *planner.GoComputation:

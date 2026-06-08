@@ -4,6 +4,8 @@
 
 - **[REPL walkthrough](./repl.md)** — interactive exploration with `:eval`,
   `:trace`, and an end-to-end insurance-claims example.
+- **[FactStore](./factstore.md)** — the database abstraction, structured
+  `Query`, MemoryStore, and the `--store=memory` flag.
 - **[Observability](./observability.md)** — structured logging,
   `--log-format` / `--log-level` flags, and `on { logger.info "…" }`
   execution.

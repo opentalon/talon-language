@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/pkg/talon"
 )
 
@@ -16,13 +17,12 @@ import (
 // reply closure.
 type fakeStore struct {
 	mu         sync.Mutex
-	queries    []string
-	queryReply func(q string) ([][]any, error)
-	tx         []map[string]any
-	schema     map[string]map[string]string
+	queries    []factstore.Query
+	queryReply func(q factstore.Query) ([][]any, error)
+	asserted   []factstore.Fact
 }
 
-func (f *fakeStore) Query(_ context.Context, q string) ([][]any, error) {
+func (f *fakeStore) Query(_ context.Context, q factstore.Query) ([][]any, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.queries = append(f.queries, q)
@@ -32,25 +32,30 @@ func (f *fakeStore) Query(_ context.Context, q string) ([][]any, error) {
 	return nil, nil
 }
 
-func (f *fakeStore) Transact(_ context.Context, tx []map[string]any) error {
+func (f *fakeStore) Assert(_ context.Context, facts []factstore.Fact) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.tx = append(f.tx, tx...)
-	return nil
-}
-
-func (f *fakeStore) Schema(_ context.Context, s map[string]map[string]string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.schema = s
+	f.asserted = append(f.asserted, facts...)
 	return nil
 }
 
 // Compile-time guard: fakeStore satisfies the public FactStore type
-// aliased from the executor's interface.
+// aliased from the canonical factstore interface.
 var _ talon.FactStore = (*fakeStore)(nil)
 
-// A minimal detect program — enough to force a DatalevinQuery into
+// queryMentions reports whether any clause in q targets the given attr.
+// Used in tests as a structured analogue of the old `strings.Contains`
+// checks against the wire-format Datalog.
+func queryMentions(q factstore.Query, attr string) bool {
+	for _, c := range q.Where {
+		if p, ok := c.(*factstore.Pattern); ok && p.Attribute == attr {
+			return true
+		}
+	}
+	return false
+}
+
+// A minimal detect program — enough to force a FactQuery into
 // the plan so Run actually hits the FactStore. Conditions are kept
 // in line (no define references) so the test source is self-contained.
 const detectSrc = `
@@ -66,12 +71,11 @@ detect "Low stock" {
 func TestRun_DetectBlockHitsFactStore(t *testing.T) {
 	rows := [][]any{{1}, {2}, {3}}
 	fs := &fakeStore{
-		queryReply: func(q string) ([][]any, error) {
+		queryReply: func(q factstore.Query) ([][]any, error) {
 			// First call is the detect query, second (if any) is
-			// ResolveNames. Both return the same canned rows
-			// for simplicity — the test only asserts on the
-			// detect side.
-			if strings.Contains(q, ":attr/name") {
+			// ResolveNames. Both return canned rows; ResolveNames'
+			// query is identifiable by its single :attr/name pattern.
+			if queryMentions(q, ":attr/name") {
 				return [][]any{{1, "Truck A"}, {2, "Truck B"}}, nil
 			}
 			return rows, nil
@@ -151,11 +155,8 @@ test "seed" {
 	if n != 1 {
 		t.Errorf("entities seeded: %d, want 1", n)
 	}
-	if fs.schema == nil {
-		t.Error("Seed should have declared a schema")
-	}
-	if len(fs.tx) == 0 {
-		t.Error("Seed should have transacted at least one fact")
+	if len(fs.asserted) == 0 {
+		t.Error("Seed should have asserted at least one fact")
 	}
 }
 
@@ -194,7 +195,13 @@ func TestNewFactStore_FailsAtFirstUse(t *testing.T) {
 	if fs == nil {
 		t.Fatal("NewFactStore returned nil")
 	}
-	_, err := fs.Query(context.Background(), "[:find ?e :where [?e :x ?]]")
+	q := factstore.Query{
+		Find: []string{"?e"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: ":x", Value: factstore.Var("v")},
+		},
+	}
+	_, err := fs.Query(context.Background(), q)
 	if err == nil {
 		t.Fatal("expected error for unreachable URL")
 	}

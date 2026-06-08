@@ -221,13 +221,13 @@ func findTestByName(prog *ast.Program, name string) *ast.TestBlock {
 	return nil
 }
 
-// computeCandidateIDs runs the plan's first DatalevinQuery against the
+// computeCandidateIDs runs the plan's first FactQuery against the
 // in-memory entities and returns the resulting entity IDs. This is the
 // candidate population the ML primitive sees.
 func computeCandidateIDs(plan *planner.QueryPlan, entities map[int]*entity) []int {
 	for _, step := range plan.Steps {
-		if dq, ok := step.(*planner.DatalevinQuery); ok {
-			return evalDatalogInMemory(dq.Query, entities)
+		if dq, ok := step.(*planner.FactQuery); ok {
+			return evalQueryInMemory(dq.Query, entities)
 		}
 	}
 	// Fallback: all entities.

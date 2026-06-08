@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentalon/talon-language/internal/datalevin"
 	"github.com/opentalon/talon-language/internal/executor"
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/planner"
@@ -70,6 +71,15 @@ func NewFactStore(url string) FactStore {
 	return &healthCheckedClient{client: datalevin.NewClient(url), url: url}
 }
 
+// NewMemoryStore returns a fresh Prolog-style in-memory FactStore. It
+// satisfies the same interface as the Datalevin client, so any code
+// path that accepts a FactStore — Run, Seed, the executor — accepts a
+// MemoryStore unchanged. Useful for tests, the REPL, and embedded
+// deployments where a sidecar is overkill.
+func NewMemoryStore() *factstore.MemoryStore {
+	return factstore.NewMemoryStore()
+}
+
 // healthCheckedClient wraps a *datalevin.Client and runs Health()
 // the first time the executor touches the store, so the URL-sugar
 // path surfaces a clean error instead of panicking on the first
@@ -91,25 +101,18 @@ func (h *healthCheckedClient) check(ctx context.Context) error {
 	return nil
 }
 
-func (h *healthCheckedClient) Query(ctx context.Context, q string) ([][]any, error) {
+func (h *healthCheckedClient) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
 	if err := h.check(ctx); err != nil {
 		return nil, err
 	}
 	return h.client.Query(ctx, q)
 }
 
-func (h *healthCheckedClient) Transact(ctx context.Context, tx []map[string]any) error {
+func (h *healthCheckedClient) Assert(ctx context.Context, facts []factstore.Fact) error {
 	if err := h.check(ctx); err != nil {
 		return err
 	}
-	return h.client.Transact(ctx, tx)
-}
-
-func (h *healthCheckedClient) Schema(ctx context.Context, s map[string]map[string]string) error {
-	if err := h.check(ctx); err != nil {
-		return err
-	}
-	return h.client.Schema(ctx, s)
+	return h.client.Assert(ctx, facts)
 }
 
 // Run compiles and executes a full Talon source (workflow + detect /
