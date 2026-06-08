@@ -113,6 +113,7 @@ const (
 	TokenWithin
 	TokenSame
 	TokenSimilar
+	TokenRelated
 	TokenCalculate
 	TokenThreshold
 	TokenLearnedThreshold
@@ -235,6 +236,7 @@ var keywords = map[string]TokenType{
 	"within":            TokenWithin,
 	"same":              TokenSame,
 	"similar":           TokenSimilar,
+	"related":           TokenRelated,
 	"calculate":         TokenCalculate,
 	"threshold":         TokenThreshold,
 	"learned_threshold": TokenLearnedThreshold,

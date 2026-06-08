@@ -11,6 +11,7 @@ import (
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
@@ -181,7 +182,36 @@ func runOneTuned(
 				Query: s.Query,
 				Rows:  ids,
 			})
+		case *planner.GraphSnapshot:
+			snap := buildGraphFromEntities(entities)
+			vars[s.Into] = snap
+			trace = append(trace, TraceStep{
+				Type: "GraphSnapshot",
+				Into: s.Into,
+			})
 		case *planner.MLComputation:
+			// PPR is special-cased: it consumes a GraphSnapshot from vars,
+			// not just the upstream candidate set, so it has its own runner.
+			if s.Function == planner.FuncPPRTopK {
+				narrowed, explanations := runPPR(reg, s, flagged, vars, entities)
+				flagged = narrowed
+				for _, e := range explanations {
+					mlByEntity[e.EntityID] = e
+				}
+				vars[s.Into] = map[string]any{
+					"function": s.Function,
+					"flagged":  flagged,
+				}
+				trace = append(trace, TraceStep{
+					Type:         "MLComputation",
+					Into:         s.Into,
+					Function:     s.Function,
+					Params:       s.Params,
+					Rows:         flagged,
+					Explanations: explanations,
+				})
+				continue
+			}
 			// If the test's WhenBlock is a detect with a `tune against test`
 			// clause, ABC has already discovered the optimal parameter against
 			// the labeled fixture; inject it (matching by primitive function)
@@ -854,6 +884,132 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 		}
 	}
 	return out, explanations
+}
+
+// buildGraphFromEntities projects the in-memory test entities into a
+// factstore.GraphSnapshot used by the PPR primitive. We ignore record
+// type metadata; every (attribute, value) pair contributes to the graph.
+func buildGraphFromEntities(entities map[int]*entity) *factstore.GraphSnapshot {
+	triples := make([]factstore.FactTriple, 0, len(entities)*4)
+	for id, e := range entities {
+		idStr := strconv.Itoa(id)
+		for attr, val := range e.fields {
+			triples = append(triples, factstore.FactTriple{
+				Entity:    idStr,
+				Attribute: attr,
+				Value:     val,
+			})
+		}
+	}
+	// Exclude high-fanout/low-information attributes that would otherwise
+	// connect every record in the selector to every other (type, status,
+	// per-entity unique names). The test fixture's discriminating signal
+	// lives in :record/category and :attr/* — the rest is noise.
+	return factstore.BuildSnapshotFromTriples(triples, 1, factstore.SnapshotOptions{
+		ExcludeAttrs: []string{":record/type", ":record/status", ":attr/name"},
+	})
+}
+
+// runPPR drives the PPR primitive from the test runner, resolving seed
+// expressions against the candidate row set and surfacing top-K entity IDs
+// + per-entity Explanations.
+func runPPR(reg *mlruntime.Registry, s *planner.MLComputation, candidates []int, vars map[string]any, _ map[int]*entity) ([]int, []mlruntime.Explanation) {
+	if reg == nil || !reg.Has(s.Function) {
+		return candidates, nil
+	}
+	prim, _ := reg.Get(s.Function)
+
+	graphVar, _ := s.Params["graph_var"].(string)
+	graph, _ := vars[graphVar].(*factstore.GraphSnapshot)
+	if graph == nil {
+		return candidates, nil
+	}
+
+	seeds := []string{}
+	if e, ok := s.Params["seed_expr"].(ast.Expr); ok && e != nil {
+		seeds = append(seeds, resolveSeedExpr(e, candidates)...)
+	}
+	if exprs, ok := s.Params["seeds_expr"].([]ast.Expr); ok {
+		for _, e := range exprs {
+			seeds = append(seeds, resolveSeedExpr(e, candidates)...)
+		}
+	}
+	if len(seeds) == 0 {
+		return candidates, nil
+	}
+
+	params := map[string]any{
+		"graph": graph,
+		"seeds": seeds,
+	}
+	for _, k := range []string{"top_k", "damping", "tolerance", "max_iterations", "include_seeds"} {
+		if v, ok := s.Params[k]; ok && v != nil {
+			params[k] = v
+		}
+	}
+
+	results, err := prim.Compute(context.Background(), mlruntime.Input{Params: params})
+	if err != nil {
+		return candidates, nil
+	}
+
+	keep := map[int]bool{}
+	explanations := make([]mlruntime.Explanation, 0, len(results))
+	for _, r := range results {
+		explanations = append(explanations, r.Explanation)
+		// Prefer the original numeric entity string when available.
+		if ent, _ := r.Explanation.Inputs["entity"].(string); ent != "" {
+			if id, err := strconv.Atoi(ent); err == nil {
+				keep[id] = true
+				continue
+			}
+		}
+		keep[r.EntityID] = true
+	}
+	out := make([]int, 0, len(keep))
+	for _, id := range candidates {
+		if keep[id] {
+			out = append(out, id)
+		}
+	}
+	// If the selector didn't include the top-K nodes, fall back to whatever
+	// IDs PPR did select — this keeps `find related` standalone blocks
+	// usable in tests without a pre-narrowed candidate list.
+	if len(out) == 0 {
+		for id := range keep {
+			out = append(out, id)
+		}
+	}
+	return out, explanations
+}
+
+func resolveSeedExpr(e ast.Expr, candidates []int) []string {
+	switch v := e.(type) {
+	case *ast.LiteralExpr:
+		switch x := v.Value.(type) {
+		case string:
+			return []string{x}
+		case float64:
+			return []string{strconv.FormatInt(int64(x), 10)}
+		case int:
+			return []string{strconv.Itoa(x)}
+		}
+	case *ast.AttrExpr:
+		out := make([]string, 0, len(candidates))
+		for _, id := range candidates {
+			out = append(out, strconv.Itoa(id))
+		}
+		return out
+	case *ast.IdentExpr:
+		return []string{v.Name}
+	case *ast.ListExpr:
+		out := []string{}
+		for _, el := range v.Elements {
+			out = append(out, resolveSeedExpr(el, candidates)...)
+		}
+		return out
+	}
+	return nil
 }
 
 // Validate checks that all test blocks reference existing plans.

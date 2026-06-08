@@ -416,10 +416,69 @@ find similar "Neighbors" {
 	}
 }
 
+func TestPlanRelatedBlockEmitsThreeSteps(t *testing.T) {
+	plan := planBlock(t, `
+find related "Co-consumed parts" {
+  for records where type == "stock_item"
+  seeds [808]
+  top_k 5
+  damping 0.85
+}`, "Co-consumed parts")
+
+	if len(plan.Steps) < 3 {
+		t.Fatalf("expected 3 steps, got %d: %+v", len(plan.Steps), plan.Steps)
+	}
+	if _, ok := plan.Steps[0].(*DatalevinQuery); !ok {
+		t.Errorf("step 0: want DatalevinQuery, got %T", plan.Steps[0])
+	}
+	gs, ok := plan.Steps[1].(*GraphSnapshot)
+	if !ok {
+		t.Fatalf("step 1: want GraphSnapshot, got %T", plan.Steps[1])
+	}
+	if gs.Into != "graph" {
+		t.Errorf("graph Into: got %q", gs.Into)
+	}
+	ml, ok := plan.Steps[2].(*MLComputation)
+	if !ok {
+		t.Fatalf("step 2: want MLComputation, got %T", plan.Steps[2])
+	}
+	if ml.Function != FuncPPRTopK {
+		t.Errorf("ml.Function: got %q, want %q", ml.Function, FuncPPRTopK)
+	}
+	if ml.Into != "related_records" {
+		t.Errorf("ml.Into: got %q", ml.Into)
+	}
+	if ml.Params["graph_var"] != "graph" {
+		t.Errorf("graph_var: got %v", ml.Params["graph_var"])
+	}
+}
+
+func TestPlanDetectWithRelatedClause(t *testing.T) {
+	plan := planBlock(t, `
+detect "Investigate" {
+  for records where type == "stock_item"
+  flag matching items
+  find related to attr "id" top_k 3
+}`, "Investigate")
+
+	var sawGraph, sawPPR bool
+	for _, s := range plan.Steps {
+		if _, ok := s.(*GraphSnapshot); ok {
+			sawGraph = true
+		}
+		if ml, ok := s.(*MLComputation); ok && ml.Function == FuncPPRTopK {
+			sawPPR = true
+		}
+	}
+	if !sawGraph || !sawPPR {
+		t.Errorf("expected GraphSnapshot + ppr_topk MLComputation; got %+v", plan.Steps)
+	}
+}
+
 func TestIsMLFunction(t *testing.T) {
 	mlFns := []string{
 		FuncAnomalyZscore, FuncPredictDecisionTree, FuncForecastExpSmoothing,
-		FuncClusterDBSCAN, FuncSimilarityCosine, FuncClassifyKNN,
+		FuncClusterDBSCAN, FuncSimilarityCosine, FuncClassifyKNN, FuncPPRTopK,
 	}
 	for _, fn := range mlFns {
 		if !IsMLFunction(fn) {

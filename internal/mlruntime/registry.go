@@ -15,6 +15,7 @@ func NewRegistry() *Registry {
 	r.Register(NewZScoreAnomaly())
 	r.Register(NewGrubbsAnomaly())
 	r.Register(NewLearnedThreshold())
+	r.Register(NewPersonalizedPageRank())
 	return r
 }
 

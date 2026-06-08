@@ -92,6 +92,22 @@ func (v *validator) checkCompleteness() {
 			}
 		case *ast.CombineBlock:
 			v.checkCombine(bb)
+		case *ast.RelatedBlock:
+			if bb.To == nil && len(bb.Seeds) == 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("find related %q requires a 'to' or 'seeds [...]' clause", bb.Name), "")
+			}
+			if bb.TopK != nil && *bb.TopK <= 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("find related %q: top_k must be > 0", bb.Name), "")
+			}
+			if bb.Damping != nil && (*bb.Damping < 0 || *bb.Damping >= 1) {
+				v.errAt(bb.Pos, fmt.Sprintf("find related %q: damping must be in [0, 1)", bb.Name), "")
+			}
+			if bb.Tol != nil && *bb.Tol <= 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("find related %q: tolerance must be > 0", bb.Name), "")
+			}
+			if bb.MaxIter != nil && *bb.MaxIter <= 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("find related %q: max_iterations must be > 0", bb.Name), "")
+			}
 		}
 	}
 }
@@ -509,6 +525,8 @@ func walkBlockConditions(b ast.Block, fn func(ast.Condition)) {
 	case *ast.ForecastBlock:
 		walkSelector(bb.Selector, fn)
 		walkCond(bb.When, fn)
+	case *ast.RelatedBlock:
+		walkSelector(bb.Selector, fn)
 	}
 }
 
@@ -567,6 +585,8 @@ func blockPos(b ast.Block) ast.Pos {
 	case *ast.ClassifyBlock:
 		return bb.Pos
 	case *ast.SimilarBlock:
+		return bb.Pos
+	case *ast.RelatedBlock:
 		return bb.Pos
 	}
 	return ast.Pos{}

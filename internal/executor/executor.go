@@ -3,9 +3,11 @@ package executor
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
@@ -55,6 +57,18 @@ type Executor struct {
 	Registry    *mlruntime.Registry
 	MCP         MCPCaller
 	ConfirmHook ConfirmationHook
+
+	// GraphProvider optionally supplies a *factstore.GraphSnapshot for
+	// `find related` (PPR) steps. When nil, the executor falls back to
+	// building a snapshot from in-scope row variables — useful for tests
+	// where the dataset is seeded directly.
+	GraphProvider GraphSnapshotProvider
+}
+
+// GraphSnapshotProvider builds or retrieves a factstore.GraphSnapshot for
+// the executor. Implementations may cache, query a backend, etc.
+type GraphSnapshotProvider interface {
+	Snapshot(ctx context.Context, key string, opts map[string]any) (*factstore.GraphSnapshot, error)
 }
 
 // NewExecutor creates an executor backed by the given FactStore and
@@ -126,8 +140,9 @@ func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 	return rows
 }
 
-// extractFlaggedIDs reads the entity IDs from an ML step's output where
-// Value is the bool true.
+// extractFlaggedIDs reads the entity IDs from an ML step's output. A row
+// is "flagged" when its Value is the bool true (anomaly/threshold style)
+// or any non-zero float64 (ranked output like PPR top-K).
 func extractFlaggedIDs(out any) (map[int]bool, bool) {
 	m, ok := out.(map[string]any)
 	if !ok {
@@ -139,8 +154,15 @@ func extractFlaggedIDs(out any) (map[int]bool, bool) {
 	}
 	ids := map[int]bool{}
 	for _, r := range rs {
-		if v, _ := r.Value.(bool); v {
-			ids[r.EntityID] = true
+		switch v := r.Value.(type) {
+		case bool:
+			if v {
+				ids[r.EntityID] = true
+			}
+		case float64:
+			if v != 0 {
+				ids[r.EntityID] = true
+			}
 		}
 	}
 	return ids, true
@@ -174,9 +196,33 @@ func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map
 		return e.execMLComputation(s, vars)
 	case *planner.Filter:
 		return e.execFilter(s, vars)
+	case *planner.GraphSnapshot:
+		return e.execGraphSnapshot(ctx, s, vars)
 	default:
 		return StepResult{}, fmt.Errorf("unknown step type: %T", step)
 	}
+}
+
+// execGraphSnapshot loads or builds a graph snapshot and binds it under
+// the step's Into variable. Resolution order:
+//  1. If the executor has a GraphProvider, ask it.
+//  2. Else, if vars already contains a *factstore.GraphSnapshot under
+//     "graph" (typical in tests that seed directly), reuse it.
+//  3. Else, return an empty snapshot so downstream PPR returns ErrNoGraph
+//     with a clear diagnostic instead of crashing.
+func (e *Executor) execGraphSnapshot(ctx context.Context, g *planner.GraphSnapshot, vars map[string]any) (StepResult, error) {
+	var snap *factstore.GraphSnapshot
+	if e.GraphProvider != nil {
+		s, err := e.GraphProvider.Snapshot(ctx, g.CacheKey, g.Options)
+		if err != nil {
+			return StepResult{}, fmt.Errorf("graph snapshot %q: %w", g.CacheKey, err)
+		}
+		snap = s
+	} else if existing, ok := vars[g.Into].(*factstore.GraphSnapshot); ok {
+		snap = existing
+	}
+	vars[g.Into] = snap
+	return StepResult{Type: "GraphSnapshot", Name: g.Into, Output: snap}, nil
 }
 
 func (e *Executor) execQuery(ctx context.Context, dq *planner.DatalevinQuery, vars map[string]any) (StepResult, error) {
@@ -393,10 +439,11 @@ func (e *Executor) execMLComputation(ml *planner.MLComputation, vars map[string]
 	if e.Registry != nil && e.Registry.Has(ml.Function) {
 		prim, _ := e.Registry.Get(ml.Function)
 		rows, _ := input.([][]any)
+		params := resolveMLParams(ml.Params, vars, rows)
 		results, err := prim.Compute(context.Background(), mlruntime.Input{
 			Rows:   rows,
 			Schema: schemaFromParams(ml.Params),
-			Params: ml.Params,
+			Params: params,
 		})
 		if err != nil {
 			return StepResult{}, fmt.Errorf("ml %s: %w", ml.Function, err)
@@ -514,6 +561,92 @@ func (e *Executor) ResolveNames(ctx context.Context, _ []int) (map[int]string, e
 		}
 	}
 	return names, nil
+}
+
+// resolveMLParams produces the params map handed to the primitive. It
+// resolves PPR-specific helper fields (graph_var, seed_expr, seeds_expr)
+// against `vars` and `rows`, and copies through all other fields unchanged.
+func resolveMLParams(params map[string]any, vars map[string]any, rows [][]any) map[string]any {
+	out := make(map[string]any, len(params))
+	for k, v := range params {
+		switch k {
+		case "graph_var":
+			if name, ok := v.(string); ok {
+				if g, ok := vars[name].(*factstore.GraphSnapshot); ok {
+					out["graph"] = g
+				}
+			}
+		case "seed_expr":
+			if e, ok := v.(ast.Expr); ok && e != nil {
+				if seeds := resolveSeeds(e, rows, vars); len(seeds) > 0 {
+					out["seeds"] = appendSeeds(out["seeds"], seeds)
+				}
+			}
+		case "seeds_expr":
+			if exprs, ok := v.([]ast.Expr); ok {
+				for _, e := range exprs {
+					if seeds := resolveSeeds(e, rows, vars); len(seeds) > 0 {
+						out["seeds"] = appendSeeds(out["seeds"], seeds)
+					}
+				}
+			}
+		default:
+			if v != nil {
+				out[k] = v
+			}
+		}
+	}
+	return out
+}
+
+// resolveSeeds turns a seed AST expression into one or more entity IDs.
+// Literals and idents resolve directly; attr "id" expressions seed from
+// the first column of every candidate row (matching Talon's row layout).
+func resolveSeeds(e ast.Expr, rows [][]any, vars map[string]any) []string {
+	switch v := e.(type) {
+	case *ast.LiteralExpr:
+		return []string{seedString(v.Value)}
+	case *ast.IdentExpr:
+		return []string{v.Name}
+	case *ast.AttrExpr:
+		// `to attr "id"` — broadcast across every row's entity ID column.
+		seeds := make([]string, 0, len(rows))
+		for _, row := range rows {
+			if len(row) > 0 {
+				seeds = append(seeds, seedString(row[0]))
+			}
+		}
+		return seeds
+	case *ast.ListExpr:
+		out := []string{}
+		for _, elem := range v.Elements {
+			out = append(out, resolveSeeds(elem, rows, vars)...)
+		}
+		return out
+	}
+	return nil
+}
+
+func appendSeeds(existing any, more []string) []string {
+	current, _ := existing.([]string)
+	return append(current, more...)
+}
+
+func seedString(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case float64:
+		if x == float64(int64(x)) {
+			return strconv.FormatInt(int64(x), 10)
+		}
+		return strconv.FormatFloat(x, 'g', -1, 64)
+	case int:
+		return strconv.Itoa(x)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // schemaFromParams extracts column indices the planner stuffed into Params

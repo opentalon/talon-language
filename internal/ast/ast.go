@@ -34,6 +34,7 @@ type DetectBlock struct {
 	Forecast   *ForecastClause
 	Cluster    *ClusterClause
 	Similar    *SimilarClause
+	Related    *RelatedClause
 	Recommend  *RecommendBlock
 	Tune       *TuneClause
 }
@@ -160,6 +161,26 @@ type SimilarBlock struct {
 	Priority *Priority
 }
 
+// RelatedBlock is `find related "name" { ... }` — Personalized PageRank
+// over an entity-attribute graph projected from the FactStore. Returns
+// the top-K entities most associated with one or more seeds.
+//
+// Exactly one of (To, Seeds) is set: To carries a single seed expression;
+// Seeds carries a list literal `[e1, e2, ...]`.
+type RelatedBlock struct {
+	Pos      Pos
+	Name     string
+	Selector Selector
+	To       Expr
+	Seeds    []Expr
+	TopK     *int
+	Damping  *float64
+	Tol      *float64
+	MaxIter  *int
+	Label    *Template
+	Priority *Priority
+}
+
 func (*DetectBlock) blockNode()    {}
 func (*RuleBlock) blockNode()      {}
 func (*RecommendBlock) blockNode() {}
@@ -171,6 +192,7 @@ func (*ForecastBlock) blockNode()  {}
 func (*ClusterBlock) blockNode()   {}
 func (*ClassifyBlock) blockNode()  {}
 func (*SimilarBlock) blockNode()   {}
+func (*RelatedBlock) blockNode()   {}
 
 func (b *DetectBlock) BlockName() string    { return b.Name }
 func (b *RuleBlock) BlockName() string      { return b.Name }
@@ -183,6 +205,7 @@ func (b *ForecastBlock) BlockName() string  { return b.Name }
 func (b *ClusterBlock) BlockName() string   { return b.Name }
 func (b *ClassifyBlock) BlockName() string  { return b.Name }
 func (b *SimilarBlock) BlockName() string   { return b.Name }
+func (b *RelatedBlock) BlockName() string   { return b.Name }
 
 // ─── Expressions ──────────────────────────────────────────────────────────────
 
@@ -452,6 +475,14 @@ type ClusterClause struct {
 type SimilarClause struct {
 	To     Expr
 	Within *float64
+}
+
+// RelatedClause is the nested form of `find related ...` inside a detect block.
+type RelatedClause struct {
+	To      Expr
+	Seeds   []Expr
+	TopK    *int
+	Damping *float64
 }
 
 type OptimizeClause struct {
