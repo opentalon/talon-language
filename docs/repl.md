@@ -173,6 +173,83 @@ talon> :eval "High-value claim"
 Redefining a block by name replaces the previous version — useful when
 you're iterating on a rule.
 
+## The iteration loop
+
+The point of a REPL is the tight loop between *try → see → adjust*. Here's a
+full session from empty to a working narrowed rule, with the output you'll
+actually see:
+
+```
+$ talon repl
+talon> detect "Active items" {
+  ..   for records where type == "item" and status == "active"
+  ..   flag matching items
+  .. }
+  OK: detect "Active items"
+
+talon> :eval "Active items"
+  "Active items": 0 detections
+```
+
+Empty store, so zero detections. Add some facts and re-eval:
+
+```
+talon> record 501 type "item" status "active"
+  OK: record 501
+talon> attr 501 "name" "VW Transporter"
+  OK: attr 501
+talon> record 502 type "item" status "active"
+  OK: record 502
+talon> attr 502 "name" "Ford Transit"
+  OK: attr 502
+talon> :eval "Active items"
+  "Active items": 2 detection(s) — records [501 502]
+```
+
+Both records match. Now tighten the rule by redefining it inline — same
+name, so the new definition replaces the old:
+
+```
+talon> detect "Active items" {
+  ..   for records where type == "item"
+  ..     and status == "active"
+  ..     and attr "name" == "VW Transporter"
+  ..   flag matching items
+  .. }
+  OK: detect "Active items"
+
+talon> :eval "Active items"
+  "Active items": 1 detection(s) — records [501]
+```
+
+One fewer match — the Ford was filtered out. If you want to start over on
+the data without losing the block:
+
+```
+talon> :clear facts
+  cleared facts; blocks kept
+
+talon> :facts
+  no facts in memory
+
+talon> :eval "Active items"
+  "Active items": 0 detections
+```
+
+Block definitions are still loaded, so adding fresh facts immediately
+exercises them again. `:clear` (without arguments) drops everything —
+facts, blocks, and context — for a clean slate.
+
+A practical iteration pattern when debugging a rule that doesn't fire:
+
+1. `:trace "rule name"` — see which step drops the row set to zero.
+2. `:find …` — confirm the facts you think are there really are there.
+3. Redefine the block with a relaxed condition; `:eval` again.
+4. Once it fires, tighten back step by step.
+
+This is faster than the file-edit-recompile loop, and trace output
+shows exactly which clause is doing the filtering — no guesswork.
+
 ## Other commands
 
 | Command | What it does |
