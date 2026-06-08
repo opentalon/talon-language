@@ -21,14 +21,20 @@ import (
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/talon-language/internal/repl"
 	"github.com/opentalon/talon-language/internal/testrunner"
 	"github.com/opentalon/talon-language/internal/validator"
 )
 
+// version is the Talon CLI version. Overridden at release time via
+// `-ldflags="-X main.version=v0.1.0"`; left as "dev" for `go install`
+// and `go run` builds.
+var version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: talon <command> [args]")
-		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, explain, mod")
+		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, explain, mod, version")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -40,8 +46,10 @@ func main() {
 	case "run":
 		runExecute()
 	case "repl":
-		fmt.Fprintln(os.Stderr, "talon repl: not yet implemented")
-		os.Exit(diagnostic.ExitError)
+		if err := repl.RunWithVersion(os.Stdin, os.Stdout, version); err != nil {
+			fmt.Fprintf(os.Stderr, "talon repl: %v\n", err)
+			os.Exit(diagnostic.ExitError)
+		}
 	case "trace":
 		runTrace()
 	case "explain":
@@ -49,6 +57,8 @@ func main() {
 	case "mod":
 		fmt.Fprintln(os.Stderr, "talon mod: not yet implemented")
 		os.Exit(diagnostic.ExitError)
+	case "version", "--version", "-v":
+		fmt.Println(version)
 	default:
 		fmt.Fprintf(os.Stderr, "talon: unknown command %q\n", os.Args[1])
 		os.Exit(diagnostic.ExitUsage)

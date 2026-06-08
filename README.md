@@ -57,6 +57,59 @@ recommend "Order cement" {
 
 No LLM involved. No API calls to figure out what's running low. Talon watches the data and tells you before the site stops.
 
+## Installation
+
+### Prebuilt binaries (recommended)
+
+Each tagged release publishes a `talon` binary for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, and windows/amd64. Grab one from the [Releases page](https://github.com/opentalon/talon-language/releases) or use the snippet for your platform:
+
+```bash
+# macOS (Apple Silicon) — adjust the URL for linux/x86_64 etc.
+TAG=$(curl -sL https://api.github.com/repos/opentalon/talon-language/releases/latest | grep '"tag_name"' | cut -d '"' -f 4)
+curl -fsSL "https://github.com/opentalon/talon-language/releases/download/${TAG}/talon-${TAG}-darwin-arm64.tar.gz" \
+  | tar -xz
+./talon version
+```
+
+Every release ships with a `SHA256SUMS.txt` file in case you want to verify the download.
+
+### From source
+
+If you already have Go 1.24+ installed:
+
+```bash
+go install github.com/opentalon/talon-language/cmd/talon@latest
+talon version
+```
+
+### Try the REPL
+
+The fastest way to see Talon in action — load a real example, evaluate every
+block, and trace one to see the per-step query plan:
+
+```bash
+talon repl
+talon> :load examples/insurance_claims.talon
+  loaded examples/insurance_claims.talon: 5 block(s), 0 fact(s)
+talon> :load test/insurance_claims.talon.test
+  loaded test/insurance_claims.talon.test: 0 block(s), 28 fact(s)
+talon> :eval all
+  "Auto-approve in-network routine": 1 detection(s) — records [902]
+  "Out-of-network provider":         1 detection(s) — records [904]
+  "Over the per-visit cap":          2 detection(s) — records [903 904]
+  "Reject blacklisted provider":     1 detection(s) — records [901]
+talon> :trace "Over the per-visit cap"
+  "Over the per-visit cap": 2 detection(s) — records [903 904]
+    trace:
+    step 1  DatalevinQuery → candidates  (rows: [903 904])
+    step 2  GoComputation render_template → detections
+```
+
+The full walkthrough — including how to read trace output, the
+LLM-extracts-facts-then-Talon-decides pattern from
+[Code Mode for MCP](https://opakalex.github.io/posts/code-mode-for-mcp/),
+and what each REPL command does — is in [`docs/repl.md`](docs/repl.md).
+
 ## Architecture
 
 ```mermaid
