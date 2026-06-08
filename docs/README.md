@@ -4,6 +4,9 @@
 
 - **[REPL walkthrough](./repl.md)** — interactive exploration with `:eval`,
   `:trace`, and an end-to-end insurance-claims example.
+- **[Observability](./observability.md)** — structured logging,
+  `--log-format` / `--log-level` flags, and `on { logger.info "…" }`
+  execution.
 - **[Optimizers](./optimizers/README.md)** — when to use Pareto vs GA vs
   ILP vs ACO; worked examples; combine block reference.
 - **[Defeasible reasoning](./defeasible.md)** — `strict` rules,

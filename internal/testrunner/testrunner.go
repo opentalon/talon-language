@@ -12,6 +12,7 @@ import (
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/diagnostic"
 	"github.com/opentalon/talon-language/internal/factstore"
+	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
@@ -338,6 +339,7 @@ func runOneTuned(
 
 	result.Passed = len(result.Errors) == 0
 	result.Duration = time.Since(start)
+	talonlog.BlockEval(context.Background(), tb.WhenBlock, tb.WhenKind, len(flagged), result.Duration)
 	return result, trace
 }
 
