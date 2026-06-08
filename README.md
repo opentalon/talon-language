@@ -57,6 +57,46 @@ recommend "Order cement" {
 
 No LLM involved. No API calls to figure out what's running low. Talon watches the data and tells you before the site stops.
 
+## Installation
+
+### Prebuilt binaries (recommended)
+
+Each tagged release publishes a `talon` binary for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, and windows/amd64. Grab one from the [Releases page](https://github.com/opentalon/talon-language/releases) or use the snippet for your platform:
+
+```bash
+# macOS (Apple Silicon) — adjust the URL for linux/x86_64 etc.
+TAG=$(curl -sL https://api.github.com/repos/opentalon/talon-language/releases/latest | grep '"tag_name"' | cut -d '"' -f 4)
+curl -fsSL "https://github.com/opentalon/talon-language/releases/download/${TAG}/talon-${TAG}-darwin-arm64.tar.gz" \
+  | tar -xz
+./talon version
+```
+
+Every release ships with a `SHA256SUMS.txt` file in case you want to verify the download.
+
+### From source
+
+If you already have Go 1.24+ installed:
+
+```bash
+go install github.com/opentalon/talon-language/cmd/talon@latest
+talon version
+```
+
+### Try the REPL
+
+```bash
+talon repl
+talon> record 501 type "item" status "active"
+talon> attr 501 "name" "Test"
+talon> detect "Active items" {
+  ..   for records where type == "item" and status == "active"
+  ..   flag matching items
+  .. }
+talon> :eval "Active items"
+```
+
+See [issue #21](https://github.com/opentalon/talon-language/issues/21) for the full REPL feature set.
+
 ## Architecture
 
 ```mermaid
