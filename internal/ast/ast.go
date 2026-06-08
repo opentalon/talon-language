@@ -48,18 +48,20 @@ type TuneClause struct {
 }
 
 type RuleBlock struct {
-	Pos      Pos
-	Name     string
-	Selector *Selector
-	When     Condition
-	Every    *EveryClause
-	Before   *string
-	After    *string
-	Block    *string
-	Allow    *string
-	Requires *RequiresClause
-	Reason   *Template
-	Priority *Priority
+	Pos       Pos
+	Name      string
+	Selector  *Selector
+	When      Condition
+	Every     *EveryClause
+	Before    *string
+	After     *string
+	Block     *string
+	Allow     *string
+	Requires  *RequiresClause
+	Reason    *Template
+	Priority  *Priority
+	Strict    bool     // strict rules cannot be overridden
+	Overrides []string // names of rules this rule defeats when both match
 }
 
 type RecommendBlock struct {
@@ -181,31 +183,85 @@ type RelatedBlock struct {
 	Priority *Priority
 }
 
-func (*DetectBlock) blockNode()    {}
-func (*RuleBlock) blockNode()      {}
-func (*RecommendBlock) blockNode() {}
-func (*CombineBlock) blockNode()   {}
-func (*DefineBlock) blockNode()    {}
-func (*WorkflowBlock) blockNode()  {}
-func (*PredictBlock) blockNode()   {}
-func (*ForecastBlock) blockNode()  {}
-func (*ClusterBlock) blockNode()   {}
-func (*ClassifyBlock) blockNode()  {}
-func (*SimilarBlock) blockNode()   {}
-func (*RelatedBlock) blockNode()   {}
+// OnBlock is a reactive rule: `on change attr "x" { ... }`, `on assert <type>
+// { ... }`, or `on retract <type> { ... }`. The runtime fires the block when
+// the FactStore emits a matching event. See docs/reactive.md.
+type OnBlock struct {
+	Pos      Pos
+	Name     string   // synthesized: "on change attr "x"" etc., used for diagnostics
+	Trigger  string   // "change", "assert", "retract"
+	Attr     string   // for change: the attribute name
+	ToValue  Expr     // for change ... to <expr>: the target value (optional)
+	FactType string   // for assert/retract: the fact type (e.g. "record", "activity")
+	When     Condition
+	Actions  []OnAction
+}
 
-func (b *DetectBlock) BlockName() string    { return b.Name }
-func (b *RuleBlock) BlockName() string      { return b.Name }
-func (b *RecommendBlock) BlockName() string { return b.Name }
-func (b *CombineBlock) BlockName() string   { return b.Name }
-func (b *DefineBlock) BlockName() string    { return b.Name }
-func (b *WorkflowBlock) BlockName() string  { return b.Name }
-func (b *PredictBlock) BlockName() string   { return b.Name }
-func (b *ForecastBlock) BlockName() string  { return b.Name }
-func (b *ClusterBlock) BlockName() string   { return b.Name }
-func (b *ClassifyBlock) BlockName() string  { return b.Name }
-func (b *SimilarBlock) BlockName() string   { return b.Name }
-func (b *RelatedBlock) BlockName() string   { return b.Name }
+// OnAction is a single statement inside an on-block body.
+type OnAction interface {
+	onActionNode()
+}
+
+// LoggerAction is `logger.info|warn|error "<message template>"`.
+type LoggerAction struct {
+	Level   string // "info", "warn", "error"
+	Message Template
+}
+
+// BlockRefAction is a named reference to another top-level block, e.g.
+// `recommend "Order stock"` or `detect "Defective item without ticket"`.
+type BlockRefAction struct {
+	Kind string // "recommend", "detect"
+	Name string
+}
+
+func (*LoggerAction) onActionNode()   {}
+func (*BlockRefAction) onActionNode() {}
+
+// ConstraintBlock is an invariant checked on every fact mutation. See
+// docs/constraints.md.
+type ConstraintBlock struct {
+	Pos         Pos
+	Name        string
+	Selector    Selector
+	Require     Condition
+	OnViolation ViolationClause
+}
+
+type ViolationClause struct {
+	Mode    string // "reject" | "warn" | "quarantine"
+	Message string // optional; empty if not provided
+}
+
+func (*DetectBlock) blockNode()     {}
+func (*RuleBlock) blockNode()       {}
+func (*RecommendBlock) blockNode()  {}
+func (*CombineBlock) blockNode()    {}
+func (*DefineBlock) blockNode()     {}
+func (*WorkflowBlock) blockNode()   {}
+func (*PredictBlock) blockNode()    {}
+func (*ForecastBlock) blockNode()   {}
+func (*ClusterBlock) blockNode()    {}
+func (*ClassifyBlock) blockNode()   {}
+func (*SimilarBlock) blockNode()    {}
+func (*RelatedBlock) blockNode()    {}
+func (*OnBlock) blockNode()         {}
+func (*ConstraintBlock) blockNode() {}
+
+func (b *DetectBlock) BlockName() string     { return b.Name }
+func (b *RuleBlock) BlockName() string       { return b.Name }
+func (b *RecommendBlock) BlockName() string  { return b.Name }
+func (b *CombineBlock) BlockName() string    { return b.Name }
+func (b *DefineBlock) BlockName() string     { return b.Name }
+func (b *WorkflowBlock) BlockName() string   { return b.Name }
+func (b *PredictBlock) BlockName() string    { return b.Name }
+func (b *ForecastBlock) BlockName() string   { return b.Name }
+func (b *ClusterBlock) BlockName() string    { return b.Name }
+func (b *ClassifyBlock) BlockName() string   { return b.Name }
+func (b *SimilarBlock) BlockName() string    { return b.Name }
+func (b *RelatedBlock) BlockName() string    { return b.Name }
+func (b *OnBlock) BlockName() string         { return b.Name }
+func (b *ConstraintBlock) BlockName() string { return b.Name }
 
 // ─── Expressions ──────────────────────────────────────────────────────────────
 

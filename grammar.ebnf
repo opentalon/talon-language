@@ -19,6 +19,8 @@ Block     = DetectBlock
           | ClassifyBlock
           | SimilarBlock
           | RelatedBlock
+          | OnBlock
+          | ConstraintBlock
 
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)
 
@@ -41,14 +43,19 @@ DetectBody  = Selector
 
 (* ─── rule ───────────────────────────────────────────────────────────────────── *)
 
-RuleBlock   = "rule" STRING "{" RuleBody "}"
+(* A `strict` rule cannot be overridden. An `overrides` clause names one or
+   more rules this rule defeats when both match. See docs/defeasible.md. *)
+RuleBlock   = [ "strict" ] "rule" STRING "{" RuleBody "}"
 
 RuleBody    = ( Selector | WhenClause )
               [ EveryClause ]
               [ BeforeClause | AfterClause ]
+              [ OverridesClause ]
               ( BlockClause | AllowClause | RequiresClause )
               [ ReasonClause ]
               [ PriorityClause ]
+
+OverridesClause = "overrides" STRING { "," STRING }
 
 (* ─── recommend ──────────────────────────────────────────────────────────────── *)
 
@@ -153,6 +160,41 @@ RelatedBody   = Selector
                 [ PriorityClause ]
 
 ExprList      = Expr { "," Expr }
+
+(* ─── on (reactive rules) ───────────────────────────────────────────────────── *)
+
+(* Reactive rules fire when a fact changes, not on schedule or request.
+   See docs/reactive.md. The body is a list of side-effect statements; the
+   minimal grammar supports logger calls and named references to other blocks. *)
+OnBlock     = "on" OnTrigger "{" OnBody "}"
+
+OnTrigger   = "change" "attr" STRING [ "to" Expr ]
+            | "assert" IDENT
+            | "retract" IDENT
+
+OnBody      = [ WhenClause ] { OnAction }
+
+OnAction    = LoggerStmt
+            | "recommend" STRING
+            | "detect" STRING
+
+LoggerStmt  = "logger" "." ( "info" | "warn" | "error" ) Template
+
+(* ─── constraint (integrity constraints) ────────────────────────────────────── *)
+
+(* Constraints run on every fact mutation and reject/warn/quarantine violators.
+   See docs/constraints.md. *)
+ConstraintBlock = "constraint" STRING "{" ConstraintBody "}"
+
+ConstraintBody  = Selector
+                  RequireClause
+                  OnViolationClause
+
+RequireClause       = "require" Condition
+
+OnViolationClause   = "on_violation" ViolationMode [ STRING ]
+
+ViolationMode       = "reject" | "warn" | "quarantine"
 
 (* ─── Nested ML clauses (inside detect) ─────────────────────────────────────── *)
 
