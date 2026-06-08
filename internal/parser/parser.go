@@ -964,7 +964,8 @@ func (p *parser) parseFlagTarget() *ast.FlagTarget {
 func (p *parser) parseLabelClause() *ast.Template {
 	p.advance() // label / suggest / reason
 	raw := p.expectString()
-	return &ast.Template{Raw: raw}
+	t := ast.ParseTemplate(raw)
+	return &t
 }
 
 func (p *parser) parsePriority() ast.Priority {

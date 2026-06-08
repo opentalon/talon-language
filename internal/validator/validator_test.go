@@ -350,3 +350,23 @@ find related "Good" {
   max_iterations 50
 }`)
 }
+
+// ─── Templates ───────────────────────────────────────────────────────────────
+
+func TestValidateTemplateUnknownFunction(t *testing.T) {
+	mustError(t, `
+detect "Has unknown fn" {
+  for records where type == "item"
+  flag matching items
+  label "{wat(attr.x)} items"
+}`, "unknown function")
+}
+
+func TestValidateTemplateKnownFunctionsClean(t *testing.T) {
+	mustClean(t, `
+detect "Known fns" {
+  for records where type == "item"
+  flag matching items
+  label "{count} items, avg {avg(attr.km)} km, max {max(attr.km)}; expires in {days_until(attr.expires_at)} days"
+}`)
+}

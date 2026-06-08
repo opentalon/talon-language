@@ -58,6 +58,31 @@ type Query struct {
 	// Where is the clause list. All clauses must hold for a row to match;
 	// nested Or and Not clauses handle disjunction and negation.
 	Where []Clause
+
+	// Aggregates rolls matched rows up into summary values. When set,
+	// the result has one row per GroupBy combination (or exactly one row
+	// when GroupBy is empty), with one column per aggregate plus the
+	// group-by columns. Find is ignored when Aggregates is non-empty —
+	// the result columns come from GroupBy + Aggregates instead. See
+	// docs/factstore.md.
+	Aggregates []Aggregate
+
+	// GroupBy names the variables to partition aggregates by. Empty
+	// means "one aggregate row for the whole match set". The variables
+	// must be bound by the patterns in Where.
+	GroupBy []string
+}
+
+// Aggregate is a single roll-up of matched rows.
+//
+// `Fn` is one of "count", "sum", "avg", "min", "max". `Over` is the
+// variable being aggregated; for "count" without an argument, set Over
+// to Var("?e") (count rows) or a wildcard Term{} (also counts rows).
+// `As` is the column name in the result row.
+type Aggregate struct {
+	Fn   string
+	Over Term
+	As   string
 }
 
 // Clause is implemented by Pattern, Predicate, Or, and Not.

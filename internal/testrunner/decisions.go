@@ -2,7 +2,6 @@ package testrunner
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/opentalon/talon-language/internal/explain"
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/talon-language/internal/template"
 )
 
 // Decisions runs every test block and returns the per-test list of
@@ -137,7 +137,9 @@ func buildDecisionsForBlock(
 			Why:        why,
 			Evidence:   evidence,
 		}
-		d.Action = renderTemplate(blockLabel(b), ent)
+		if tmpl := blockTemplate(b); tmpl != nil {
+			d.Action = template.Render(*tmpl, renderContextFor(ent, flagged, entities, now))
+		}
 
 		// Cross-block chaining: if this is a recommend whose `when`
 		// references another block via `<kind> "name" matches`, recurse.
@@ -406,37 +408,45 @@ func renderCompareWhy(c *ast.CompareCondition, ent *entity) string {
 	return ""
 }
 
-// renderTemplate substitutes `{item.name}`, `{attr.<name>}` and bare
-// `{<key>}` placeholders with the entity's observed values. Anything not
-// resolvable is left as-is so it's visible in the rendered output.
-func renderTemplate(tmpl string, ent *entity) string {
-	if tmpl == "" || ent == nil {
-		return tmpl
+// renderContextFor builds a template.RenderContext for one matched
+// entity. The per-row context flattens ":record/x" and ":attr/x" keys
+// to bare `x` so templates can write `{item.name}` / `{attr.km}` /
+// bare `{status}` and have them all resolve.
+//
+// AggregateRows carries the same flattened shape for every flagged
+// entity, so `{count}` / `{total(attr.x)}` / `{avg(attr.x)}` etc. work
+// without an extra FactStore round-trip.
+func renderContextFor(ent *entity, flagged []int, all map[int]*entity, now time.Time) template.RenderContext {
+	ctx := template.RenderContext{Now: now}
+	if ent != nil {
+		ctx.Row = entityToRow(ent)
 	}
-	re := regexp.MustCompile(`\{([^}]+)\}`)
-	return re.ReplaceAllStringFunc(tmpl, func(m string) string {
-		key := strings.TrimSpace(m[1 : len(m)-1])
-		switch {
-		case key == "item.name":
-			if v, ok := ent.fields[":attr/name"]; ok {
-				return fmt.Sprintf("%v", v)
-			}
-		case strings.HasPrefix(key, "attr."):
-			short := strings.TrimPrefix(key, "attr.")
-			if v, ok := ent.fields[":attr/"+short]; ok {
-				return fmt.Sprintf("%v", v)
-			}
-		default:
-			// Try as plain :record/<key> or :attr/<key>
-			if v, ok := ent.fields[":record/"+key]; ok {
-				return fmt.Sprintf("%v", v)
-			}
-			if v, ok := ent.fields[":attr/"+key]; ok {
-				return fmt.Sprintf("%v", v)
+	if len(flagged) > 0 {
+		ctx.AggregateRows = make([]template.Row, 0, len(flagged))
+		for _, id := range flagged {
+			if e, ok := all[id]; ok && e != nil {
+				ctx.AggregateRows = append(ctx.AggregateRows, entityToRow(e))
 			}
 		}
-		return m
-	})
+	}
+	return ctx
+}
+
+// entityToRow flattens the namespaced ":record/x" / ":attr/x" keys an
+// entity carries into the bare-key form the template renderer wants.
+// Conflicts (same bare name appearing under both namespaces) prefer the
+// attr value, matching how `attr "name"` shadows `name` elsewhere.
+func entityToRow(e *entity) template.Row {
+	row := template.Row{}
+	for k, v := range e.fields {
+		switch {
+		case strings.HasPrefix(k, ":record/"):
+			row[strings.TrimPrefix(k, ":record/")] = v
+		case strings.HasPrefix(k, ":attr/"):
+			row[strings.TrimPrefix(k, ":attr/")] = v
+		}
+	}
+	return row
 }
 
 func upstreamBlockMatches(b ast.Block) []string {
@@ -491,42 +501,31 @@ func blockKind(b ast.Block) string {
 	return "block"
 }
 
-func blockLabel(b ast.Block) string {
+// blockTemplate returns the user-supplied template for a block —
+// `label` for detect / predict / forecast / cluster / classify /
+// similar, `suggest` for recommend, `reason` for rule. Returns nil
+// when the block has no template, so callers can skip rendering
+// rather than fall through to an empty action string.
+func blockTemplate(b ast.Block) *ast.Template {
 	switch bb := b.(type) {
 	case *ast.DetectBlock:
-		if bb.Label != nil {
-			return bb.Label.Raw
-		}
+		return bb.Label
 	case *ast.RecommendBlock:
-		if bb.Suggest != nil {
-			return bb.Suggest.Raw
-		}
+		return bb.Suggest
 	case *ast.PredictBlock:
-		if bb.Label != nil {
-			return bb.Label.Raw
-		}
+		return bb.Label
 	case *ast.ForecastBlock:
-		if bb.Label != nil {
-			return bb.Label.Raw
-		}
+		return bb.Label
 	case *ast.ClusterBlock:
-		if bb.Label != nil {
-			return bb.Label.Raw
-		}
+		return bb.Label
 	case *ast.ClassifyBlock:
-		if bb.Label != nil {
-			return bb.Label.Raw
-		}
+		return bb.Label
 	case *ast.SimilarBlock:
-		if bb.Label != nil {
-			return bb.Label.Raw
-		}
+		return bb.Label
 	case *ast.RuleBlock:
-		if bb.Reason != nil {
-			return bb.Reason.Raw
-		}
+		return bb.Reason
 	}
-	return ""
+	return nil
 }
 
 func blockPriority(b ast.Block) string {

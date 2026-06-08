@@ -11,10 +11,33 @@ import (
 // as a debug/trace string. The testrunner emits it in traces; the
 // Datalevin client sends it on the wire; the REPL prints it under
 // `:trace`.
+//
+// When Aggregates is non-empty, the :find clause holds the GroupBy
+// columns followed by one aggregate expression per Aggregate. Find is
+// ignored in that case — the planner shouldn't set both.
 func (q Query) String() string {
 	var b strings.Builder
 	b.WriteString("[:find ")
-	b.WriteString(strings.Join(q.Find, " "))
+	if len(q.Aggregates) > 0 {
+		// Group-by columns first, then aggregate expressions.
+		first := true
+		for _, v := range q.GroupBy {
+			if !first {
+				b.WriteString(" ")
+			}
+			b.WriteString(v)
+			first = false
+		}
+		for _, a := range q.Aggregates {
+			if !first {
+				b.WriteString(" ")
+			}
+			b.WriteString(renderAggregate(a))
+			first = false
+		}
+	} else {
+		b.WriteString(strings.Join(q.Find, " "))
+	}
 	b.WriteString("\n :where")
 	for _, c := range q.Where {
 		b.WriteString("\n ")
@@ -22,6 +45,23 @@ func (q Query) String() string {
 	}
 	b.WriteString("]")
 	return b.String()
+}
+
+// renderAggregate emits the Datalog form for one aggregate: `(count ?e)`,
+// `(avg ?x)`, `(sum ?x)`, `(min ?x)`, `(max ?x)`. Datalevin accepts
+// `(total ?x)` as a synonym for `(sum ?x)`; we normalise to `sum` so the
+// wire format is uniform.
+func renderAggregate(a Aggregate) string {
+	fn := a.Fn
+	if fn == "total" {
+		fn = "sum"
+	}
+	if fn == "count" && (a.Over.IsWildcard() || a.Over.Var == "") {
+		// `(count ?e)` is the conventional row-count form when there's
+		// no obvious column to count. Fall back to the entity variable.
+		return "(count ?e)"
+	}
+	return fmt.Sprintf("(%s %s)", fn, renderTerm(a.Over))
 }
 
 func renderClause(c Clause) string {
