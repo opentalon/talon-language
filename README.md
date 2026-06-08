@@ -84,18 +84,31 @@ talon version
 
 ### Try the REPL
 
+The fastest way to see Talon in action — load a real example, evaluate every
+block, and trace one to see the per-step query plan:
+
 ```bash
 talon repl
-talon> record 501 type "item" status "active"
-talon> attr 501 "name" "Test"
-talon> detect "Active items" {
-  ..   for records where type == "item" and status == "active"
-  ..   flag matching items
-  .. }
-talon> :eval "Active items"
+talon> :load examples/insurance_claims.talon
+  loaded examples/insurance_claims.talon: 5 block(s), 0 fact(s)
+talon> :load test/insurance_claims.talon.test
+  loaded test/insurance_claims.talon.test: 0 block(s), 28 fact(s)
+talon> :eval all
+  "Auto-approve in-network routine": 1 detection(s) — records [902]
+  "Out-of-network provider":         1 detection(s) — records [904]
+  "Over the per-visit cap":          2 detection(s) — records [903 904]
+  "Reject blacklisted provider":     1 detection(s) — records [901]
+talon> :trace "Over the per-visit cap"
+  "Over the per-visit cap": 2 detection(s) — records [903 904]
+    trace:
+    step 1  DatalevinQuery → candidates  (rows: [903 904])
+    step 2  GoComputation render_template → detections
 ```
 
-See [issue #21](https://github.com/opentalon/talon-language/issues/21) for the full REPL feature set.
+The full walkthrough — including how to read trace output, the
+LLM-extracts-facts-then-Talon-decides pattern from
+[Code Mode for MCP](https://opakalex.github.io/posts/code-mode-for-mcp/),
+and what each REPL command does — is in [`docs/repl.md`](docs/repl.md).
 
 ## Architecture
 
