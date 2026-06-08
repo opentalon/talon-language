@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,6 +20,7 @@ import (
 	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/explain"
 	"github.com/opentalon/talon-language/internal/lexer"
+	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/planner"
 	"github.com/opentalon/talon-language/internal/repl"
@@ -32,8 +34,15 @@ import (
 var version = "dev"
 
 func main() {
+	// Strip `--log-format` and `--log-level` from os.Args before subcommand
+	// dispatch, so each subcommand's own arg parser doesn't have to know
+	// about them. Logging defaults to text format at warn level — quiet
+	// enough for `talon build`/`repl` not to clutter output, but errors
+	// still surface. Users opt into more detail with `--log-level=info`.
+	stripGlobalLogFlags()
+
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: talon <command> [args]")
+		fmt.Fprintln(os.Stderr, "usage: talon [--log-format=text|json] [--log-level=debug|info|warn|error] <command> [args]")
 		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, explain, mod, version")
 		os.Exit(diagnostic.ExitUsage)
 	}
@@ -781,4 +790,61 @@ func flattenEvidence(facts []explain.Fact) string {
 		parts = append(parts, fmt.Sprintf("%s=%v", f.Attribute, f.Value))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// stripGlobalLogFlags scans os.Args for the two log-control flags, applies
+// them via internal/log.Init, and rewrites os.Args without them so each
+// subcommand's own arg parser stays unchanged. Accepts both `--flag=value`
+// and `--flag value` shapes. Unknown values fall back to the defaults
+// (text format, warn level) with a one-line stderr complaint.
+func stripGlobalLogFlags() {
+	format := talonlog.FormatText
+	level := slog.LevelWarn
+
+	out := make([]string, 0, len(os.Args))
+	out = append(out, os.Args[0])
+
+	consumeNext := false
+	var consumeKind string
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if consumeNext {
+			consumeNext = false
+			applyLogFlag(consumeKind, arg, &format, &level)
+			continue
+		}
+		switch {
+		case strings.HasPrefix(arg, "--log-format="):
+			applyLogFlag("format", strings.TrimPrefix(arg, "--log-format="), &format, &level)
+		case arg == "--log-format":
+			consumeNext, consumeKind = true, "format"
+		case strings.HasPrefix(arg, "--log-level="):
+			applyLogFlag("level", strings.TrimPrefix(arg, "--log-level="), &format, &level)
+		case arg == "--log-level":
+			consumeNext, consumeKind = true, "level"
+		default:
+			out = append(out, arg)
+		}
+	}
+	os.Args = out
+	talonlog.Init(format, level, os.Stderr)
+}
+
+func applyLogFlag(kind, value string, format *talonlog.Format, level *slog.Level) {
+	switch kind {
+	case "format":
+		f, err := talonlog.ParseFormat(value)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		*format = f
+	case "level":
+		l, err := talonlog.ParseLevel(value)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		*level = l
+	}
 }

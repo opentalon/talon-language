@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/factstore"
+	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
@@ -90,8 +92,11 @@ func (e *Executor) RunAll(ctx context.Context, plans map[string]*planner.QueryPl
 	return results, nil
 }
 
-// Run executes a single block's query plan.
+// Run executes a single block's query plan. It emits a `block_eval`
+// observability event on completion (success or failure) with the block
+// name, kind, matched row count, and wall-clock duration.
 func (e *Executor) Run(ctx context.Context, plan *planner.QueryPlan) (*BlockResult, error) {
+	start := time.Now()
 	result := &BlockResult{
 		BlockName: plan.BlockName,
 		Vars:      map[string]any{},
@@ -100,12 +105,14 @@ func (e *Executor) Run(ctx context.Context, plan *planner.QueryPlan) (*BlockResu
 	for _, step := range plan.Steps {
 		sr, err := e.execStep(ctx, step, result.Vars)
 		if err != nil {
+			talonlog.BlockEval(ctx, plan.BlockName, "", 0, time.Since(start))
 			return result, err
 		}
 		result.Steps = append(result.Steps, sr)
 	}
 
 	result.Flagged = flaggedRows(plan, result.Vars)
+	talonlog.BlockEval(ctx, plan.BlockName, "", len(result.Flagged), time.Since(start))
 	return result, nil
 }
 
@@ -319,6 +326,7 @@ func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, v
 			return nil, fmt.Errorf("step %q: confirmation: %w", stepName, err)
 		}
 		if !proceed {
+			talonlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, "skipped", 0, nil)
 			return map[string]any{"status": "skipped", "reason": "confirmation_denied"}, nil
 		}
 	}
@@ -335,12 +343,25 @@ func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, v
 		delete(args, "collect_all")
 	}
 
+	mcpStart := time.Now()
 	if !collectAll {
-		return e.MCP.Call(ctx, mcpCall.Server, mcpCall.Tool, args)
+		res, err := e.MCP.Call(ctx, mcpCall.Server, mcpCall.Tool, args)
+		status := "ok"
+		if err != nil {
+			status = "error"
+		}
+		talonlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, status, time.Since(mcpStart), err)
+		return res, err
 	}
 
 	// Auto-paginate: call repeatedly until has_more is false
-	return e.collectAll(ctx, mcpCall.Server, mcpCall.Tool, args)
+	res, err := e.collectAll(ctx, mcpCall.Server, mcpCall.Tool, args)
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	talonlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, status, time.Since(mcpStart), err)
+	return res, err
 }
 
 func (e *Executor) collectAll(ctx context.Context, server, tool string, args map[string]any) (any, error) {
