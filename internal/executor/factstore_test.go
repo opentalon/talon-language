@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/planner"
 )
 
@@ -12,13 +13,12 @@ import (
 // and replays canned responses, keeping these tests free of the
 // JVM-backed Datalevin server.
 type fakeStore struct {
-	queries    []string
-	queryReply func(q string) ([][]any, error)
-	txData     []map[string]any
-	schemaSeen map[string]map[string]string
+	queries    []factstore.Query
+	queryReply func(q factstore.Query) ([][]any, error)
+	asserted   []factstore.Fact
 }
 
-func (f *fakeStore) Query(_ context.Context, q string) ([][]any, error) {
+func (f *fakeStore) Query(_ context.Context, q factstore.Query) ([][]any, error) {
 	f.queries = append(f.queries, q)
 	if f.queryReply != nil {
 		return f.queryReply(q)
@@ -26,13 +26,8 @@ func (f *fakeStore) Query(_ context.Context, q string) ([][]any, error) {
 	return nil, nil
 }
 
-func (f *fakeStore) Transact(_ context.Context, tx []map[string]any) error {
-	f.txData = append(f.txData, tx...)
-	return nil
-}
-
-func (f *fakeStore) Schema(_ context.Context, s map[string]map[string]string) error {
-	f.schemaSeen = s
+func (f *fakeStore) Assert(_ context.Context, facts []factstore.Fact) error {
+	f.asserted = append(f.asserted, facts...)
 	return nil
 }
 
@@ -41,21 +36,34 @@ func (f *fakeStore) Schema(_ context.Context, s map[string]map[string]string) er
 // needs ever evolve.
 var _ FactStore = (*fakeStore)(nil)
 
-// TestExecutor_DatalevinQueryHitsFactStore covers the basic path:
-// a DatalevinQuery step in a plan calls FactStore.Query with the
-// emitted Datalog and the result rows flow into BlockResult.Vars
+func sampleQuery() factstore.Query {
+	return factstore.Query{
+		Find: []string{"?e"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{
+				Entity:    factstore.Var("e"),
+				Attribute: ":attr/x",
+				Value:     factstore.Var("v"),
+			},
+		},
+	}
+}
+
+// TestExecutor_FactQueryHitsFactStore covers the basic path:
+// a FactQuery step in a plan calls FactStore.Query with the
+// structured query and the result rows flow into BlockResult.Vars
 // + BlockResult.Flagged.
-func TestExecutor_DatalevinQueryHitsFactStore(t *testing.T) {
+func TestExecutor_FactQueryHitsFactStore(t *testing.T) {
 	rows := [][]any{{1}, {2}, {3}}
 	fs := &fakeStore{
-		queryReply: func(string) ([][]any, error) { return rows, nil },
+		queryReply: func(factstore.Query) ([][]any, error) { return rows, nil },
 	}
 	e := &Executor{Client: fs}
 
 	plan := &planner.QueryPlan{
 		BlockName: "test_detect",
 		Steps: []planner.PlanStep{
-			&planner.DatalevinQuery{Query: "[:find ?e :where [?e :attr/x ?]]", Into: "matches"},
+			&planner.FactQuery{Query: sampleQuery(), Into: "matches"},
 		},
 	}
 
@@ -66,8 +74,8 @@ func TestExecutor_DatalevinQueryHitsFactStore(t *testing.T) {
 	if len(fs.queries) != 1 {
 		t.Fatalf("expected 1 Query call, got %d", len(fs.queries))
 	}
-	if fs.queries[0] != "[:find ?e :where [?e :attr/x ?]]" {
-		t.Errorf("query text: %q", fs.queries[0])
+	if got, want := len(fs.queries[0].Find), 1; got != want {
+		t.Errorf("Find columns: got %d, want %d", got, want)
 	}
 	got, ok := result.Vars["matches"].([][]any)
 	if !ok {
@@ -86,14 +94,14 @@ func TestExecutor_DatalevinQueryHitsFactStore(t *testing.T) {
 // alternate backend impl must preserve.
 func TestExecutor_FactStoreError(t *testing.T) {
 	fs := &fakeStore{
-		queryReply: func(string) ([][]any, error) { return nil, errors.New("connection refused") },
+		queryReply: func(factstore.Query) ([][]any, error) { return nil, errors.New("connection refused") },
 	}
 	e := &Executor{Client: fs}
 
 	plan := &planner.QueryPlan{
 		BlockName: "test",
 		Steps: []planner.PlanStep{
-			&planner.DatalevinQuery{Query: "[:find ?e :where [?e :a ?]]", Into: "x"},
+			&planner.FactQuery{Query: sampleQuery(), Into: "x"},
 		},
 	}
 	if _, err := e.Run(context.Background(), plan); err == nil {

@@ -14,41 +14,30 @@ import (
 	"github.com/opentalon/talon-language/internal/planner"
 )
 
-// FactStore is what the executor needs from a backing knowledge
-// store: read facts via Query, write facts via Transact, declare a
-// schema via Schema. Today the only shipped backend is Datalevin
-// (internal/datalevin/client.go), and the concrete *datalevin.Client
-// satisfies this interface unchanged. The interface name is
-// intentionally backend-neutral so a future SQL- or vector-store-
-// backed implementation can plug in without touching every call site.
+// FactStore is the database abstraction layer the executor talks to. The
+// canonical type lives in internal/factstore; this is the executor's
+// alias so consumers don't need to import the factstore package
+// transitively.
 //
-// Method shapes do still reflect Datalog conventions (Query takes a
-// query string, Transact takes a list of fact maps). When a non-
-// Datalog backend lands, that backend's FactStore impl is responsible
-// for translating the planner's Datalog into its native dialect; the
-// interface itself is the point we'd refactor against.
+// Implementations shipped in this repo:
 //
-// Health is intentionally absent — only the CLI calls it (cmd/talon/
-// main.go), on the concrete client, before constructing the executor.
-// Keeping it out of the FactStore interface lets fakes implement just
-// what the executor exercises.
-type FactStore interface {
-	Query(ctx context.Context, query string) ([][]any, error)
-	Transact(ctx context.Context, txData []map[string]any) error
-	Schema(ctx context.Context, attrs map[string]map[string]string) error
-}
+//   - *datalevin.Client — Datalevin over HTTP (default for `talon run`)
+//   - *factstore.MemoryStore — Prolog-style in-memory (REPL, tests, CI)
+//
+// External callers can supply their own. See docs/factstore.md.
+type FactStore = factstore.FactStore
 
 // BlockResult is the outcome of executing one block's query plan.
 type BlockResult struct {
 	BlockName string
-	Flagged   [][]any        // entities matched by the first DatalevinQuery
+	Flagged   [][]any        // entities matched by the first FactQuery
 	Vars      map[string]any // all intermediate result variables
 	Steps     []StepResult   // per-step results for tracing
 }
 
 // StepResult records one step's execution.
 type StepResult struct {
-	Type   string // "DatalevinQuery", "GoComputation", "Filter"
+	Type   string // "FactQuery", "GoComputation", "Filter"
 	Name   string // function name or query variable
 	Output any
 }
@@ -117,12 +106,12 @@ func (e *Executor) Run(ctx context.Context, plan *planner.QueryPlan) (*BlockResu
 }
 
 // flaggedRows derives the block's flagged set. Start with the first
-// DatalevinQuery's rows, then narrow to entities marked Value=true by any
+// FactQuery's rows, then narrow to entities marked Value=true by any
 // MLComputation step downstream.
 func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 	var rows [][]any
 	for _, step := range plan.Steps {
-		if dq, ok := step.(*planner.DatalevinQuery); ok {
+		if dq, ok := step.(*planner.FactQuery); ok {
 			if arr, ok := vars[dq.Into].([][]any); ok {
 				rows = arr
 			}
@@ -195,7 +184,7 @@ func filterRowsByID(rows [][]any, keep map[int]bool) [][]any {
 
 func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map[string]any) (StepResult, error) {
 	switch s := step.(type) {
-	case *planner.DatalevinQuery:
+	case *planner.FactQuery:
 		return e.execQuery(ctx, s, vars)
 	case *planner.GoComputation:
 		return e.execComputation(ctx, s, vars)
@@ -232,11 +221,11 @@ func (e *Executor) execGraphSnapshot(ctx context.Context, g *planner.GraphSnapsh
 	return StepResult{Type: "GraphSnapshot", Name: g.Into, Output: snap}, nil
 }
 
-func (e *Executor) execQuery(ctx context.Context, dq *planner.DatalevinQuery, vars map[string]any) (StepResult, error) {
-	// Skip empty queries (e.g. calculate clauses with no conditions)
-	if strings.Contains(dq.Query, ":where]") || strings.HasSuffix(strings.TrimSpace(dq.Query), ":where]") {
+func (e *Executor) execQuery(ctx context.Context, dq *planner.FactQuery, vars map[string]any) (StepResult, error) {
+	// Skip empty queries (e.g. calculate clauses with no conditions).
+	if len(dq.Query.Where) == 0 {
 		vars[dq.Into] = [][]any{}
-		return StepResult{Type: "DatalevinQuery", Name: dq.Into, Output: [][]any{}}, nil
+		return StepResult{Type: "FactQuery", Name: dq.Into, Output: [][]any{}}, nil
 	}
 	rows, err := e.Client.Query(ctx, dq.Query)
 	if err != nil {
@@ -244,7 +233,7 @@ func (e *Executor) execQuery(ctx context.Context, dq *planner.DatalevinQuery, va
 	}
 	vars[dq.Into] = rows
 	return StepResult{
-		Type:   "DatalevinQuery",
+		Type:   "FactQuery",
 		Name:   dq.Into,
 		Output: rows,
 	}, nil
@@ -505,69 +494,53 @@ func (e *Executor) execFilter(f *planner.Filter, vars map[string]any) (StepResul
 	}, nil
 }
 
-// Seed reads given blocks from a parsed .talon.test program, infers the schema,
-// and pushes data to Datalevin via the HTTP client.
+// Seed reads given blocks from a parsed .talon.test program and asserts
+// every fact through the FactStore's Assert method. Schema inference (for
+// backends that need it, e.g. Datalevin) is the backend's responsibility.
 func (e *Executor) Seed(ctx context.Context, prog *ast.Program) (int, error) {
-	// Collect all given data across all test blocks, dedup by entity ID
-	entities := map[int]map[string]any{}
+	// Flatten given { record N k v; attr N "k" v } into a Fact list.
+	// Dedup by entity ID so the return value reports distinct entities.
+	entityIDs := map[int]bool{}
+	var facts []factstore.Fact
 	for _, b := range prog.Blocks {
 		tb, ok := b.(*ast.TestBlock)
 		if !ok {
 			continue
 		}
 		for _, d := range tb.Given {
-			ent, exists := entities[d.ID]
-			if !exists {
-				ent = map[string]any{}
-				entities[d.ID] = ent
-			}
+			entityIDs[d.ID] = true
+			id := strconv.Itoa(d.ID)
 			for k, v := range d.Fields {
-				attr := fieldNamespace(d.Kind, k)
-				ent[attr] = v
+				facts = append(facts, factstore.Fact{
+					RecordID:  id,
+					Attribute: fieldNamespace(d.Kind, k),
+					Value:     v,
+				})
 			}
 		}
 	}
-
-	if len(entities) == 0 {
+	if len(facts) == 0 {
 		return 0, nil
 	}
-
-	// Infer schema from entity values
-	schema := map[string]map[string]string{}
-	for _, fields := range entities {
-		for attr, val := range fields {
-			if _, exists := schema[attr]; exists {
-				continue
-			}
-			schema[attr] = map[string]string{"db/valueType": inferType(val)}
-		}
+	if err := e.Client.Assert(ctx, facts); err != nil {
+		return 0, fmt.Errorf("seed: %w", err)
 	}
-
-	// Push schema
-	if err := e.Client.Schema(ctx, schema); err != nil {
-		return 0, fmt.Errorf("seed schema: %w", err)
-	}
-
-	// Build transaction data
-	var txData []map[string]any
-	for _, fields := range entities {
-		tx := map[string]any{}
-		for attr, val := range fields {
-			tx[":"+attr[1:]] = val // ":record/type" → ":record/type" (already prefixed)
-		}
-		txData = append(txData, tx)
-	}
-
-	if err := e.Client.Transact(ctx, txData); err != nil {
-		return 0, fmt.Errorf("seed transact: %w", err)
-	}
-
-	return len(entities), nil
+	return len(entityIDs), nil
 }
 
-// ResolveNames looks up :attr/name for all entities.
+// ResolveNames looks up :attr/name for all entities via a structured query.
 func (e *Executor) ResolveNames(ctx context.Context, _ []int) (map[int]string, error) {
-	rows, err := e.Client.Query(ctx, `[:find ?e ?name :where [?e :attr/name ?name]]`)
+	q := factstore.Query{
+		Find: []string{"?e", "?name"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{
+				Entity:    factstore.Var("e"),
+				Attribute: ":attr/name",
+				Value:     factstore.Var("name"),
+			},
+		},
+	}
+	rows, err := e.Client.Query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -727,15 +700,3 @@ func fieldNamespace(kind, key string) string {
 	}
 }
 
-func inferType(val any) string {
-	switch val.(type) {
-	case float64:
-		return "db.type/long"
-	case string:
-		return "db.type/string"
-	case bool:
-		return "db.type/boolean"
-	default:
-		return "db.type/string"
-	}
-}

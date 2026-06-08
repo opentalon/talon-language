@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/planner"
@@ -37,7 +38,7 @@ combine "Dispatch picks" {
 		{104, 1.0, 50.0}, // dominated by 101
 	}
 	fs := &fakeStore{
-		queryReply: func(string) ([][]any, error) { return rows, nil },
+		queryReply: func(factstore.Query) ([][]any, error) { return rows, nil },
 	}
 	e := &Executor{Client: fs}
 

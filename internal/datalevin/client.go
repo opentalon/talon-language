@@ -28,8 +28,11 @@ type QueryResult struct {
 	Results [][]any `json:"results"`
 }
 
-// Query executes a Datalog query and returns result tuples.
-func (c *Client) Query(ctx context.Context, query string) ([][]any, error) {
+// RawQuery executes a raw Datalog query string. The structured Query method
+// is the one the executor calls; RawQuery is exposed for the few call sites
+// (notably `talon trace --raw` and the CLI seeding hot-path) that already
+// have hand-written Datalog text.
+func (c *Client) RawQuery(ctx context.Context, query string) ([][]any, error) {
 	body := map[string]any{"query": query}
 	var result QueryResult
 	if err := c.post(ctx, "/q", body, &result); err != nil {
@@ -38,9 +41,9 @@ func (c *Client) Query(ctx context.Context, query string) ([][]any, error) {
 	return result.Results, nil
 }
 
-// Transact asserts facts into the database.
-// Each fact is a map of attribute string → value (e.g. {":record/type": "item"}).
-func (c *Client) Transact(ctx context.Context, txData []map[string]any) error {
+// RawTransact submits raw Datalevin transaction maps. Use Assert (which
+// satisfies the factstore.FactStore interface) for the normal path.
+func (c *Client) RawTransact(ctx context.Context, txData []map[string]any) error {
 	body := map[string]any{"tx-data": txData}
 	var result map[string]any
 	if err := c.post(ctx, "/transact", body, &result); err != nil {

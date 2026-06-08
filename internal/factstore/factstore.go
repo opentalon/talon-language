@@ -1,102 +1,130 @@
+// Package factstore is Talon's database abstraction. The planner emits
+// structured Query values that any FactStore implementation can answer,
+// so adding a new backend (in-memory, SQL, custom) does not touch the
+// planner — only the implementation. See docs/factstore.md and issue
+// #14.
+//
+// The interface deliberately stays small: query + assert. Schema setup,
+// recursive traversal, time-travel queries, and other capabilities the
+// RFC mentions are not yet wired through any planner path; they will
+// land as the planner needs them, alongside the implementation that
+// supports them.
 package factstore
 
-import (
-	"context"
-	"time"
-)
+import "context"
 
-// FactStore is the database abstraction layer. All compiler and runtime code
-// targets this interface — never a concrete backend directly.
+// FactStore is the single interface the executor talks to. Implementations
+// shipped in this repo: *datalevin.Client (Datalevin over HTTP) and
+// MemoryStore (Prolog-style in-memory store). External callers can plug
+// in their own; the contract is small enough to mock.
 type FactStore interface {
-	Assert(ctx context.Context, entityID string, facts []Fact) error
-	Retract(ctx context.Context, entityID string, pattern FactPattern) error
-	Query(ctx context.Context, entityID string, query FactQuery) ([]FactResult, error)
-	QueryRecursive(ctx context.Context, entityID string, query RecursiveQuery) ([]FactResult, error)
-	Aggregate(ctx context.Context, entityID string, query AggregateQuery) (AggregateResult, error)
-	QueryAsOf(ctx context.Context, entityID string, query FactQuery, asOf time.Time) ([]FactResult, error)
-	Transact(ctx context.Context, entityID string, ops []TransactOp) error
-	CreateEntity(ctx context.Context, entityID string) error
-	DropEntity(ctx context.Context, entityID string) error
+	// Query evaluates a structured query and returns one row per match,
+	// columns ordered by Query.Find.
+	Query(ctx context.Context, q Query) ([][]any, error)
+
+	// Assert adds facts to the store. Implementations are responsible for
+	// any persistence concerns (Datalevin commits immediately; MemoryStore
+	// mutates an in-process map; a future SQL store batches into INSERTs).
+	Assert(ctx context.Context, facts []Fact) error
 }
 
-// Fact is a single entity-attribute-value triple with timestamp.
+// Fact is a single EAV triple. The record-ID + attribute together identify
+// the cell being asserted; value carries the data; timestamp is optional
+// and zero-valued when the caller does not need temporal semantics.
+//
+// The historical FactStore interface from the RFC distinguishes Entity
+// (tenant) and RecordID (within tenant). Today's executor only deals with
+// one tenant at a time, so the planner emits queries without a tenant
+// pattern. The Entity field is reserved for the multi-tenant work in
+// follow-up issues #15 / #4.
 type Fact struct {
-	Entity    string
+	Entity    string // tenant ID (unused today; reserved for #15)
 	RecordID  string
 	Attribute string
 	Value     any
-	Timestamp time.Time
 }
 
-// FactPattern matches facts by field. A nil pointer means "match any".
-// Value nil means match any value; a concrete value means exact match.
-type FactPattern struct {
-	Entity    *string
-	RecordID  *string
-	Attribute *string
-	Value     any
+// Query is a single read from the FactStore. Datalog-shaped but Go-typed:
+// the patterns bind variables across entities, the predicates filter the
+// bindings, and Find names the columns to return (in order).
+//
+// Backends do not need to parse text — every shape that the planner can
+// express lives in this struct.
+type Query struct {
+	// Find names the variables to return, in column order. "?e" is
+	// conventionally the entity binding (column 0).
+	Find []string
+
+	// Where is the clause list. All clauses must hold for a row to match;
+	// nested Or and Not clauses handle disjunction and negation.
+	Where []Clause
 }
 
-type FactQuery struct {
-	Patterns []FactPattern
-	Negation []FactPattern
-	OrderBy  string
-	Limit    int
+// Clause is implemented by Pattern, Predicate, Or, and Not.
+type Clause interface {
+	clauseNode()
 }
 
-type FactResult struct {
-	Fact Fact
+// Pattern matches an entity-attribute-value triple. Each field can be a
+// variable (Term.Var set), a literal (Term.Literal set), or a wildcard
+// (both empty). A variable that already has a binding constrains the
+// match; an unbound variable receives the matched value.
+type Pattern struct {
+	Entity    Term
+	Attribute string // ":record/type", ":attr/km", etc. — namespace included
+	Value     Term
 }
 
-// RecursiveQuery traverses EAV graphs (category trees, manager chains).
-type RecursiveQuery struct {
-	Start         FactPattern
-	EdgeAttribute string
-	MaxDepth      int // 0 = unlimited
-	Direction     TraversalDirection
+// Predicate is a post-binding comparison or string match. Backends with
+// query languages of their own translate this; MemoryStore evaluates it
+// directly.
+type Predicate struct {
+	Op    string // "<", "<=", ">", ">=", "==", "!=", "starts_with", "ends_with", "contains"
+	Left  Term
+	Right Term
 }
 
-type TraversalDirection int
-
-const (
-	TraverseDown TraversalDirection = iota
-	TraverseUp
-	TraverseBoth
-)
-
-type AggregateQuery struct {
-	Patterns  []FactPattern
-	Attribute string
-	Function  AggregateFunction
-	GroupBy   string
+// Or is the disjunction of N branches. A row matches if any branch
+// matches; variables bound inside a branch are scoped to that branch.
+type Or struct {
+	Branches [][]Clause
 }
 
-type AggregateFunction int
-
-const (
-	AggCount  AggregateFunction = iota
-	AggSum    AggregateFunction = iota
-	AggAvg    AggregateFunction = iota
-	AggMin    AggregateFunction = iota
-	AggMax    AggregateFunction = iota
-	AggStddev AggregateFunction = iota
-)
-
-type AggregateResult struct {
-	Value  float64
-	Count  int
-	Groups map[string]float64
+// Not negates the inner clauses: the row matches only when none of them
+// match.
+type Not struct {
+	Body []Clause
 }
 
-type TransactOp struct {
-	Kind    TransactKind
-	Facts   []Fact
-	Pattern *FactPattern
+func (*Pattern) clauseNode()   {}
+func (*Predicate) clauseNode() {}
+func (*Or) clauseNode()        {}
+func (*Not) clauseNode()       {}
+
+// Term carries either a variable reference or a literal value. Use the
+// constructors below — the zero value is the wildcard "any".
+type Term struct {
+	Var     string // non-empty for a variable reference (e.g. "?e", "?km")
+	Literal any    // non-nil for a literal — string, float64, bool, int
 }
 
-type TransactKind int
+// Var constructs a variable term. The conventional leading "?" is added
+// if missing so call-sites can read naturally.
+func Var(name string) Term {
+	if name == "" {
+		return Term{}
+	}
+	if name[0] != '?' {
+		name = "?" + name
+	}
+	return Term{Var: name}
+}
 
-const (
-	TransactAssert  TransactKind = iota
-	TransactRetract TransactKind = iota
-)
+// Lit constructs a literal term.
+func Lit(v any) Term { return Term{Literal: v} }
+
+// IsVar reports whether the term references a variable.
+func (t Term) IsVar() bool { return t.Var != "" }
+
+// IsWildcard reports whether the term is the zero value (matches any).
+func (t Term) IsWildcard() bool { return t.Var == "" && t.Literal == nil }

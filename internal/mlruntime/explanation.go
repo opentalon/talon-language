@@ -38,7 +38,7 @@ type Primitive interface {
 }
 
 // Input is the data and parameters handed to a Primitive.
-// Rows come from the upstream DatalevinQuery; Schema maps column names to
+// Rows come from the upstream FactQuery; Schema maps column names to
 // row indices; Params carries the planner's MLComputation.Params verbatim.
 type Input struct {
 	Rows   [][]any

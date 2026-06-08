@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/internal/planner"
 )
 
@@ -32,7 +33,7 @@ combine "Reorder picks" {
 		{103, 4500.0, 50.0},
 		{104, 4500.0, 49.0},
 	}
-	fs := &fakeStore{queryReply: func(string) ([][]any, error) { return rows, nil }}
+	fs := &fakeStore{queryReply: func(factstore.Query) ([][]any, error) { return rows, nil }}
 	e := &Executor{Client: fs}
 
 	result, err := e.Run(context.Background(), plan)
