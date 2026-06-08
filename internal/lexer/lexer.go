@@ -154,6 +154,16 @@ const (
 	TokenContext
 	TokenCategoryTree
 
+	// Keywords — defeasible / reactive / constraint
+	// These are the only new reserved words; the rest of the new vocabulary
+	// (change, assert, retract, on_violation, reject, warn, quarantine,
+	// logger, to, info, error) is matched contextually as TokenIdent by
+	// string value, to keep the keyword set small.
+	TokenStrict
+	TokenOverrides
+	TokenConstraint
+	TokenRequire
+
 	// Keywords — test blocks
 	TokenTest
 	TokenGiven
@@ -274,6 +284,10 @@ var keywords = map[string]TokenType{
 	"expect":            TokenExpect,
 	"flagged":           TokenFlagged,
 	"record":            TokenRecord,
+	"strict":            TokenStrict,
+	"overrides":         TokenOverrides,
+	"constraint":        TokenConstraint,
+	"require":           TokenRequire,
 }
 
 type Token struct {

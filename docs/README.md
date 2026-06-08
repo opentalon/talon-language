@@ -4,6 +4,12 @@
 
 - **[Optimizers](./optimizers/README.md)** — when to use Pareto vs GA vs
   ILP vs ACO; worked examples; combine block reference.
+- **[Defeasible reasoning](./defeasible.md)** — `strict` rules,
+  `overrides`, priority-based conflict resolution.
+- **[Reactive rules](./reactive.md)** — `on change` / `on assert` /
+  `on retract` blocks that fire when facts mutate.
+- **[Integrity constraints](./constraints.md)** — `constraint` blocks
+  with `require` / `on_violation reject|warn|quarantine`.
 
 ## Design notes
 

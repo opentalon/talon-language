@@ -38,7 +38,7 @@ func (p *parser) parseBlock() ast.Block {
 	switch p.peek().Type {
 	case lexer.TokenDetect:
 		return p.parseDetect()
-	case lexer.TokenRule:
+	case lexer.TokenStrict, lexer.TokenRule:
 		return p.parseRule()
 	case lexer.TokenRecommend:
 		return p.parseRecommend()
@@ -62,6 +62,10 @@ func (p *parser) parseBlock() ast.Block {
 			return p.parseRelatedBlock()
 		}
 		return p.parseSimilarBlock()
+	case lexer.TokenOn:
+		return p.parseOnBlock()
+	case lexer.TokenConstraint:
+		return p.parseConstraintBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
 	default:
@@ -158,13 +162,23 @@ func (p *parser) parseTuneClause() *ast.TuneClause {
 // ─── rule ─────────────────────────────────────────────────────────────────────
 
 func (p *parser) parseRule() *ast.RuleBlock {
+	strict := false
+	if p.at(lexer.TokenStrict) {
+		p.advance() // strict
+		strict = true
+	}
+	if !p.at(lexer.TokenRule) {
+		p.errorf("expected 'rule' after 'strict', got %q", p.peek().Value)
+		p.synchronize()
+		return nil
+	}
 	tok := p.advance() // rule
 	name := p.expectString()
 	if !p.expect(lexer.TokenLBrace) {
 		p.synchronize()
 		return nil
 	}
-	b := &ast.RuleBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	b := &ast.RuleBlock{Name: name, Strict: strict, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	// selector or when
 	if p.at(lexer.TokenFor) {
 		sel := p.parseSelector()
@@ -214,6 +228,13 @@ func (p *parser) parseRuleClause(b *ast.RuleBlock) bool {
 	case lexer.TokenPriority:
 		pr := p.parsePriority()
 		b.Priority = &pr
+	case lexer.TokenOverrides:
+		p.advance() // overrides
+		b.Overrides = append(b.Overrides, p.expectString())
+		for p.at(lexer.TokenComma) {
+			p.advance()
+			b.Overrides = append(b.Overrides, p.expectString())
+		}
 	default:
 		p.errorf("unexpected token %q inside rule block", p.peek().Value)
 		return false
@@ -461,6 +482,149 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 	}
 	p.expect(lexer.TokenRBrace)
 	return call
+}
+
+// ─── on (reactive) ────────────────────────────────────────────────────────────
+
+func (p *parser) parseOnBlock() *ast.OnBlock {
+	tok := p.advance() // on
+	b := &ast.OnBlock{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+
+	// Trigger keyword: change | assert | retract (matched as idents).
+	if !p.at(lexer.TokenIdent) {
+		p.errorf("expected 'change', 'assert', or 'retract' after 'on', got %q", p.peek().Value)
+		p.synchronize()
+		return nil
+	}
+	switch p.peek().Value {
+	case "change":
+		p.advance()
+		b.Trigger = "change"
+		if !p.at(lexer.TokenAttr) {
+			p.errorf("expected 'attr' after 'on change', got %q", p.peek().Value)
+			p.synchronize()
+			return nil
+		}
+		p.advance() // attr
+		b.Attr = p.expectString()
+		if p.at(lexer.TokenIdent) && p.peek().Value == "to" {
+			p.advance()
+			b.ToValue = p.parseExpr()
+		}
+		b.Name = fmt.Sprintf("on change attr %q", b.Attr)
+	case "assert":
+		p.advance()
+		b.Trigger = "assert"
+		b.FactType = p.expectIdent()
+		b.Name = fmt.Sprintf("on assert %s", b.FactType)
+	case "retract":
+		p.advance()
+		b.Trigger = "retract"
+		b.FactType = p.expectIdent()
+		b.Name = fmt.Sprintf("on retract %s", b.FactType)
+	default:
+		p.errorf("expected 'change', 'assert', or 'retract' after 'on', got %q", p.peek().Value)
+		p.synchronize()
+		return nil
+	}
+
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+
+	if p.at(lexer.TokenWhen) {
+		b.When = p.parseWhenClause()
+	}
+
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		act := p.parseOnAction()
+		if act != nil {
+			b.Actions = append(b.Actions, act)
+		} else {
+			p.synchronizeInBlock()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+func (p *parser) parseOnAction() ast.OnAction {
+	// logger.info|warn|error "msg"
+	if p.at(lexer.TokenIdent) && p.peek().Value == "logger" {
+		p.advance()
+		if !p.expect(lexer.TokenDot) {
+			return nil
+		}
+		level := p.expectIdent()
+		switch level {
+		case "info", "warn", "error":
+		default:
+			p.errorf("expected logger level (info/warn/error), got %q", level)
+			return nil
+		}
+		msg := p.expectString()
+		return &ast.LoggerAction{Level: level, Message: ast.Template{Raw: msg}}
+	}
+	// recommend "Name" or detect "Name" — reference to another block by name.
+	switch p.peek().Type {
+	case lexer.TokenRecommend:
+		p.advance()
+		return &ast.BlockRefAction{Kind: "recommend", Name: p.expectString()}
+	case lexer.TokenDetect:
+		p.advance()
+		return &ast.BlockRefAction{Kind: "detect", Name: p.expectString()}
+	}
+	p.errorf("unexpected token %q inside on block (expected logger / recommend / detect)", p.peek().Value)
+	return nil
+}
+
+// ─── constraint ───────────────────────────────────────────────────────────────
+
+func (p *parser) parseConstraintBlock() *ast.ConstraintBlock {
+	tok := p.advance() // constraint
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.ConstraintBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+
+	if p.at(lexer.TokenFor) {
+		b.Selector = p.parseSelector()
+	} else {
+		p.errorf("constraint %q: expected 'for records where ...' selector", name)
+	}
+
+	if p.at(lexer.TokenRequire) {
+		p.advance()
+		b.Require = p.parseOrCondition()
+	} else {
+		p.errorf("constraint %q: expected 'require' clause", name)
+	}
+
+	// on_violation MODE [STRING]
+	if p.at(lexer.TokenIdent) && p.peek().Value == "on_violation" {
+		p.advance()
+		modeTok := p.peek().Value
+		switch modeTok {
+		case "reject", "warn", "quarantine":
+			p.advance()
+			b.OnViolation.Mode = modeTok
+		default:
+			p.errorf("expected violation mode (reject/warn/quarantine), got %q", modeTok)
+			b.OnViolation.Mode = "reject"
+		}
+		if p.at(lexer.TokenString) {
+			b.OnViolation.Message = p.advance().Value
+		}
+	} else {
+		p.errorf("constraint %q: expected 'on_violation' clause", name)
+		b.OnViolation.Mode = "reject"
+	}
+
+	p.expect(lexer.TokenRBrace)
+	return b
 }
 
 // ─── top-level ML blocks ──────────────────────────────────────────────────────

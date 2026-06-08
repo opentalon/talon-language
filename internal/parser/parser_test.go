@@ -765,3 +765,131 @@ find similar "Sim" {
 		t.Errorf("similar block parse regressed: %+v", b)
 	}
 }
+
+// ─── defeasible (strict + overrides) ──────────────────────────────────────────
+
+func TestParseStrictRule(t *testing.T) {
+	prog := mustParse(t, `
+strict rule "Expired cert blocks assignment" {
+  for records where type == "person"
+  block "assign"
+  reason "Safety certification expired"
+}`)
+	b := block[*ast.RuleBlock](t, prog, 0)
+	if !b.Strict {
+		t.Error("expected Strict = true")
+	}
+}
+
+func TestParseRuleOverrides(t *testing.T) {
+	prog := mustParse(t, `
+rule "Cleanup crew can delete" {
+  when tool_action contains "delete"
+  overrides "Block all deletions"
+  allow "delete"
+  priority HIGH
+}`)
+	b := block[*ast.RuleBlock](t, prog, 0)
+	if len(b.Overrides) != 1 || b.Overrides[0] != "Block all deletions" {
+		t.Errorf("Overrides: got %v", b.Overrides)
+	}
+}
+
+func TestParseRuleMultipleOverrides(t *testing.T) {
+	prog := mustParse(t, `
+rule "Mega override" {
+  when tool_action contains "x"
+  overrides "A", "B", "C"
+  block "x"
+}`)
+	b := block[*ast.RuleBlock](t, prog, 0)
+	if len(b.Overrides) != 3 || b.Overrides[2] != "C" {
+		t.Errorf("Overrides: got %v", b.Overrides)
+	}
+}
+
+// ─── reactive (on change/assert/retract) ──────────────────────────────────────
+
+func TestParseOnChange(t *testing.T) {
+	prog := mustParse(t, `
+on change attr "current_stock" {
+  logger.warn "stock changed: {item.name}"
+}`)
+	b := block[*ast.OnBlock](t, prog, 0)
+	if b.Trigger != "change" || b.Attr != "current_stock" {
+		t.Errorf("Trigger/Attr: got %s / %s", b.Trigger, b.Attr)
+	}
+	if len(b.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(b.Actions))
+	}
+	la, ok := b.Actions[0].(*ast.LoggerAction)
+	if !ok {
+		t.Fatalf("expected LoggerAction, got %T", b.Actions[0])
+	}
+	if la.Level != "warn" {
+		t.Errorf("Level: got %s", la.Level)
+	}
+}
+
+func TestParseOnAssert(t *testing.T) {
+	prog := mustParse(t, `
+on assert activity {
+  detect "Defective item without ticket"
+}`)
+	b := block[*ast.OnBlock](t, prog, 0)
+	if b.Trigger != "assert" || b.FactType != "activity" {
+		t.Errorf("Trigger/FactType: got %s / %s", b.Trigger, b.FactType)
+	}
+	ref, ok := b.Actions[0].(*ast.BlockRefAction)
+	if !ok || ref.Kind != "detect" || ref.Name != "Defective item without ticket" {
+		t.Errorf("BlockRefAction: got %+v", b.Actions[0])
+	}
+}
+
+func TestParseOnRetract(t *testing.T) {
+	prog := mustParse(t, `
+on retract item {
+  logger.info "item removed: {item.id}"
+}`)
+	b := block[*ast.OnBlock](t, prog, 0)
+	if b.Trigger != "retract" || b.FactType != "item" {
+		t.Errorf("Trigger/FactType: got %s / %s", b.Trigger, b.FactType)
+	}
+}
+
+// ─── constraint ───────────────────────────────────────────────────────────────
+
+func TestParseConstraint(t *testing.T) {
+	prog := mustParse(t, `
+constraint "Stock cannot be negative" {
+  for records where type == "stock_item"
+  require attr "current_stock" >= 0
+  on_violation reject "stock must be non-negative"
+}`)
+	b := block[*ast.ConstraintBlock](t, prog, 0)
+	if b.Name != "Stock cannot be negative" {
+		t.Errorf("Name: got %q", b.Name)
+	}
+	if b.Require == nil {
+		t.Fatal("Require: nil")
+	}
+	if b.OnViolation.Mode != "reject" {
+		t.Errorf("Mode: got %q", b.OnViolation.Mode)
+	}
+	if b.OnViolation.Message != "stock must be non-negative" {
+		t.Errorf("Message: got %q", b.OnViolation.Message)
+	}
+}
+
+func TestParseConstraintQuarantine(t *testing.T) {
+	prog := mustParse(t, `
+constraint "Suspicious dates" {
+  for records where type == "activity"
+  require attr "date" >= 0
+  on_violation quarantine "needs review"
+}`)
+	b := block[*ast.ConstraintBlock](t, prog, 0)
+	if b.OnViolation.Mode != "quarantine" {
+		t.Errorf("Mode: got %q", b.OnViolation.Mode)
+	}
+}

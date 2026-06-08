@@ -29,10 +29,46 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkDuplicates()
 	v.checkCompleteness()
 	v.checkReferences()
+	v.checkOverrides()
 	v.checkTypes()
 	v.checkCycles()
 	v.checkWorkflows()
 	return v.diags
+}
+
+// checkOverrides verifies `overrides "name"` clauses on rules: the named rule
+// must exist, and you cannot override a strict rule.
+func (v *validator) checkOverrides() {
+	rules := map[string]*ast.RuleBlock{}
+	for _, b := range v.prog.Blocks {
+		if r, ok := b.(*ast.RuleBlock); ok {
+			rules[r.Name] = r
+		}
+	}
+	ruleNames := make([]string, 0, len(rules))
+	for n := range rules {
+		ruleNames = append(ruleNames, n)
+	}
+	for _, b := range v.prog.Blocks {
+		r, ok := b.(*ast.RuleBlock)
+		if !ok {
+			continue
+		}
+		for _, target := range r.Overrides {
+			t, exists := rules[target]
+			if !exists {
+				v.errAt(r.Pos,
+					fmt.Sprintf("rule %q overrides unknown rule %q", r.Name, target),
+					suggest(target, ruleNames))
+				continue
+			}
+			if t.Strict {
+				v.errAt(r.Pos,
+					fmt.Sprintf("rule %q cannot override strict rule %q", r.Name, target),
+					"strict rules cannot be defeated")
+			}
+		}
+	}
 }
 
 // ─── Collection ───────────────────────────────────────────────────────────────
@@ -587,6 +623,10 @@ func blockPos(b ast.Block) ast.Pos {
 	case *ast.SimilarBlock:
 		return bb.Pos
 	case *ast.RelatedBlock:
+		return bb.Pos
+	case *ast.OnBlock:
+		return bb.Pos
+	case *ast.ConstraintBlock:
 		return bb.Pos
 	}
 	return ast.Pos{}
