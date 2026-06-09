@@ -409,7 +409,7 @@ type HasCondition struct {
 
 type StringMatchCondition struct {
 	Subject Expr
-	Op      string // "contains", "starts_with", "ends_with", "matches"
+	Op      string // "contains", "starts_with", "ends_with", "matches", "matches_phrase"
 	Value   string
 }
 

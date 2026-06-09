@@ -1466,8 +1466,16 @@ func (p *parser) parseExprCondition() ast.Condition {
 
 	case lexer.TokenMatches:
 		p.advance()
+		// `matches phrase "X"` — exact-phrase FTS variant. Falls back
+		// to the plain `matches "X"` term-search form when the next
+		// token isn't `phrase`.
+		op := "matches"
+		if p.at(lexer.TokenIdent) && p.peek().Value == "phrase" {
+			p.advance()
+			op = "matches_phrase"
+		}
 		val := p.expectString()
-		return &ast.StringMatchCondition{Subject: expr, Op: "matches", Value: val}
+		return &ast.StringMatchCondition{Subject: expr, Op: op, Value: val}
 
 	case lexer.TokenIs:
 		p.advance()

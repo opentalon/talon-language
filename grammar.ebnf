@@ -306,7 +306,8 @@ IsCondition         = ( Expr "is" STRING )
 
 HasCondition        = "has" "record" "type" STRING  (* open maintenance ticket, etc. *)
 
-StringMatchCondition = Expr ( "contains" | "starts_with" | "ends_with" ) STRING
+StringMatchCondition = Expr ( "contains" | "starts_with" | "ends_with"
+                            | "matches" [ "phrase" ] ) STRING
 
 AnomalyCondition    = "attr" STRING "is" "anomaly" "compared_to" "last" NUMBER DurationUnit
 
