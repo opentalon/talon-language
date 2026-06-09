@@ -30,10 +30,65 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkCompleteness()
 	v.checkReferences()
 	v.checkOverrides()
+	v.checkTemplates()
 	v.checkTypes()
 	v.checkCycles()
 	v.checkWorkflows()
 	return v.diags
+}
+
+// checkTemplates flags unknown function names inside `{...}` template
+// interpolations. The renderer leaves unknowns as their literal source
+// so users see what went wrong; this surface gives compile-time
+// diagnostics for the same gap before the rule ever fires.
+func (v *validator) checkTemplates() {
+	for _, b := range v.prog.Blocks {
+		pos := blockPos(b)
+		for _, tmpl := range collectTemplates(b) {
+			if tmpl == nil {
+				continue
+			}
+			for _, n := range tmpl.Nodes {
+				fn, ok := n.(*ast.FuncNode)
+				if !ok {
+					continue
+				}
+				if _, known := ast.KnownTemplateFunctions[fn.Fn]; !known {
+					v.errAt(pos, fmt.Sprintf("template uses unknown function %q", fn.Fn),
+						"supported: count, total, sum, avg, min, max, days_until, days_since")
+				}
+			}
+		}
+	}
+}
+
+// collectTemplates returns every Template embedded in a block, so the
+// validator can walk them uniformly. Returns []*ast.Template (never
+// dereferences nil).
+func collectTemplates(b ast.Block) []*ast.Template {
+	switch bb := b.(type) {
+	case *ast.DetectBlock:
+		return []*ast.Template{bb.Label}
+	case *ast.RecommendBlock:
+		return []*ast.Template{bb.Suggest}
+	case *ast.RuleBlock:
+		return []*ast.Template{bb.Reason}
+	case *ast.PredictBlock:
+		return []*ast.Template{bb.Label}
+	case *ast.ForecastBlock:
+		return []*ast.Template{bb.Label}
+	case *ast.ClusterBlock:
+		return []*ast.Template{bb.Label}
+	case *ast.ClassifyBlock:
+		return []*ast.Template{bb.Label}
+	case *ast.SimilarBlock:
+		return []*ast.Template{bb.Label}
+	case *ast.RelatedBlock:
+		return []*ast.Template{bb.Label}
+	case *ast.CombineBlock:
+		return []*ast.Template{bb.Label}
+	}
+	return nil
 }
 
 // checkOverrides verifies `overrides "name"` clauses on rules: the named rule

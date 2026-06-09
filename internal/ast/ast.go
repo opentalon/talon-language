@@ -453,9 +453,174 @@ type Duration struct {
 	Unit  string // "days", "weeks", "months", "years", "km"
 }
 
-// Template is a string that may contain `{ident.field}` interpolations.
+// Template is a string that may contain `{...}` interpolations. The
+// language parser pre-parses Raw into Nodes so the validator can flag
+// unknown functions and the renderer doesn't reparse on every call.
+//
+// Nodes is empty for templates constructed without going through
+// ParseTemplate (e.g. when test code synthesises one). Renderers should
+// fall back to Raw + a regex pass in that case for backward compat.
 type Template struct {
-	Raw string
+	Raw   string
+	Nodes []TemplateNode
+}
+
+// TemplateNode is implemented by LiteralNode, RefNode, FuncNode.
+type TemplateNode interface {
+	templateNode()
+}
+
+// LiteralNode is plain text between interpolations.
+type LiteralNode struct {
+	Text string
+}
+
+// RefNode is `{path}` — a dotted reference like `item.name`, `attr.km`,
+// `context.role`. Renderers resolve against the matched row.
+type RefNode struct {
+	Path string
+}
+
+// FuncNode is `{fn(args...)}` — a template function call. Supported
+// functions: count (no args), total/sum/avg/min/max (one attr.x arg),
+// days_until / days_since (one date arg). Validator enforces the
+// argument count.
+type FuncNode struct {
+	Fn   string
+	Args []string // raw arg sources — e.g. "attr.km", "expires_at"
+}
+
+func (*LiteralNode) templateNode() {}
+func (*RefNode) templateNode()     {}
+func (*FuncNode) templateNode()    {}
+
+// KnownTemplateFunctions enumerates the functions ParseTemplate accepts.
+// Used by the validator to surface unknown-function diagnostics.
+var KnownTemplateFunctions = map[string]struct{}{
+	"count":       {},
+	"total":       {},
+	"sum":         {},
+	"avg":         {},
+	"min":         {},
+	"max":         {},
+	"days_until":  {},
+	"days_since":  {},
+}
+
+// ParseTemplate parses a raw template string into a Template with Nodes
+// populated. Unknown functions are still admitted into the AST — the
+// validator decides whether to reject; renderers leave them as the
+// original `{...}` literal so the user sees a hint of what was wrong.
+//
+// Grammar:
+//
+//	template      = { literal | interpolation }
+//	interpolation = "{" ( funcCall | path ) "}"
+//	funcCall      = ident "(" [ args ] ")"
+//	args          = arg { "," arg }            // whitespace-tolerant
+//	path          = ident { "." ident }
+func ParseTemplate(raw string) Template {
+	tmpl := Template{Raw: raw}
+	if raw == "" {
+		return tmpl
+	}
+	var nodes []TemplateNode
+	var lit []byte
+	flushLit := func() {
+		if len(lit) > 0 {
+			nodes = append(nodes, &LiteralNode{Text: string(lit)})
+			lit = lit[:0]
+		}
+	}
+	i := 0
+	for i < len(raw) {
+		c := raw[i]
+		if c != '{' {
+			lit = append(lit, c)
+			i++
+			continue
+		}
+		// Find matching '}'. Templates don't nest, so the next '}' is it.
+		j := i + 1
+		for j < len(raw) && raw[j] != '}' {
+			j++
+		}
+		if j >= len(raw) {
+			// Unterminated — treat the rest as a literal so the bad
+			// source surfaces in the rendered output.
+			lit = append(lit, raw[i:]...)
+			break
+		}
+		body := raw[i+1 : j]
+		flushLit()
+		nodes = append(nodes, parseInterpolation(body))
+		i = j + 1
+	}
+	flushLit()
+	tmpl.Nodes = nodes
+	return tmpl
+}
+
+// parseInterpolation classifies one `{...}` body as either a function
+// call or a dotted reference. Bare known-function names (e.g. `{count}`)
+// are admitted as zero-arg FuncNodes so the documented `{count}` form
+// works without parens.
+func parseInterpolation(body string) TemplateNode {
+	body = trimASCIISpace(body)
+	if body == "" {
+		return &LiteralNode{Text: "{}"}
+	}
+	if open := indexByte(body, '('); open >= 0 && lastByte(body) == ')' {
+		fn := trimASCIISpace(body[:open])
+		argsRaw := trimASCIISpace(body[open+1 : len(body)-1])
+		return &FuncNode{Fn: fn, Args: splitArgs(argsRaw)}
+	}
+	if _, ok := KnownTemplateFunctions[body]; ok {
+		return &FuncNode{Fn: body}
+	}
+	return &RefNode{Path: body}
+}
+
+func splitArgs(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == ',' {
+			out = append(out, trimASCIISpace(s[start:i]))
+			start = i + 1
+		}
+	}
+	out = append(out, trimASCIISpace(s[start:]))
+	return out
+}
+
+func trimASCIISpace(s string) string {
+	for len(s) > 0 && (s[0] == ' ' || s[0] == '\t' || s[0] == '\n') {
+		s = s[1:]
+	}
+	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\t' || s[len(s)-1] == '\n') {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
+func indexByte(s string, b byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return i
+		}
+	}
+	return -1
+}
+
+func lastByte(s string) byte {
+	if s == "" {
+		return 0
+	}
+	return s[len(s)-1]
 }
 
 type FlagTarget struct {

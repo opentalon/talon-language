@@ -3,6 +3,7 @@ package factstore
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -203,5 +204,112 @@ func TestQueryOrderingDeterministic(t *testing.T) {
 	b, _ := m.Query(context.Background(), q)
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("ordering not deterministic across runs:\n a=%v\n b=%v", a, b)
+	}
+}
+
+// ─── Aggregation ──────────────────────────────────────────────────────────────
+
+func TestQueryCount(t *testing.T) {
+	m := newSeeded(t)
+	q := Query{
+		Where: []Clause{
+			&Pattern{Entity: Var("e"), Attribute: ":record/type", Value: Lit("item")},
+		},
+		Aggregates: []Aggregate{{Fn: "count", Over: Var("e"), As: "n"}},
+	}
+	rows, err := m.Query(context.Background(), q)
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(rows) != 1 || rows[0][0].(float64) != 2 {
+		t.Errorf("expected count=2 over 2 item records, got %v", rows)
+	}
+}
+
+func TestQuerySumAndAvg(t *testing.T) {
+	m := newSeeded(t)
+	q := Query{
+		Where: []Clause{
+			&Pattern{Entity: Var("e"), Attribute: ":record/type", Value: Lit("item")},
+			&Pattern{Entity: Var("e"), Attribute: ":attr/km", Value: Var("km")},
+		},
+		Aggregates: []Aggregate{
+			{Fn: "sum", Over: Var("km"), As: "total_km"},
+			{Fn: "avg", Over: Var("km"), As: "avg_km"},
+		},
+	}
+	rows, err := m.Query(context.Background(), q)
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(rows) != 1 || rows[0][0].(float64) != 55000 || rows[0][1].(float64) != 27500 {
+		// items 501 (km=45000) + 502 (km=10000) = 55000; avg = 27500.
+		t.Errorf("want [55000 27500], got %v", rows)
+	}
+}
+
+func TestQueryMinMax(t *testing.T) {
+	m := newSeeded(t)
+	q := Query{
+		Where: []Clause{
+			&Pattern{Entity: Var("e"), Attribute: ":attr/km", Value: Var("km")},
+		},
+		Aggregates: []Aggregate{
+			{Fn: "min", Over: Var("km")},
+			{Fn: "max", Over: Var("km")},
+		},
+	}
+	rows, _ := m.Query(context.Background(), q)
+	if len(rows) != 1 || rows[0][0].(float64) != 10000 || rows[0][1].(float64) != 45000 {
+		t.Errorf("want [10000 45000], got %v", rows)
+	}
+}
+
+func TestQueryGroupBy(t *testing.T) {
+	m := newSeeded(t)
+	q := Query{
+		Where: []Clause{
+			&Pattern{Entity: Var("e"), Attribute: ":record/status", Value: Var("status")},
+		},
+		GroupBy:    []string{"?status"},
+		Aggregates: []Aggregate{{Fn: "count", Over: Var("e"), As: "n"}},
+	}
+	rows, err := m.Query(context.Background(), q)
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	// 2 active (501, 503), 1 defective (502). Lex order: active, defective.
+	want := [][]any{
+		{"active", float64(2)},
+		{"defective", float64(1)},
+	}
+	if !reflect.DeepEqual(rows, want) {
+		t.Errorf("group-by mismatch:\n got %v\nwant %v", rows, want)
+	}
+}
+
+// Datalog string rendering for aggregate queries.
+func TestQueryStringRendersAggregate(t *testing.T) {
+	q := Query{
+		Where: []Clause{
+			&Pattern{Entity: Var("e"), Attribute: ":record/type", Value: Lit("item")},
+			&Pattern{Entity: Var("e"), Attribute: ":attr/km", Value: Var("km")},
+		},
+		GroupBy:    []string{"?e"},
+		Aggregates: []Aggregate{{Fn: "avg", Over: Var("km")}},
+	}
+	got := q.String()
+	want := "[:find ?e (avg ?km)\n :where\n [?e :record/type \"item\"]\n [?e :attr/km ?km]]"
+	if got != want {
+		t.Errorf("render mismatch:\n got  %q\n want %q", got, want)
+	}
+}
+
+func TestAggregateTotalAliasedToSum(t *testing.T) {
+	q := Query{
+		Aggregates: []Aggregate{{Fn: "total", Over: Var("x")}},
+	}
+	if !strings.Contains(q.String(), "(sum ?x)") {
+		t.Errorf("expected (sum ?x), got %q", q.String())
 	}
 }

@@ -96,6 +96,9 @@ func (m *MemoryStore) Reset() {
 // short-circuit on first failing clause. For Talon's per-tenant fact
 // volumes (thousands, not millions) this is plenty; a future indexed
 // MemoryStore can replace the loop without changing the interface.
+//
+// When q.Aggregates is non-empty, the projection step is replaced by
+// aggregation — see runAggregates.
 func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -104,7 +107,8 @@ func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 	// and the REPL both rely on deterministic ordering.
 	ids := sortedKeys(m.entities)
 
-	var rows [][]any
+	// Pass 1: collect every matching binding set.
+	var matches []map[string]any
 	for _, id := range ids {
 		attrs := m.entities[id]
 		bindings := map[string]any{}
@@ -113,13 +117,174 @@ func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 		if !matchAll(q.Where, attrs, bindings) {
 			continue
 		}
+		matches = append(matches, bindings)
+	}
+
+	// Pass 2: project or aggregate.
+	if len(q.Aggregates) > 0 {
+		return runAggregates(matches, q.GroupBy, q.Aggregates), nil
+	}
+
+	rows := make([][]any, 0, len(matches))
+	for _, b := range matches {
 		row := make([]any, len(q.Find))
 		for i, name := range q.Find {
-			row[i] = bindings[name]
+			row[i] = b[name]
 		}
 		rows = append(rows, row)
 	}
 	return rows, nil
+}
+
+// runAggregates groups matched binding sets by GroupBy and computes each
+// Aggregate. The result row layout is [group-by columns..., aggregate
+// columns...] — same order as Query.String() emits.
+//
+// Groups are visited in lexicographic order of their group-by key so the
+// output is deterministic across runs (helpful for tests and REPL).
+func runAggregates(matches []map[string]any, groupBy []string, aggs []Aggregate) [][]any {
+	if len(groupBy) == 0 {
+		// Single group: one row with one column per aggregate.
+		row := make([]any, len(aggs))
+		for i, a := range aggs {
+			row[i] = computeAggregate(a, matches)
+		}
+		return [][]any{row}
+	}
+
+	// Bucket by composite group key.
+	type bucket struct {
+		key     []any
+		members []map[string]any
+	}
+	buckets := map[string]*bucket{}
+	order := []string{}
+	for _, b := range matches {
+		key := make([]any, len(groupBy))
+		for i, v := range groupBy {
+			key[i] = b[v]
+		}
+		k := groupKeyString(key)
+		if _, ok := buckets[k]; !ok {
+			buckets[k] = &bucket{key: key}
+			order = append(order, k)
+		}
+		buckets[k].members = append(buckets[k].members, b)
+	}
+
+	// Stable sort by the composite key string.
+	insertionSortStrings(order)
+
+	rows := make([][]any, 0, len(order))
+	for _, k := range order {
+		bk := buckets[k]
+		row := make([]any, 0, len(groupBy)+len(aggs))
+		row = append(row, bk.key...)
+		for _, a := range aggs {
+			row = append(row, computeAggregate(a, bk.members))
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func computeAggregate(a Aggregate, members []map[string]any) any {
+	switch a.Fn {
+	case "count":
+		return float64(len(members))
+	case "sum", "total":
+		s, _ := sumOver(a.Over, members)
+		return s
+	case "avg":
+		s, n := sumOver(a.Over, members)
+		if n == 0 {
+			return float64(0)
+		}
+		return s / float64(n)
+	case "min":
+		return minOver(a.Over, members)
+	case "max":
+		return maxOver(a.Over, members)
+	}
+	return nil
+}
+
+func sumOver(t Term, members []map[string]any) (float64, int) {
+	if t.Var == "" {
+		return 0, 0
+	}
+	var sum float64
+	n := 0
+	for _, b := range members {
+		if f, ok := toFloat(b[t.Var]); ok {
+			sum += f
+			n++
+		}
+	}
+	return sum, n
+}
+
+func minOver(t Term, members []map[string]any) any {
+	if t.Var == "" {
+		return nil
+	}
+	var best float64
+	seen := false
+	for _, b := range members {
+		f, ok := toFloat(b[t.Var])
+		if !ok {
+			continue
+		}
+		if !seen || f < best {
+			best = f
+			seen = true
+		}
+	}
+	if !seen {
+		return nil
+	}
+	return best
+}
+
+func maxOver(t Term, members []map[string]any) any {
+	if t.Var == "" {
+		return nil
+	}
+	var best float64
+	seen := false
+	for _, b := range members {
+		f, ok := toFloat(b[t.Var])
+		if !ok {
+			continue
+		}
+		if !seen || f > best {
+			best = f
+			seen = true
+		}
+	}
+	if !seen {
+		return nil
+	}
+	return best
+}
+
+func groupKeyString(key []any) string {
+	var b strings.Builder
+	for i, v := range key {
+		if i > 0 {
+			b.WriteByte('|')
+		}
+		b.WriteString(fmt.Sprintf("%v", v))
+	}
+	return b.String()
+}
+
+func insertionSortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
 }
 
 // ─── Evaluation ──────────────────────────────────────────────────────────────
