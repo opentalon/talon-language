@@ -38,10 +38,55 @@ func (q Query) String() string {
 	} else {
 		b.WriteString(strings.Join(q.Find, " "))
 	}
+	if len(q.Rules) > 0 {
+		// Rules are passed as a separate d/q argument, so the query
+		// declares `% ` in its :in list to receive them. `$` is the
+		// implicit DB binding Datalevin always passes first.
+		b.WriteString("\n :in $ %")
+	}
 	b.WriteString("\n :where")
 	for _, c := range q.Where {
 		b.WriteString("\n ")
 		b.WriteString(renderClause(c))
+	}
+	b.WriteString("]")
+	return b.String()
+}
+
+// RulesString renders the Rules vector in Datalevin's wire form. Each
+// rule body is a clause list; rules sharing the same Name form a
+// disjunction. Returns "" when Rules is empty so the Datalevin client
+// can skip the field on POST.
+//
+//	[[(category-in-tree ?c ?root)
+//	  [(= ?c ?root)]]
+//	 [(category-in-tree ?c ?root)
+//	  [?cent :record/type "category"]
+//	  [?cent :category/name ?c]
+//	  [?cent :category/parent ?p]
+//	  (category-in-tree ?p ?root)]]
+func (q Query) RulesString() string {
+	if len(q.Rules) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("[")
+	for i, r := range q.Rules {
+		if i > 0 {
+			b.WriteString("\n ")
+		}
+		b.WriteString("[(")
+		b.WriteString(r.Name)
+		for _, a := range r.Args {
+			b.WriteString(" ")
+			b.WriteString(a)
+		}
+		b.WriteString(")")
+		for _, c := range r.Body {
+			b.WriteString("\n  ")
+			b.WriteString(renderClause(c))
+		}
+		b.WriteString("]")
 	}
 	b.WriteString("]")
 	return b.String()
@@ -76,6 +121,8 @@ func renderClause(c Clause) string {
 		return renderNot(cc)
 	case *FullText:
 		return renderFullText(cc)
+	case *RuleCall:
+		return renderRuleCall(cc)
 	}
 	return ""
 }
@@ -97,6 +144,14 @@ func renderFullText(f *FullText) string {
 		eVar = "?e"
 	}
 	return fmt.Sprintf("[(fulltext $ %q) [[%s ?ft-a ?ft-v ?ft-s]]]", f.Query, eVar)
+}
+
+func renderRuleCall(r *RuleCall) string {
+	parts := make([]string, 0, len(r.Args))
+	for _, a := range r.Args {
+		parts = append(parts, renderTerm(a))
+	}
+	return fmt.Sprintf("(%s %s)", r.Name, strings.Join(parts, " "))
 }
 
 func renderPattern(p *Pattern) string {

@@ -90,6 +90,38 @@ type Query struct {
 	// means "one aggregate row for the whole match set". The variables
 	// must be bound by the patterns in Where.
 	GroupBy []string
+
+	// Rules carries recursive Datalog rule definitions invoked by
+	// RuleCall clauses inside Where. Multiple Rules entries sharing
+	// the same Name form a disjunction (Datalog semantics): a call
+	// matches if any rule with that name binds successfully.
+	//
+	// Datalevin receives these as a separate `:rules` parameter to
+	// d/q; MemoryStore evaluates them via fixed-point semi-naive
+	// expansion. Planner emits these when it sees a category_tree(X)
+	// expression so the recursion stays at the store level instead
+	// of degrading to a Go-side filter.
+	Rules []Rule
+}
+
+// Rule is one clause of a recursive Datalog rule, in the same shape as
+// Datalevin's rule-vector form. `Name` is the predicate name (no
+// leading "?"); `Args` are the variable names the head exposes; `Body`
+// is the conjunction of clauses that must hold to bind the head.
+type Rule struct {
+	Name string
+	Args []string
+	Body []Clause
+}
+
+// RuleCall is a Where-clause that invokes a Rule by name. Args are the
+// terms passed to the rule head — typically a mix of bound variables
+// from the surrounding query and literal anchors. MemoryStore resolves
+// the call via fixed-point evaluation; Datalevin treats it as a
+// rule-form predicate.
+type RuleCall struct {
+	Name string
+	Args []Term
 }
 
 // Aggregate is a single roll-up of matched rows.
@@ -159,6 +191,7 @@ func (*Predicate) clauseNode() {}
 func (*Or) clauseNode()        {}
 func (*Not) clauseNode()       {}
 func (*FullText) clauseNode()  {}
+func (*RuleCall) clauseNode()  {}
 
 // Term carries either a variable reference or a literal value. Use the
 // constructors below — the zero value is the wildcard "any".

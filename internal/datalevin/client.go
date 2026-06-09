@@ -41,6 +41,19 @@ func (c *Client) RawQuery(ctx context.Context, query string) ([][]any, error) {
 	return result.Results, nil
 }
 
+// RawQueryWithRules is the recursive-rules variant of RawQuery. The
+// `rules` string is Datalevin's rule-vector form (see
+// factstore.Query.RulesString); the query must declare `% ` in its
+// :in clause so the server can pass them through to d/q.
+func (c *Client) RawQueryWithRules(ctx context.Context, query, rules string) ([][]any, error) {
+	body := map[string]any{"query": query, "rules": rules}
+	var result QueryResult
+	if err := c.post(ctx, "/q", body, &result); err != nil {
+		return nil, fmt.Errorf("datalevin query: %w", err)
+	}
+	return result.Results, nil
+}
+
 // RawTransact submits raw Datalevin transaction maps. Use Assert (which
 // satisfies the factstore.FactStore interface) for the normal path.
 func (c *Client) RawTransact(ctx context.Context, txData []map[string]any) error {

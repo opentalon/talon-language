@@ -13,14 +13,25 @@
     conn))
 
 ;; POST /q — execute a Datalog query
-;; Body: {"query": "[:find ?e :where ...]"}
+;; Body: {"query": "[:find ?e :where ...]"} — minimal form
+;;       {"query": "[:find ?e :in $ % :where (r ?e)]", "rules": "[[(r ?e) ...]]"}
+;;         — recursive form: query declares `%` in :in, rules carry
+;;           the rule definitions as a Datalog vector.
 ;; Response: {"results": [[1, 45000], [2, 12000]]}
+;;
+;; When rules is supplied, the query MUST declare `%` in :in so the
+;; rule vector lines up positionally with d/q's variadic args. The
+;; client renders that automatically when factstore.Query.Rules is
+;; non-empty.
 (defn handle-query [{:keys [body]}]
   (let [query-str (get body "query")
+        rules-str (get body "rules")
         conn      (:conn @state)
         db        (d/db conn)
         query     (read-string query-str)
-        results   (vec (map vec (d/q query db)))]
+        results   (if (and rules-str (seq rules-str))
+                    (vec (map vec (d/q query db (read-string rules-str))))
+                    (vec (map vec (d/q query db))))]
     (resp/response {"results" results})))
 
 ;; POST /transact — assert facts
