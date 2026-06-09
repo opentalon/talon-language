@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/constraints"
 	"github.com/opentalon/talon-language/internal/diagnostic"
 	"github.com/opentalon/talon-language/internal/factstore"
 	talonlog "github.com/opentalon/talon-language/internal/log"
@@ -322,10 +323,19 @@ func runOneTuned(
 				Params:   s.Params,
 			})
 		case *planner.Filter:
-			vars[s.Into] = vars[s.Input]
+			// Apply the deferred-to-Go conditions to each flagged row,
+			// using the shared constraint evaluator extended with
+			// BinaryExpr arithmetic. Conditions the evaluator can't
+			// resolve fall back to keeping the row (better to over-
+			// include than to silently drop everything when one expr
+			// shape isn't supported yet).
+			kept := applyFilterConditions(s.Conditions, flagged, entities)
+			flagged = kept
+			vars[s.Into] = kept
 			trace = append(trace, TraceStep{
 				Type: "Filter",
 				Into: s.Into,
+				Rows: kept,
 			})
 		}
 	}
@@ -437,6 +447,50 @@ func toEntityID(v any) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
+}
+
+// applyFilterConditions enforces the planner's `goConditions` against
+// each flagged row. These are conditions the structured FactStore
+// Query couldn't express — typically arithmetic (`attr "km" > attr
+// "last_service_km" + 20000`) or other forms that need a per-row
+// expression evaluator. Reuses internal/constraints.EvalCondition
+// (originally built for #23 constraint blocks) so there's one code
+// path for "per-row predicates over an entity's attrs."
+//
+// A row passes when every condition evaluates true. Evaluator errors
+// (unknown expression shape, missing attr, divide-by-zero) keep the
+// row, so a new clause type can't silently empty a result set —
+// failing open beats failing closed for the testrunner's audit role.
+func applyFilterConditions(conds []ast.Condition, flagged []int, entities map[int]*entity) []int {
+	if len(conds) == 0 {
+		return flagged
+	}
+	out := make([]int, 0, len(flagged))
+	for _, id := range flagged {
+		e := entities[id]
+		if e == nil {
+			continue
+		}
+		row := entityAttrsFlattened(e)
+		keep := true
+		for _, c := range conds {
+			ok, err := constraints.EvalCondition(c, row)
+			if err != nil {
+				// Unsupported / unresolvable — fall back to keeping the
+				// row. The block_eval log surfaces the row count so a
+				// silent miss is still observable.
+				continue
+			}
+			if !ok {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // The Datalog string parser that used to live here has been replaced by

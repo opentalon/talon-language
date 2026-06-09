@@ -69,11 +69,22 @@ type MLComputation struct {
 	Into     string         // output variable name
 }
 
-// Filter applies a Go-side predicate to a result set.
+// Filter applies a Go-side predicate to a result set. The planner
+// emits a Filter step for any condition the structured Query cannot
+// express (cross-attribute arithmetic, complex expressions). The
+// runtime walks flagged rows and keeps those for which every
+// condition evaluates true.
+//
+// Condition is the human-readable description retained for trace
+// output; Conditions is the structured form the executor /
+// testrunner actually evaluates. Old callers reading Condition keep
+// working because we still populate it; the structured field
+// supersedes it for execution.
 type Filter struct {
-	Input     string
-	Condition string // Go predicate expression
-	Into      string
+	Input      string
+	Condition  string          // human-readable trace label
+	Conditions []ast.Condition // the predicates to apply per row
+	Into       string
 }
 
 // GraphSnapshot is a plan step that asks the executor to build (or load
@@ -211,9 +222,10 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 
 	if len(qb.goConditions) > 0 {
 		plan.Steps = append(plan.Steps, &Filter{
-			Input:     last,
-			Condition: renderGoConditions(qb.goConditions),
-			Into:      "filtered",
+			Input:      last,
+			Condition:  renderGoConditions(qb.goConditions),
+			Conditions: append([]ast.Condition(nil), qb.goConditions...),
+			Into:       "filtered",
 		})
 		last = "filtered"
 	}
@@ -330,11 +342,13 @@ func (p *planner) planRule(b *ast.RuleBlock) *QueryPlan {
 	last := "candidates"
 	if len(qb.goConditions) > 0 {
 		plan.Steps = append(plan.Steps, &Filter{
-			Input:     last,
-			Condition: renderGoConditions(qb.goConditions),
-			Into:      "policy_candidates",
+			Input:      last,
+			Condition:  renderGoConditions(qb.goConditions),
+			Conditions: append([]ast.Condition(nil), qb.goConditions...),
+			Into:       "policy_candidates",
 		})
 	}
+	_ = last
 	return plan
 }
 
