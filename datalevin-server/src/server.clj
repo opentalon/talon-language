@@ -89,14 +89,25 @@
                                                v))])
                               attrs))
         prior      (or (:schema @state) {})
-        merged     (merge prior new-schema)
+        ;; Deep-merge per-attr specs so re-registering an existing
+        ;; attribute with a subset of properties (e.g. talon-go's
+        ;; Assert path posts just :db/valueType to confirm presence)
+        ;; doesn't drop previously-set flags like :db/fulltext. The
+        ;; outer merge-with's inner `merge` runs once per attribute,
+        ;; combining prior + new property maps.
+        merged     (merge-with merge prior new-schema)
+        ;; Only attrs the server doesn't already know about need to
+        ;; round-trip through Datalevin; reposting an existing attr
+        ;; is a no-op so the search-engine init isn't triggered for
+        ;; every Assert.
+        truly-new  (apply dissoc new-schema (keys prior))
         db-path    (or (System/getenv "DATALEVIN_PATH") "/tmp/talon-datalevin")]
-    (when (seq new-schema)
-      (if (has-fulltext? new-schema)
+    (when (seq truly-new)
+      (if (has-fulltext? truly-new)
         (do
           (d/close (:conn @state))
           (init-db! db-path merged))
-        (d/update-schema (:conn @state) new-schema)))
+        (d/update-schema (:conn @state) truly-new)))
     (swap! state assoc :schema merged)
     (resp/response {"ok" true})))
 
