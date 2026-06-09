@@ -102,6 +102,21 @@ type Query struct {
 	// expression so the recursion stays at the store level instead
 	// of degrading to a Go-side filter.
 	Rules []Rule
+
+	// Pull, when non-empty, replaces the :find columns with one
+	// `(pull ?e [...])` expression per entry. Each entry is the
+	// Datalog pull-pattern body (e.g. `[:* {:friends 2}]`) and is
+	// rendered verbatim — callers own the pull-syntax surface.
+	Pull []PullSpec
+}
+
+// PullSpec is one column-replacement directive: take entity binding
+// EntityVar and expand it via the Pattern pull-syntax string. The
+// Pattern is a Datalog literal (e.g. `[:record/category :category/name]`
+// or `[:* {:category 2}]`) rendered as-is.
+type PullSpec struct {
+	EntityVar string
+	Pattern   string
 }
 
 // Rule is one clause of a recursive Datalog rule, in the same shape as
@@ -181,9 +196,21 @@ type Not struct {
 // Entity is the entity variable the match binds (conventionally
 // "?e") so the FullText clause plays well with sibling Pattern
 // clauses on the same row.
+//
+// Attribute, when non-empty, scopes the search to a single attribute
+// — renders as `(fulltext $ :attr "query")` — which is faster on the
+// Datalevin side when the attribute is `:db.fulltext/autoDomain
+// true`.
+//
+// Expr, when non-empty, replaces the quoted Query literal with a raw
+// Datalog query expression (e.g. `[:and {:phrase "little lamb"}
+// "fleece"]`). The caller owns the syntax; the renderer drops it in
+// verbatim. Mutually exclusive with Query — set one or the other.
 type FullText struct {
-	Entity Term
-	Query  string
+	Entity    Term
+	Query     string
+	Attribute string
+	Expr      string
 }
 
 func (*Pattern) clauseNode()   {}
