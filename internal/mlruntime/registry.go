@@ -16,6 +16,9 @@ func NewRegistry() *Registry {
 	r.Register(NewGrubbsAnomaly())
 	r.Register(NewLearnedThreshold())
 	r.Register(NewPersonalizedPageRank())
+	r.Register(NewCosineSimilarity())
+	r.Register(NewDBSCANCluster())
+	r.Register(NewExpSmoothingForecast())
 	return r
 }
 

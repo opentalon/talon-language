@@ -668,30 +668,38 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 	if reg == nil || !reg.Has(s.Function) {
 		return flagged, nil
 	}
+
+	// Two row shapes. Single-attribute primitives (anomaly, threshold)
+	// read row[1] for the value. Multi-attribute primitives
+	// (similarity_cosine, cluster_dbscan, forecast) self-serve attrs
+	// from Input.Entities. We populate both unconditionally so
+	// primitives don't have to negotiate.
 	attr, _ := s.Params["attr"].(string)
-	if attr == "" {
-		return flagged, nil
-	}
 	attrKey := ":attr/" + attr
 
 	rows := make([][]any, 0, len(flagged))
+	entitiesByID := make(map[int]map[string]any, len(flagged))
 	for _, id := range flagged {
 		e := entities[id]
 		if e == nil {
 			continue
 		}
-		val, ok := e.fields[attrKey]
-		if !ok {
-			continue
+		if attr != "" {
+			if val, ok := e.fields[attrKey]; ok {
+				rows = append(rows, []any{id, val})
+			}
+		} else {
+			rows = append(rows, []any{id})
 		}
-		rows = append(rows, []any{id, val})
+		entitiesByID[id] = entityAttrsFlattened(e)
 	}
 
 	prim, _ := reg.Get(s.Function)
 	results, err := prim.Compute(context.Background(), mlruntime.Input{
-		Rows:   rows,
-		Schema: map[string]int{"entity_id": 0, "value": 1},
-		Params: s.Params,
+		Rows:     rows,
+		Schema:   map[string]int{"entity_id": 0, "value": 1},
+		Params:   s.Params,
+		Entities: entitiesByID,
 	})
 	if err != nil {
 		// Sample too small — leave flagged unchanged so tests can still run
@@ -700,12 +708,30 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 	}
 
 	keep := map[int]bool{}
+	hasBoolResult := false
 	explanations := make([]mlruntime.Explanation, 0, len(results))
 	for _, r := range results {
 		explanations = append(explanations, r.Explanation)
-		if v, _ := r.Value.(bool); v {
+		switch v := r.Value.(type) {
+		case bool:
+			hasBoolResult = true
+			if v {
+				keep[r.EntityID] = true
+			}
+		default:
+			// Non-bool result (cluster ID, days_until, similarity score)
+			// — the primitive is producing information, not filtering.
+			// Keep the row; let downstream filters (e.g. a `when` clause)
+			// narrow.
+			_ = v
 			keep[r.EntityID] = true
 		}
+	}
+	if !hasBoolResult {
+		// No filtering primitive participated — return flagged unchanged
+		// so the row set isn't accidentally reordered by the keep map's
+		// iteration order.
+		return flagged, explanations
 	}
 	out := make([]int, 0, len(flagged))
 	for _, id := range flagged {
@@ -714,6 +740,22 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 		}
 	}
 	return out, explanations
+}
+
+// entityAttrsFlattened returns the entity's attribute map keyed by bare
+// names (without the `:record/` or `:attr/` namespace), matching the
+// shape multi-attribute ML primitives expect to query.
+func entityAttrsFlattened(e *entity) map[string]any {
+	out := make(map[string]any, len(e.fields))
+	for k, v := range e.fields {
+		switch {
+		case strings.HasPrefix(k, ":record/"):
+			out[strings.TrimPrefix(k, ":record/")] = v
+		case strings.HasPrefix(k, ":attr/"):
+			out[strings.TrimPrefix(k, ":attr/")] = v
+		}
+	}
+	return out
 }
 
 // buildGraphFromEntities projects the in-memory test entities into a

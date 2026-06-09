@@ -409,8 +409,11 @@ func (p *planner) planForecastBlock(b *ast.ForecastBlock) *QueryPlan {
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncForecastExpSmoothing,
 		Input:    "candidates",
-		Params:   map[string]any{"series": b.Series},
-		Into:     "forecasts",
+		Params: map[string]any{
+			"series":     b.Series,
+			"series_var": attrVarName(b.Series.Attr),
+		},
+		Into: "forecasts",
 	})
 	if b.Label != nil {
 		plan.Steps = append(plan.Steps, &GoComputation{
@@ -435,8 +438,11 @@ func (p *planner) planClusterBlock(b *ast.ClusterBlock) *QueryPlan {
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncClusterDBSCAN,
 		Input:    "candidates",
-		Params:   map[string]any{"by": b.ByAttrs},
-		Into:     "clusters",
+		Params: map[string]any{
+			"by":       b.ByAttrs,
+			"features": exprListToAttrNames(b.ByAttrs),
+		},
+		Into: "clusters",
 	})
 	return plan
 }
@@ -453,8 +459,11 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncClassifyKNN,
 		Input:    "candidates",
-		Params:   map[string]any{"features": b.Features},
-		Into:     "classifications",
+		Params: map[string]any{
+			"features":      b.Features,
+			"feature_names": exprListToAttrNames(b.Features),
+		},
+		Into: "classifications",
 	})
 	return plan
 }
@@ -471,8 +480,12 @@ func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncSimilarityCosine,
 		Input:    "candidates",
-		Params:   map[string]any{"to": b.To, "within": b.Within},
-		Into:     "similar_records",
+		Params: map[string]any{
+			"to":       b.To,
+			"within":   b.Within,
+			"features": []string{attrVarName(b.To)},
+		},
+		Into: "similar_records",
 	})
 	return plan
 }
@@ -1156,6 +1169,21 @@ func attrVarName(e ast.Expr) string {
 		return v.Name
 	}
 	return "val"
+}
+
+// exprListToAttrNames flattens a slice of AST expressions into the bare
+// attribute names they reference. Used to pre-resolve ML primitive
+// params at plan time so the runtime stays decoupled from the AST.
+// Expressions that aren't simple attr/ident references are dropped.
+func exprListToAttrNames(exprs []ast.Expr) []string {
+	out := make([]string, 0, len(exprs))
+	for _, e := range exprs {
+		name := attrVarName(e)
+		if name != "" && name != "val" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func sanitizeIdent(s string) string {
