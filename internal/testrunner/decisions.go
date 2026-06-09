@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/explain"
+	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 	"github.com/opentalon/talon-language/internal/template"
@@ -141,8 +142,15 @@ func buildDecisionsForBlock(
 			d.Score = score
 			d.Source = source
 		}
+		ctx := renderContextFor(ent, flagged, entities, now)
 		if tmpl := blockTemplate(b); tmpl != nil {
-			d.Action = template.Render(*tmpl, renderContextFor(ent, flagged, entities, now))
+			d.Action = template.Render(*tmpl, ctx)
+		}
+		// Fire any per-row logger statements declared on this block.
+		// Templates render against the same context the label uses, so
+		// `{item.name}` / `{attr.x}` / `{count}` work the same way.
+		for _, ls := range blockLoggers(b) {
+			emitLogger(ls, b.BlockName(), id, ctx)
 		}
 
 		// Cross-block chaining: if this is a recommend whose `when`
@@ -524,6 +532,73 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// blockLoggers returns the `logger.<level> "..."` statements declared
+// on a block, if any. detect / rule / recommend blocks support per-row
+// logger statements (issue #19). Other block types return nil — they
+// either have their own logger pathway (`on { }` via the reactive
+// dispatcher) or no use case yet.
+func blockLoggers(b ast.Block) []*ast.LoggerAction {
+	switch bb := b.(type) {
+	case *ast.DetectBlock:
+		return bb.Loggers
+	case *ast.RuleBlock:
+		return bb.Loggers
+	case *ast.RecommendBlock:
+		return bb.Loggers
+	}
+	return nil
+}
+
+// FireBlockLoggers emits the per-row logger statements declared on a
+// block, given the matched entity set. Used by both the testrunner's
+// run path (`talon test`) and the explain pathway (`talon explain`) so
+// loggers fire consistently regardless of which entry point ran the
+// rule. Returns the number of records emitted, mainly for tests.
+func FireBlockLoggers(b ast.Block, flagged []int, entities map[int]*entity, now time.Time) int {
+	loggers := blockLoggers(b)
+	if len(loggers) == 0 {
+		return 0
+	}
+	emitted := 0
+	for _, id := range flagged {
+		ent := entities[id]
+		ctx := renderContextFor(ent, flagged, entities, now)
+		for _, ls := range loggers {
+			emitLogger(ls, b.BlockName(), id, ctx)
+			emitted++
+		}
+	}
+	return emitted
+}
+
+// emitLogger renders one logger statement against the matched-row
+// context and writes it through internal/log. The output level maps to
+// the statement's declared level (info / warn / error); unknown levels
+// fall back to info so a typo never silently swallows output.
+//
+// The structured record carries the block kind + name + entity ID so a
+// downstream log aggregator can pivot on rule firings — the same
+// shape #51 introduced for the internal `block_eval` events.
+func emitLogger(ls *ast.LoggerAction, blockName string, entityID int, ctx template.RenderContext) {
+	if ls == nil {
+		return
+	}
+	msg := template.Render(ls.Message, ctx)
+	logger := talonlog.Default().With(
+		"source", "block_logger",
+		"block", blockName,
+		"entity_id", entityID,
+	)
+	switch strings.ToLower(ls.Level) {
+	case "warn", "warning":
+		logger.Warn(msg)
+	case "error":
+		logger.Error(msg)
+	default:
+		logger.Info(msg)
+	}
 }
 
 // blockTemplate returns the user-supplied template for a block —

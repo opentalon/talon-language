@@ -145,10 +145,46 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 	case lexer.TokenTune:
 		b.Tune = p.parseTuneClause()
 	default:
+		if p.atLoggerStatement() {
+			if s := p.parseLoggerStatement(); s != nil {
+				b.Loggers = append(b.Loggers, s)
+			}
+			return true
+		}
 		p.errorf("unexpected token %q inside detect block", p.peek().Value)
 		return false
 	}
 	return true
+}
+
+// atLoggerStatement reports whether the parser is positioned at a
+// `logger.<level> "msg"` statement. Used to dispatch from any block
+// body that supports per-row logging (detect, rule, recommend) or from
+// an `on { ... }` action list — see parseLoggerStatement.
+func (p *parser) atLoggerStatement() bool {
+	return p.at(lexer.TokenIdent) && p.peek().Value == "logger"
+}
+
+// parseLoggerStatement parses the shared `logger.<level> "msg"` shape
+// used both inside `on { }` blocks (as an OnAction) and inside detect /
+// rule / recommend bodies (as a per-row side effect). The message
+// template is pre-parsed via ast.ParseTemplate so the renderer can
+// interpolate `{item.name}` / `{attr.x}` / `{count}` etc. per matched
+// row — same template semantics as label / reason / suggest.
+func (p *parser) parseLoggerStatement() *ast.LoggerAction {
+	p.advance() // logger
+	if !p.expect(lexer.TokenDot) {
+		return nil
+	}
+	level := p.expectIdent()
+	switch level {
+	case "info", "warn", "error":
+	default:
+		p.errorf("expected logger level (info/warn/error), got %q", level)
+		return nil
+	}
+	msg := p.expectString()
+	return &ast.LoggerAction{Level: level, Message: ast.ParseTemplate(msg)}
 }
 
 // parseTuneClause parses `tune against test "NAME"`. The named test must be
@@ -261,6 +297,12 @@ func (p *parser) parseRuleClause(b *ast.RuleBlock) bool {
 		s := p.parseSourceAnnotation()
 		b.Source = &s
 	default:
+		if p.atLoggerStatement() {
+			if s := p.parseLoggerStatement(); s != nil {
+				b.Loggers = append(b.Loggers, s)
+			}
+			return true
+		}
 		p.errorf("unexpected token %q inside rule block", p.peek().Value)
 		return false
 	}
@@ -290,6 +332,12 @@ func (p *parser) parseRecommend() *ast.RecommendBlock {
 			pr := p.parsePriority()
 			b.Priority = &pr
 		default:
+			if p.atLoggerStatement() {
+				if s := p.parseLoggerStatement(); s != nil {
+					b.Loggers = append(b.Loggers, s)
+				}
+				continue
+			}
 			p.errorf("unexpected token %q inside recommend block", p.peek().Value)
 			p.synchronizeInBlock()
 		}
@@ -575,21 +623,10 @@ func (p *parser) parseOnBlock() *ast.OnBlock {
 }
 
 func (p *parser) parseOnAction() ast.OnAction {
-	// logger.info|warn|error "msg"
-	if p.at(lexer.TokenIdent) && p.peek().Value == "logger" {
-		p.advance()
-		if !p.expect(lexer.TokenDot) {
-			return nil
-		}
-		level := p.expectIdent()
-		switch level {
-		case "info", "warn", "error":
-		default:
-			p.errorf("expected logger level (info/warn/error), got %q", level)
-			return nil
-		}
-		msg := p.expectString()
-		return &ast.LoggerAction{Level: level, Message: ast.Template{Raw: msg}}
+	// logger.info|warn|error "msg" — the shared helper also handles the
+	// per-block-body form used by detect / rule / recommend.
+	if p.atLoggerStatement() {
+		return p.parseLoggerStatement()
 	}
 	// recommend "Name" or detect "Name" — reference to another block by name.
 	switch p.peek().Type {

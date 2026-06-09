@@ -340,6 +340,14 @@ func runOneTuned(
 	result.Passed = len(result.Errors) == 0
 	result.Duration = time.Since(start)
 	talonlog.BlockEval(context.Background(), tb.WhenBlock, tb.WhenKind, len(flagged), result.Duration)
+
+	// Fire any per-row logger statements declared on the evaluated
+	// block. Same code path the explain Tier-1 pipeline uses, so
+	// `talon test` and `talon explain` produce identical logger
+	// output for the same source.
+	if b, ok := progBlocks[tb.WhenBlock]; ok {
+		FireBlockLoggers(b, flagged, entities, time.Now().UTC())
+	}
 	return result, trace
 }
 

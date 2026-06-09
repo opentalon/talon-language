@@ -39,6 +39,7 @@ type DetectBlock struct {
 	Related    *RelatedClause
 	Recommend  *RecommendBlock
 	Tune       *TuneClause
+	Loggers    []*LoggerAction // logger statements fired per matched row
 }
 
 // TuneClause names a labeled test fixture the executor uses to auto-tune
@@ -66,6 +67,7 @@ type RuleBlock struct {
 	Overrides []string // names of rules this rule defeats when both match
 	Score     *float64 // provenance annotation — the rule's own confidence
 	Source    *string  // provenance annotation — where the rule came from
+	Loggers   []*LoggerAction // logger statements fired per matched row
 }
 
 type RecommendBlock struct {
@@ -75,6 +77,7 @@ type RecommendBlock struct {
 	Calculate []CalculateClause
 	Suggest   *Template
 	Priority  *Priority
+	Loggers   []*LoggerAction // logger statements fired per matched row
 }
 
 type CombineBlock struct {
