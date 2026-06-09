@@ -203,20 +203,31 @@ func TestSmoke_RecursiveRules(t *testing.T) {
 	midName := "smoke-mid-" + prefix
 	leafName := "smoke-leaf-" + prefix
 
+	// Each conceptual entity needs a single RecordID so its
+	// attributes land on the same Datalevin entity — the rule body
+	// joins :record/type, :category/name, :category/parent on one
+	// ?cent.
+	rootID := uniqueID()
+	midID := uniqueID()
+	leafID := uniqueID()
+	itemID := uniqueID()
+
 	if err := c.Assert(ctx, []factstore.Fact{
 		// Categories: root → mid → leaf
-		{RecordID: uniqueID(), Attribute: ":record/type", Value: "category"},
-		{RecordID: uniqueID(), Attribute: ":category/name", Value: rootName},
-		{RecordID: uniqueID(), Attribute: ":record/type", Value: "category"},
-		{RecordID: uniqueID(), Attribute: ":category/name", Value: midName},
-		{RecordID: uniqueID(), Attribute: ":category/parent", Value: rootName},
-		{RecordID: uniqueID(), Attribute: ":record/type", Value: "category"},
-		{RecordID: uniqueID(), Attribute: ":category/name", Value: leafName},
-		{RecordID: uniqueID(), Attribute: ":category/parent", Value: midName},
+		{RecordID: rootID, Attribute: ":record/type", Value: "category"},
+		{RecordID: rootID, Attribute: ":category/name", Value: rootName},
+
+		{RecordID: midID, Attribute: ":record/type", Value: "category"},
+		{RecordID: midID, Attribute: ":category/name", Value: midName},
+		{RecordID: midID, Attribute: ":category/parent", Value: rootName},
+
+		{RecordID: leafID, Attribute: ":record/type", Value: "category"},
+		{RecordID: leafID, Attribute: ":category/name", Value: leafName},
+		{RecordID: leafID, Attribute: ":category/parent", Value: midName},
 
 		// Item in the leaf category
-		{RecordID: uniqueID(), Attribute: ":record/type", Value: "item"},
-		{RecordID: uniqueID(), Attribute: ":record/category", Value: leafName},
+		{RecordID: itemID, Attribute: ":record/type", Value: "item"},
+		{RecordID: itemID, Attribute: ":record/category", Value: leafName},
 	}); err != nil {
 		t.Fatalf("assert: %v", err)
 	}

@@ -3,6 +3,7 @@ package datalevin
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/opentalon/talon-language/internal/factstore"
 )
@@ -55,6 +56,13 @@ func (c *Client) Retract(ctx context.Context, p factstore.RetractPattern) error 
 // Assert satisfies factstore.FactStore. It groups facts by RecordID,
 // infers a schema from the value types so Datalevin will accept the
 // entity, and commits the result as one transaction.
+//
+// Each entity row carries `:db/id` set to the parsed RecordID so
+// external IDs equal Datalevin's internal eids. Without that
+// alignment, Retract (and any other external-ID-targeting operation)
+// can't find the entity, because Datalevin would auto-assign a
+// different eid. RecordIDs that don't parse as longs fall back to
+// Datalevin-assigned eids — the alignment is best-effort.
 func (c *Client) Assert(ctx context.Context, facts []factstore.Fact) error {
 	if len(facts) == 0 {
 		return nil
@@ -90,7 +98,10 @@ func (c *Client) Assert(ctx context.Context, facts []factstore.Fact) error {
 	}
 
 	txData := make([]map[string]any, 0, len(byID))
-	for _, row := range byID {
+	for id, row := range byID {
+		if eid, err := strconv.ParseInt(id, 10, 64); err == nil {
+			row[":db/id"] = eid
+		}
 		txData = append(txData, map[string]any(row))
 	}
 	return c.RawTransact(ctx, txData)

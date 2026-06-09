@@ -58,13 +58,24 @@
 ;; Facts in LMDB survive that pattern, but the runtime forgets the
 ;; attribute types — any further query against a "lost" attr falls
 ;; back to coarse coercion. The merge form is the correct shape.
+(defn- coerce-schema-value
+  "Schema property values arrive as JSON strings but Datalevin expects
+   typed Clojure values: keyword (`:db.type/string`) for type ids, but
+   plain booleans for flags like `:db/fulltext`. Map the JSON-string
+   form to the right Clojure type so the wire stays string-only."
+  [sv]
+  (case sv
+    "true"  true
+    "false" false
+    (keyword sv)))
+
 (defn handle-schema [{:keys [body]}]
   (let [attrs      (get body "attrs")
         new-schema (into {}
                          (map (fn [[k v]]
                                 [(keyword (subs k 1))
                                  (into {} (map (fn [[sk sv]]
-                                                 [(keyword sk) (keyword sv)])
+                                                 [(keyword sk) (coerce-schema-value sv)])
                                                v))])
                               attrs))
         conn       (:conn @state)
