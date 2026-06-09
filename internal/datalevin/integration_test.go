@@ -150,16 +150,23 @@ func TestSmoke_FullText(t *testing.T) {
 	c := smokeClient(t)
 	ctx := context.Background()
 
+	// Unique attribute per run: Datalevin's update-schema cannot
+	// retrofit :db/fulltext onto an attribute that was previously
+	// registered without it, so reusing :smoke/text across runs
+	// (CI ephemeral; local /tmp/talon-datalevin persistent) would
+	// pin the first-seen schema and silently disable FTS for every
+	// subsequent run.
+	attr := fmt.Sprintf(":smoke/text-%s", uniqueID())
 	if err := c.Schema(ctx, map[string]map[string]string{
-		":smoke/text": {"db/valueType": "db.type/string", "db/fulltext": "true"},
+		attr: {"db/valueType": "db.type/string", "db/fulltext": "true"},
 	}); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
 
 	idA, idB := uniqueID(), uniqueID()
 	if err := c.Assert(ctx, []factstore.Fact{
-		{RecordID: idA, Attribute: ":smoke/text", Value: "Ford Transit van"},
-		{RecordID: idB, Attribute: ":smoke/text", Value: "Mercedes Sprinter"},
+		{RecordID: idA, Attribute: attr, Value: "Ford Transit van"},
+		{RecordID: idB, Attribute: attr, Value: "Mercedes Sprinter"},
 	}); err != nil {
 		t.Fatalf("assert: %v", err)
 	}
@@ -167,7 +174,7 @@ func TestSmoke_FullText(t *testing.T) {
 	q := factstore.Query{
 		Find: []string{"?e"},
 		Where: []factstore.Clause{
-			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: ":smoke/text", Value: factstore.Var("v")},
+			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: attr, Value: factstore.Var("v")},
 			&factstore.FullText{Entity: factstore.Var("e"), Query: "Transit"},
 		},
 	}
@@ -239,10 +246,14 @@ func TestSmoke_RecursiveRules(t *testing.T) {
 			&factstore.RuleCall{Name: "category-in-tree", Args: []factstore.Term{factstore.Var("cat"), factstore.Lit(rootName)}},
 		},
 		Rules: []factstore.Rule{
+			// Both rule heads anchor ?c to a real :category/name in the
+			// store before doing anything else — Datalevin's rule
+			// projector NPEs on an unanchored `[(= ?c ?root)]` base.
 			{
 				Name: "category-in-tree",
 				Args: []string{"?c", "?root"},
 				Body: []factstore.Clause{
+					&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/name", Value: factstore.Var("c")},
 					&factstore.Predicate{Op: "=", Left: factstore.Var("c"), Right: factstore.Var("root")},
 				},
 			},
@@ -250,7 +261,6 @@ func TestSmoke_RecursiveRules(t *testing.T) {
 				Name: "category-in-tree",
 				Args: []string{"?c", "?root"},
 				Body: []factstore.Clause{
-					&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":record/type", Value: factstore.Lit("category")},
 					&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/name", Value: factstore.Var("c")},
 					&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/parent", Value: factstore.Var("p")},
 					&factstore.RuleCall{Name: "category-in-tree", Args: []factstore.Term{factstore.Var("p"), factstore.Var("root")}},

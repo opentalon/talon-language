@@ -1128,10 +1128,17 @@ func (b *queryBuilder) ensureCategoryTreeRule() {
 			return
 		}
 	}
+	// Both rule heads start with the same `:category/name ?c` pattern
+	// so ?c is bound to an actual category name in the store before
+	// any equality check. Datalevin's rule projector NPEs when a base
+	// rule's body is just `[(= ?c ?root)]` (free vars passed straight
+	// from the call site) — anchoring ?c to a positive pattern first
+	// gives the engine a concrete value to project.
 	base := factstore.Rule{
 		Name: "category-in-tree",
 		Args: []string{"?c", "?root"},
 		Body: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/name", Value: factstore.Var("c")},
 			&factstore.Predicate{Op: "=", Left: factstore.Var("c"), Right: factstore.Var("root")},
 		},
 	}
@@ -1139,7 +1146,6 @@ func (b *queryBuilder) ensureCategoryTreeRule() {
 		Name: "category-in-tree",
 		Args: []string{"?c", "?root"},
 		Body: []factstore.Clause{
-			&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":record/type", Value: factstore.Lit("category")},
 			&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/name", Value: factstore.Var("c")},
 			&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/parent", Value: factstore.Var("p")},
 			&factstore.RuleCall{Name: "category-in-tree", Args: []factstore.Term{factstore.Var("p"), factstore.Var("root")}},

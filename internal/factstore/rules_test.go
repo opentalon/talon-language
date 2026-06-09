@@ -45,11 +45,15 @@ func newCategoryStore(t *testing.T) *MemoryStore {
 }
 
 func categoryTreeRules() []Rule {
+	// Mirror the shape the planner emits: every rule head anchors ?c
+	// to a real :category/name in the store first, then either checks
+	// equality (base) or walks one parent step (recursive).
 	return []Rule{
 		{
 			Name: "category-in-tree",
 			Args: []string{"?c", "?root"},
 			Body: []Clause{
+				&Pattern{Entity: Var("cent"), Attribute: ":category/name", Value: Var("c")},
 				&Predicate{Op: "=", Left: Var("c"), Right: Var("root")},
 			},
 		},
@@ -57,7 +61,6 @@ func categoryTreeRules() []Rule {
 			Name: "category-in-tree",
 			Args: []string{"?c", "?root"},
 			Body: []Clause{
-				&Pattern{Entity: Var("cent"), Attribute: ":record/type", Value: Lit("category")},
 				&Pattern{Entity: Var("cent"), Attribute: ":category/name", Value: Var("c")},
 				&Pattern{Entity: Var("cent"), Attribute: ":category/parent", Value: Var("p")},
 				&RuleCall{Name: "category-in-tree", Args: []Term{Var("p"), Var("root")}},
