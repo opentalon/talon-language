@@ -21,22 +21,24 @@
       base
       (str base "/t/" tenant))))
 
-(defn- search-domains-for
-  "Derive Datalevin's `:search-domains` option map from the schema.
-   Every attribute with both `:db/fulltext true` and
-   `:db.fulltext/autoDomain true` gets a domain entry with
-   `:index-position? true` — phrase search (`[:and {:phrase \"X\"}]`)
-   refuses to run without position indexing, and we can't enable it
-   after the connection is open. The domain name is the bare
-   attribute name (Datalevin's autoDomain convention: `:smoke/text`
-   ⇒ \"smoke/text\")."
+(defn- fulltext-domains-for
+  "Pre-build a `:search-domains` opts map for every fulltext attribute
+   in the schema. Datalevin's `init-search-domains` matches the
+   user-supplied entry by domain name (autoDomain ⇒
+   `(subs (str attr) 1)`, listed-domains ⇒ each listed string) and
+   layers `:index-position? true` onto the engine — without that
+   flag, `[:and {:phrase ...}]` queries throw at query time and the
+   only fix is to recreate the connection.
+   We emit entries for both shapes so an attribute that's later
+   re-registered with a different domain style still gets positions."
   [schema]
   (reduce-kv
-    (fn [m attr spec]
-      (if (and (:db/fulltext spec) (:db.fulltext/autoDomain spec))
-        (let [domain (subs (str attr) 1)] ; drop the leading ':'
-          (assoc m domain {:index-position? true}))
-        m))
+    (fn [m attr {:keys [db/fulltext db.fulltext/autoDomain db.fulltext/domains]}]
+      (if-not fulltext
+        m
+        (cond-> m
+          autoDomain     (assoc (subs (str attr) 1) {:index-position? true})
+          (seq domains)  (into (map (fn [d] [d {:index-position? true}]) domains)))))
     {}
     schema))
 
@@ -45,17 +47,19 @@
    second arity targets the default tenant; the three-arity form
    takes an explicit tenant key.
 
-   Search-domain options are derived from the schema so phrase
-   searches against autoDomain attributes have position indexing
-   enabled — without it Datalevin throws `Phrase search requires
-   :index-position? true` from the search engine."
+   We always set `:search-opts {:index-position? true}` (covers the
+   default search domain) and additionally enumerate per-attribute
+   `:search-domains` entries — `init-search-domains` keys those by
+   the autoDomain name. Phrase queries (`[:and {:phrase \"...\"}]`)
+   only work when position indexing was enabled at conn-open time;
+   doing it everywhere keeps the policy boring and predictable."
   ([db-path schema]
    (init-db! "" db-path schema))
   ([tenant db-path schema]
-   (let [domains (search-domains-for schema)
-         conn    (if (seq domains)
-                   (d/get-conn db-path schema {:search-domains domains})
-                   (d/get-conn db-path schema))]
+   (let [domains (fulltext-domains-for schema)
+         opts    {:search-opts     {:index-position? true}
+                  :search-domains  domains}
+         conn    (d/get-conn db-path schema opts)]
      (swap! state assoc tenant {:conn conn :schema schema})
      conn)))
 
