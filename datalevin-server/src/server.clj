@@ -21,14 +21,41 @@
       base
       (str base "/t/" tenant))))
 
+(defn- search-domains-for
+  "Derive Datalevin's `:search-domains` option map from the schema.
+   Every attribute with both `:db/fulltext true` and
+   `:db.fulltext/autoDomain true` gets a domain entry with
+   `:index-position? true` — phrase search (`[:and {:phrase \"X\"}]`)
+   refuses to run without position indexing, and we can't enable it
+   after the connection is open. The domain name is the bare
+   attribute name (Datalevin's autoDomain convention: `:smoke/text`
+   ⇒ \"smoke/text\")."
+  [schema]
+  (reduce-kv
+    (fn [m attr spec]
+      (if (and (:db/fulltext spec) (:db.fulltext/autoDomain spec))
+        (let [domain (subs (str attr) 1)] ; drop the leading ':'
+          (assoc m domain {:index-position? true}))
+        m))
+    {}
+    schema))
+
 (defn init-db!
   "Open (or reopen) a tenant's connection and stash it in state. The
    second arity targets the default tenant; the three-arity form
-   takes an explicit tenant key."
+   takes an explicit tenant key.
+
+   Search-domain options are derived from the schema so phrase
+   searches against autoDomain attributes have position indexing
+   enabled — without it Datalevin throws `Phrase search requires
+   :index-position? true` from the search engine."
   ([db-path schema]
    (init-db! "" db-path schema))
   ([tenant db-path schema]
-   (let [conn (d/get-conn db-path schema)]
+   (let [domains (search-domains-for schema)
+         conn    (if (seq domains)
+                   (d/get-conn db-path schema {:search-domains domains})
+                   (d/get-conn db-path schema))]
      (swap! state assoc tenant {:conn conn :schema schema})
      conn)))
 

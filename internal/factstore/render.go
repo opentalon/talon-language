@@ -231,11 +231,7 @@ func renderClauseWithArgs(c Clause, idx *int) string {
 // Datalevin requires attributes to be configured with `:db/fulltext
 // true` for this to use the FTS index. MemoryStore's matchFullText
 // fallback handles the simple Query field via substring scan.
-func renderFullText(f *FullText) string {
-	idx := 0
-	return renderFullTextWithArgs(f, &idx)
-}
-
+//
 // renderFullTextWithArgs picks the wire shape based on what's set:
 //
 //	[(fulltext $ "query")              [[?e ?a ?v]]]   ; whole-db, literal
