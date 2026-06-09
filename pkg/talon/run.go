@@ -8,6 +8,7 @@ import (
 	"github.com/opentalon/talon-language/internal/datalevin"
 	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/talon-language/internal/imports"
 	"github.com/opentalon/talon-language/internal/lexer"
 	"github.com/opentalon/talon-language/internal/parser"
 	"github.com/opentalon/talon-language/internal/planner"
@@ -190,8 +191,14 @@ func Seed(ctx context.Context, store FactStore, src string, opts ...Option) (int
 	return exec.Seed(ctx, prog)
 }
 
-// compile runs lex → parse → validate → plan, returning a CompileError
-// when any stage fails. Shared between Run and RunWorkflow.
+// compile runs lex → parse → resolve imports → validate → plan,
+// returning a CompileError when any stage fails. Shared between
+// Run and RunWorkflow.
+//
+// The `file` argument is used both as the diagnostic label and as the
+// base path for relative import resolution. SDK callers that work
+// from in-memory source (no on-disk path) should either avoid
+// imports or pass absolute paths in their source.
 func compile(file, src string) (map[string]*planner.QueryPlan, error) {
 	tokens, lexDiags := lexer.Lex(file, src)
 	if lexDiags.HasErrors() {
@@ -200,6 +207,13 @@ func compile(file, src string) (map[string]*planner.QueryPlan, error) {
 	prog, parseDiags := parser.Parse(file, tokens)
 	if parseDiags.HasErrors() {
 		return nil, &CompileError{Stage: "parse", Diags: parseDiags}
+	}
+	if len(prog.Imports) > 0 {
+		merged, importDiags := imports.Resolve(prog, file)
+		if importDiags.HasErrors() {
+			return nil, &CompileError{Stage: "imports", Diags: importDiags}
+		}
+		prog = merged
 	}
 	if valDiags := validator.Validate(file, prog); valDiags.HasErrors() {
 		return nil, &CompileError{Stage: "validate", Diags: valDiags}

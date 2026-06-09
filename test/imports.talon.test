@@ -1,0 +1,23 @@
+// Fixture for the import demo. Shared defines from shared.talon are
+// merged into main.talon's scope at compile time. The Filter step
+// enforces `attr "km" > attr "last_service_km" + 20000` against each
+// flagged row.
+
+test "service overdue from shared defines" {
+  given {
+    record 1 type "item" status "active"
+    attr 1 "name" "VW Transporter"
+    attr 1 "km" 50000
+    attr 1 "last_service_km" 25000
+
+    record 2 type "item" status "active"
+    attr 2 "name" "Ford Transit"
+    attr 2 "km" 30000
+    attr 2 "last_service_km" 25000
+  }
+  when detect "Service overdue"
+  expect {
+    flagged 1
+    not flagged 2
+  }
+}

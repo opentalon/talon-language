@@ -20,6 +20,7 @@ import (
 	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/explain"
 	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/talon-language/internal/imports"
 	"github.com/opentalon/talon-language/internal/lexer"
 	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/parser"
@@ -98,6 +99,17 @@ func runBuild() {
 	// Parse
 	prog, pd := parser.Parse(file, tokens)
 	allDiags = append(allDiags, pd...)
+
+	// Resolve `import "./other.talon"` directives by merging the named
+	// files' blocks into the program before validation.
+	if len(prog.Imports) > 0 {
+		merged, importDiags := imports.Resolve(prog, path)
+		allDiags = append(allDiags, importDiags...)
+		if !importDiags.HasErrors() {
+			fmt.Printf("==> %s: resolved %d import(s)\n", file, len(prog.Imports))
+			prog = merged
+		}
+	}
 
 	// Validate
 	vd := validator.Validate(file, prog)
@@ -325,7 +337,7 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 		return nil, false
 	}
 	rulesFile := filepath.Base(rulesPath)
-	plans, ok := compile(rulesFile, string(rulesSrc))
+	plans, ok := compile(rulesFile, rulesPath, string(rulesSrc))
 	if !ok {
 		return nil, false
 	}
@@ -405,7 +417,7 @@ func runExecute() {
 	}
 
 	file := filepath.Base(path)
-	plans, ok := compile(file, string(src))
+	plans, ok := compile(file, path, string(src))
 	if !ok {
 		os.Exit(diagnostic.ExitError)
 	}
@@ -534,7 +546,7 @@ func runTrace() {
 		os.Exit(diagnostic.ExitError)
 	}
 	rulesFile := filepath.Base(rulesPath)
-	plans, ok := compile(rulesFile, string(rulesSrc))
+	plans, ok := compile(rulesFile, rulesPath, string(rulesSrc))
 	if !ok {
 		os.Exit(diagnostic.ExitError)
 	}
@@ -594,17 +606,29 @@ func runTrace() {
 	}
 }
 
-// compile runs lex → parse → validate → plan and returns plans.
-func compile(file, src string) (map[string]*planner.QueryPlan, bool) {
+// compile runs lex → parse → resolve imports → validate → plan and
+// returns plans. The `label` argument is used as the diagnostic label
+// (usually the basename); the `basePath` argument is the file's
+// on-disk path used to resolve relative imports against. Callers
+// without a real path can pass the label as both.
+func compile(label, basePath, src string) (map[string]*planner.QueryPlan, bool) {
 	var allDiags diagnostic.List
 
-	tokens, ld := lexer.Lex(file, src)
+	tokens, ld := lexer.Lex(label, src)
 	allDiags = append(allDiags, ld...)
 
-	prog, pd := parser.Parse(file, tokens)
+	prog, pd := parser.Parse(label, tokens)
 	allDiags = append(allDiags, pd...)
 
-	vd := validator.Validate(file, prog)
+	if len(prog.Imports) > 0 {
+		merged, importDiags := imports.Resolve(prog, basePath)
+		allDiags = append(allDiags, importDiags...)
+		if !importDiags.HasErrors() {
+			prog = merged
+		}
+	}
+
+	vd := validator.Validate(label, prog)
 	allDiags = append(allDiags, vd...)
 
 	for _, d := range allDiags {
@@ -680,7 +704,7 @@ func runExplain() {
 		os.Exit(diagnostic.ExitError)
 	}
 	rulesFile := filepath.Base(rulesPath)
-	plans, ok := compile(rulesFile, string(rulesSrc))
+	plans, ok := compile(rulesFile, rulesPath, string(rulesSrc))
 	if !ok {
 		os.Exit(diagnostic.ExitError)
 	}

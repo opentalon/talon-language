@@ -169,6 +169,15 @@ func evalCondition(c ast.Condition, record map[string]any) (bool, error) {
 	return false, fmt.Errorf("constraint evaluator cannot handle condition type %T", c)
 }
 
+// EvalCondition is the exported per-row condition evaluator. The
+// testrunner's Filter step uses it to enforce `goConditions` the
+// planner couldn't push into the FactStore query (arithmetic,
+// cross-attribute comparison, etc.). Returns true when the condition
+// holds; errors surface for unresolvable expressions.
+func EvalCondition(c ast.Condition, record map[string]any) (bool, error) {
+	return evalCondition(c, record)
+}
+
 func evalExpr(e ast.Expr, record map[string]any) (any, error) {
 	switch ee := e.(type) {
 	case *ast.AttrExpr:
@@ -193,6 +202,43 @@ func evalExpr(e ast.Expr, record map[string]any) (any, error) {
 			}
 		}
 		return nil, fmt.Errorf("unary %s applied to %T", ee.Op, v)
+	case *ast.BinaryExpr:
+		// Arithmetic over attribute references — enables expressions
+		// like `attr "km" > attr "last_service_km" + 20000`. Both sides
+		// must resolve to numerics; non-numeric ops return an error so
+		// callers see a clear diagnostic.
+		left, err := evalExpr(ee.Left, record)
+		if err != nil {
+			return nil, err
+		}
+		right, err := evalExpr(ee.Right, record)
+		if err != nil {
+			return nil, err
+		}
+		lf, lok := toFloat(left)
+		rf, rok := toFloat(right)
+		if !lok || !rok {
+			return nil, fmt.Errorf("binary %s on %T %T", ee.Op, left, right)
+		}
+		switch ee.Op {
+		case "+":
+			return lf + rf, nil
+		case "-":
+			return lf - rf, nil
+		case "*":
+			return lf * rf, nil
+		case "/":
+			if rf == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
+			return lf / rf, nil
+		case "%":
+			if rf == 0 {
+				return nil, fmt.Errorf("modulo by zero")
+			}
+			return float64(int64(lf) % int64(rf)), nil
+		}
+		return nil, fmt.Errorf("unknown binary op %q", ee.Op)
 	}
 	return nil, fmt.Errorf("constraint evaluator cannot evaluate expression %T", e)
 }

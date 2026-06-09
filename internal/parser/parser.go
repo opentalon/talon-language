@@ -23,6 +23,16 @@ func Parse(file string, tokens []lexer.Token) (*ast.Program, diagnostic.List) {
 
 func (p *parser) parseProgram() *ast.Program {
 	prog := &ast.Program{}
+	// Imports must come before any block — that's how the resolver
+	// knows when "the import header is done" without rescanning. We
+	// loop here only as long as the next token is `import`; once the
+	// first block starts, late `import` lines surface as parse errors
+	// (caught in parseBlock with a targeted diagnostic).
+	for p.at(lexer.TokenImport) {
+		if imp, ok := p.parseImport(); ok {
+			prog.Imports = append(prog.Imports, imp)
+		}
+	}
 	for !p.at(lexer.TokenEOF) {
 		b := p.parseBlock()
 		if b != nil {
@@ -32,10 +42,33 @@ func (p *parser) parseProgram() *ast.Program {
 	return prog
 }
 
+// parseImport consumes one `import "./path"` directive. Returns the
+// statement plus ok=true on success; (zero, false) on parse error so
+// the caller can keep walking imports rather than fail-fast.
+func (p *parser) parseImport() (ast.ImportStatement, bool) {
+	tok := p.advance() // import
+	if !p.at(lexer.TokenString) {
+		p.errorf("expected import path string after `import`, got %q", p.peek().Value)
+		return ast.ImportStatement{}, false
+	}
+	path := p.advance().Value
+	return ast.ImportStatement{
+		Pos:  ast.Pos{Line: tok.Line, Col: tok.Col},
+		Path: path,
+	}, true
+}
+
 // ─── Block dispatch ───────────────────────────────────────────────────────────
 
 func (p *parser) parseBlock() ast.Block {
 	switch p.peek().Type {
+	case lexer.TokenImport:
+		// Catch late `import` lines after a block has already started.
+		// The header-only rule keeps the resolver simple and matches
+		// Go's `import` placement.
+		p.errorf("`import` must appear before any block in the file")
+		p.synchronize()
+		return nil
 	case lexer.TokenDetect:
 		return p.parseDetect()
 	case lexer.TokenStrict, lexer.TokenRule:

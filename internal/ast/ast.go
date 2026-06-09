@@ -7,8 +7,23 @@ type Pos struct {
 }
 
 // Program is the top-level AST node for a .talon file.
+//
+// Imports, when present, must appear before any block in the source.
+// The resolver in internal/imports walks them, recursively lex+parses
+// each target, and merges the resulting blocks into the current
+// program before validation runs. See docs/spec/v0.2.md.
 type Program struct {
-	Blocks []Block
+	Imports []ImportStatement
+	Blocks  []Block
+}
+
+// ImportStatement is `import "./path"` — a top-level directive that
+// merges the named file's blocks into the current program. Paths are
+// relative to the importing file. No version resolution, no git, no
+// registry — the minimum viable module story per issue #19.
+type ImportStatement struct {
+	Pos  Pos
+	Path string
 }
 
 // Block is implemented by all top-level block types.

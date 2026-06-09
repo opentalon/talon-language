@@ -1,0 +1,12 @@
+// Shared defines reused across multiple .talon files.
+// Demonstrates the local-imports system (#19 follow-up): one file
+// holds the predicates, others import them by relative path.
+
+define "active_item" {
+  type == "item"
+  and status == "active"
+}
+
+define "due_for_service" {
+  attr "km" > attr "last_service_km" + 20000
+}

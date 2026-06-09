@@ -164,6 +164,9 @@ const (
 	TokenConstraint
 	TokenRequire
 
+	// Keywords — local imports (#19 follow-up)
+	TokenImport
+
 	// Keywords — provenance annotations on rules + detect blocks
 	// (introduced for issue #3 layer-3 auto-discovered rules).
 	TokenSource
@@ -293,6 +296,7 @@ var keywords = map[string]TokenType{
 	"constraint":        TokenConstraint,
 	"require":           TokenRequire,
 	"source":            TokenSource,
+	"import":            TokenImport,
 }
 
 type Token struct {
