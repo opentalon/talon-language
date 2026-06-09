@@ -390,6 +390,24 @@ test "Up-to-date service is not flagged" {
 | `talon trace` | Step-by-step evaluation trace for debugging |
 | `talon mod` | Package manager (`init`, `add`, `tidy`, `verify`) |
 
+## Editor support
+
+Syntax highlighting + file detection for `.talon` and `.talon.test` files:
+
+| Editor | Plugin | Install |
+| --- | --- | --- |
+| Vim / Neovim | **[opentalon/talon-vim](https://github.com/opentalon/talon-vim)** | `Plugin 'opentalon/talon-vim'` (Vundle), `Plug 'opentalon/talon-vim'` (vim-plug), or git-clone into `pack/*/start/` (Neovim native) |
+| VS Code | **[opentalon/talon-vscode](https://github.com/opentalon/talon-vscode)** | `git clone https://github.com/opentalon/talon-vscode ~/.vscode/extensions/opentalon.talon-vscode-0.1.0` then reload |
+
+Both plugins mirror the keyword list in
+[`internal/lexer/lexer.go`](./internal/lexer/lexer.go), so block
+headers, ML primitives, template interpolations (`{item.name}`),
+priorities, and comments all colour correctly out of the box.
+
+A future LSP server (autocomplete, on-save diagnostics, go-to-definition)
+will work across both editors; tracked in
+[issue #18](https://github.com/opentalon/talon-language/issues/18).
+
 ## Roadmap
 
 ### Language and Vision
