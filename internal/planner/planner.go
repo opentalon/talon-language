@@ -856,6 +856,7 @@ type queryBuilder struct {
 	entityVar      string
 	findVars       []string
 	whereClauses   []factstore.Clause
+	rules          []factstore.Rule
 	goConditions   []ast.Condition
 	anomalyConds   []anomalyBinding
 	thresholdConds []thresholdBinding
@@ -1047,11 +1048,12 @@ func (b *queryBuilder) addMembership(c *ast.MembershipCondition) {
 		b.goConditions = append(b.goConditions, c)
 		return
 	}
-	// Check if members are category_tree expression
+	// `attr in category_tree("Root")` — push the recursion into the
+	// FactStore as a Datalog rule. Datalevin evaluates it natively;
+	// MemoryStore precomputes the rule extension via fixed-point.
 	if len(c.Members) == 1 {
-		if _, isCT := c.Members[0].(*ast.CategoryTreeExpr); isCT {
-			// recursive tree — GoComputation
-			b.goConditions = append(b.goConditions, c)
+		if ct, isCT := c.Members[0].(*ast.CategoryTreeExpr); isCT {
+			b.addCategoryTreeMembership(path, ct, c.Negated)
 			return
 		}
 	}
@@ -1070,6 +1072,80 @@ func (b *queryBuilder) addMembership(c *ast.MembershipCondition) {
 		op = "not_in"
 	}
 	b.addPredicate(op, factstore.Var(v), factstore.Lit(members))
+}
+
+// addCategoryTreeMembership emits a Datalog rule that walks the
+// category hierarchy and a RuleCall clause that anchors a row when
+// the entity's category attribute is `Root` or one of its
+// descendants. Schema assumed (matches Talon's `category` blocks):
+//
+//	[<entity>     :record/category <category-name>]
+//	[<cat-entity> :record/type     "category"]
+//	[<cat-entity> :category/name   <name>]
+//	[<cat-entity> :category/parent <parent-name>]
+//
+// The emitted rule has two clauses (Datalog disjunction):
+//
+//	(category-in-tree ?c ?root) ← [(= ?c ?root)]
+//	(category-in-tree ?c ?root) ← [?cent :record/type "category"]
+//	                              [?cent :category/name ?c]
+//	                              [?cent :category/parent ?p]
+//	                              (category-in-tree ?p ?root)
+//
+// The membership query then adds:
+//
+//	[?e :record/category ?cat]
+//	(category-in-tree ?cat "Root")
+func (b *queryBuilder) addCategoryTreeMembership(attr string, ct *ast.CategoryTreeExpr, negated bool) {
+	if negated {
+		// "not in category_tree(...)" is uncommon and the rule-based
+		// path doesn't compose with negation cleanly; fall back to
+		// the in-process filter the original implementation used.
+		b.goConditions = append(b.goConditions, &ast.MembershipCondition{
+			Expr:    nil,
+			Negated: true,
+			Members: []ast.Expr{ct},
+		})
+		return
+	}
+	b.ensureCategoryTreeRule()
+	catVar := b.varFor("category_value")
+	b.addPattern(attr, factstore.Var(catVar))
+	b.findVars = appendUniq(b.findVars, catVar)
+	b.whereClauses = append(b.whereClauses, &factstore.RuleCall{
+		Name: "category-in-tree",
+		Args: []factstore.Term{factstore.Var(catVar), factstore.Lit(ct.Root)},
+	})
+}
+
+// ensureCategoryTreeRule registers the recursive category-in-tree
+// rule on the builder the first time category_tree(...) is used in
+// the block. Subsequent invocations are no-ops so the same query
+// doesn't carry duplicate rule definitions.
+func (b *queryBuilder) ensureCategoryTreeRule() {
+	for _, r := range b.rules {
+		if r.Name == "category-in-tree" {
+			return
+		}
+	}
+	base := factstore.Rule{
+		Name: "category-in-tree",
+		Args: []string{"?c", "?root"},
+		Body: []factstore.Clause{
+			&factstore.Predicate{Op: "=", Left: factstore.Var("c"), Right: factstore.Var("root")},
+		},
+	}
+	step := factstore.Rule{
+		Name: "category-in-tree",
+		Args: []string{"?c", "?root"},
+		Body: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":record/type", Value: factstore.Lit("category")},
+			&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/name", Value: factstore.Var("c")},
+			&factstore.Pattern{Entity: factstore.Var("cent"), Attribute: ":category/parent", Value: factstore.Var("p")},
+			&factstore.RuleCall{Name: "category-in-tree", Args: []factstore.Term{factstore.Var("p"), factstore.Var("root")}},
+		},
+	}
+	b.rules = append(b.rules, base, step)
 }
 
 func (b *queryBuilder) addIsCondition(c *ast.IsCondition) {
@@ -1158,6 +1234,7 @@ func (b *queryBuilder) build() factstore.Query {
 	return factstore.Query{
 		Find:  append([]string(nil), b.findVars...),
 		Where: append([]factstore.Clause(nil), b.whereClauses...),
+		Rules: append([]factstore.Rule(nil), b.rules...),
 	}
 }
 

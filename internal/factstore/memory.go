@@ -195,6 +195,15 @@ func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 	// and the REPL both rely on deterministic ordering.
 	ids := sortedKeys(m.entities)
 
+	// Build a rule-resolution context only when the query carries
+	// rules. Resolution is lazy / per-call-site so caller-side literal
+	// args flow into the rule body — required for the base case of
+	// transitive-closure rules like category-in-tree.
+	var rc *ruleCtx
+	if len(q.Rules) > 0 {
+		rc = newRuleCtx(m, q.Rules)
+	}
+
 	// Pass 1: collect every matching binding set.
 	var matches []map[string]any
 	for _, id := range ids {
@@ -202,7 +211,7 @@ func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 		bindings := map[string]any{}
 		// "?e" is the conventional entity binding the planner emits.
 		bindings["?e"] = float64(id)
-		if !matchAll(q.Where, attrs, bindings) {
+		if !matchAllWithRules(q.Where, attrs, bindings, rc) {
 			continue
 		}
 		matches = append(matches, bindings)
@@ -387,6 +396,19 @@ func matchAll(clauses []Clause, attrs map[string]any, bindings map[string]any) b
 }
 
 func matchOne(c Clause, attrs map[string]any, bindings map[string]any) bool {
+	return matchOneWithRules(c, attrs, bindings, nil)
+}
+
+func matchAllWithRules(clauses []Clause, attrs map[string]any, bindings map[string]any, rc *ruleCtx) bool {
+	for _, c := range clauses {
+		if !matchOneWithRules(c, attrs, bindings, rc) {
+			return false
+		}
+	}
+	return true
+}
+
+func matchOneWithRules(c Clause, attrs map[string]any, bindings map[string]any, rc *ruleCtx) bool {
 	switch cc := c.(type) {
 	case *Pattern:
 		return matchPattern(cc, attrs, bindings)
@@ -398,6 +420,8 @@ func matchOne(c Clause, attrs map[string]any, bindings map[string]any) bool {
 		return matchNot(cc, attrs, bindings)
 	case *FullText:
 		return matchFullText(cc, attrs)
+	case *RuleCall:
+		return matchRuleCall(cc, bindings, rc)
 	}
 	return false
 }
@@ -420,6 +444,52 @@ func matchFullText(f *FullText, attrs map[string]any) bool {
 			continue
 		}
 		if strings.Contains(strings.ToLower(s), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchRuleCall resolves a RuleCall lazily: it asks the ruleCtx for
+// the tuple set matching the call's currently-bound args (literals
+// and bound vars flow into the rule body as seeds), then unifies
+// each returned tuple against the call's terms.
+func matchRuleCall(call *RuleCall, bindings map[string]any, rc *ruleCtx) bool {
+	if rc == nil {
+		return false
+	}
+	seed := make([]any, len(call.Args))
+	for i, arg := range call.Args {
+		switch {
+		case arg.IsVar():
+			if v, ok := bindings[arg.Var]; ok {
+				seed[i] = v
+			}
+		case arg.IsWildcard():
+			// leave free
+		default:
+			seed[i] = arg.Literal
+		}
+	}
+	tuples := rc.resolve(call.Name, seed)
+	for _, t := range tuples {
+		if len(t) != len(call.Args) {
+			continue
+		}
+		scratch := cloneBindings(bindings)
+		unified := true
+		for i, arg := range call.Args {
+			if !unifyTerm(arg, t[i], scratch) {
+				unified = false
+				break
+			}
+		}
+		if unified {
+			for k, v := range scratch {
+				if _, had := bindings[k]; !had {
+					bindings[k] = v
+				}
+			}
 			return true
 		}
 	}

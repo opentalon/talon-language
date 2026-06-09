@@ -13,6 +13,9 @@ import (
 // updating the renderer in internal/factstore/render.go; this package
 // stays as the thin HTTP bridge.
 func (c *Client) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
+	if rules := q.RulesString(); rules != "" {
+		return c.RawQueryWithRules(ctx, q.String(), rules)
+	}
 	return c.RawQuery(ctx, q.String())
 }
 
