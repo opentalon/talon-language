@@ -18,6 +18,7 @@ import (
 type MemoryStore struct {
 	mu       sync.RWMutex
 	entities map[int]map[string]any
+	events   EventEmitter
 }
 
 // NewMemoryStore returns an empty store.
@@ -86,6 +87,93 @@ func (m *MemoryStore) Reset() {
 	m.mu.Lock()
 	m.entities = map[int]map[string]any{}
 	m.mu.Unlock()
+}
+
+// Retract removes cells matching the pattern. Semantics (per
+// FactStore.Retract):
+//
+//   - empty Attribute            → drop the whole entity
+//   - Attribute set, nil Value   → drop every cell with that attribute
+//   - Attribute + concrete Value → drop only the cell whose value equals
+//
+// Each removed cell emits a Retract event so the reactive dispatcher
+// can fire `on retract <type>` blocks against it.
+func (m *MemoryStore) Retract(ctx context.Context, pattern RetractPattern) error {
+	if pattern.RecordID == "" {
+		return fmt.Errorf("memorystore: retract: RecordID is required")
+	}
+	id, err := parseRecordID(pattern.RecordID)
+	if err != nil {
+		return fmt.Errorf("memorystore: retract: %w", err)
+	}
+
+	m.mu.Lock()
+	ent := m.entities[id]
+	if ent == nil {
+		m.mu.Unlock()
+		return nil // nothing to do; idempotent
+	}
+
+	var removed []Fact
+	switch {
+	case pattern.Attribute == "":
+		// Drop the entire entity. Collect each cell as a retraction
+		// event so reactive dispatchers see one event per (attribute,
+		// value) pair, not one merged event for the whole entity.
+		for attr, val := range ent {
+			removed = append(removed, Fact{
+				RecordID:  pattern.RecordID,
+				Attribute: attr,
+				Value:     val,
+			})
+		}
+		delete(m.entities, id)
+	case pattern.Value == nil:
+		// Drop one attribute regardless of value.
+		if val, ok := ent[pattern.Attribute]; ok {
+			removed = append(removed, Fact{
+				RecordID:  pattern.RecordID,
+				Attribute: pattern.Attribute,
+				Value:     val,
+			})
+			delete(ent, pattern.Attribute)
+			if len(ent) == 0 {
+				delete(m.entities, id)
+			}
+		}
+	default:
+		// Drop one specific cell — only if the stored value matches.
+		if val, ok := ent[pattern.Attribute]; ok && equalValues(val, pattern.Value) {
+			removed = append(removed, Fact{
+				RecordID:  pattern.RecordID,
+				Attribute: pattern.Attribute,
+				Value:     val,
+			})
+			delete(ent, pattern.Attribute)
+			if len(ent) == 0 {
+				delete(m.entities, id)
+			}
+		}
+	}
+	m.mu.Unlock()
+
+	// Fan-out events outside the lock so subscribers can't deadlock by
+	// re-entering the store from their handler.
+	for _, f := range removed {
+		m.events.Emit(ctx, Event{
+			Kind: EventRetract,
+			Fact: f,
+		})
+	}
+	return nil
+}
+
+// Events returns the store's event emitter so reactive dispatchers and
+// other consumers can subscribe. The emitter is also notified on
+// Assert (today only Retract emits, but Assert events are a planned
+// follow-up — exposing the emitter keeps the subscription API stable).
+func (m *MemoryStore) Events() *EventEmitter {
+	return &m.events
 }
 
 // Query evaluates a structured Query by iterating entities, attempting

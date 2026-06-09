@@ -116,6 +116,13 @@ func (h *healthCheckedClient) Assert(ctx context.Context, facts []factstore.Fact
 	return h.client.Assert(ctx, facts)
 }
 
+func (h *healthCheckedClient) Retract(ctx context.Context, p factstore.RetractPattern) error {
+	if err := h.check(ctx); err != nil {
+		return err
+	}
+	return h.client.Retract(ctx, p)
+}
+
 // Run compiles and executes a full Talon source (workflow + detect /
 // query / ML primitives). Returns [ErrRequiresFactStore] when the
 // program needs a fact store but none was wired up.

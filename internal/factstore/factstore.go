@@ -26,6 +26,25 @@ type FactStore interface {
 	// any persistence concerns (Datalevin commits immediately; MemoryStore
 	// mutates an in-process map; a future SQL store batches into INSERTs).
 	Assert(ctx context.Context, facts []Fact) error
+
+	// Retract removes matching cells from the store. RecordID is required
+	// and identifies the target entity. When Attribute is empty, every
+	// cell on the entity is removed (the entity is effectively dropped).
+	// When Attribute is set and Value is non-nil, only the cell whose
+	// value equals Value is removed; when Value is nil, every cell with
+	// that attribute is removed regardless of value.
+	//
+	// MemoryStore emits a Retract event for each removed cell so the
+	// reactive dispatcher can fire registered `on retract` blocks.
+	Retract(ctx context.Context, pattern RetractPattern) error
+}
+
+// RetractPattern names the cells to remove from a FactStore. RecordID
+// is required; Attribute + Value are optional. See FactStore.Retract.
+type RetractPattern struct {
+	RecordID  string
+	Attribute string // "" = retract the whole entity
+	Value     any    // nil = retract every value of Attribute
 }
 
 // Fact is a single EAV triple. The record-ID + attribute together identify

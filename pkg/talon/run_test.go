@@ -39,6 +39,10 @@ func (f *fakeStore) Assert(_ context.Context, facts []factstore.Fact) error {
 	return nil
 }
 
+func (f *fakeStore) Retract(_ context.Context, _ factstore.RetractPattern) error {
+	return nil
+}
+
 // Compile-time guard: fakeStore satisfies the public FactStore type
 // aliased from the canonical factstore interface.
 var _ talon.FactStore = (*fakeStore)(nil)
