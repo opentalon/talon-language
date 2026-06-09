@@ -141,6 +141,7 @@ const (
 	TokenContains
 	TokenStartsWith
 	TokenEndsWith
+	TokenMatches
 	TokenOlderThan
 	TokenNewerThan
 
@@ -276,6 +277,7 @@ var keywords = map[string]TokenType{
 	"contains":          TokenContains,
 	"starts_with":       TokenStartsWith,
 	"ends_with":         TokenEndsWith,
+	"matches":           TokenMatches,
 	"older_than":        TokenOlderThan,
 	"newer_than":        TokenNewerThan,
 	"LOW":               TokenLow,

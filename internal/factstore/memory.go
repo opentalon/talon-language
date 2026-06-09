@@ -396,6 +396,32 @@ func matchOne(c Clause, attrs map[string]any, bindings map[string]any) bool {
 		return matchOr(cc, attrs, bindings)
 	case *Not:
 		return matchNot(cc, attrs, bindings)
+	case *FullText:
+		return matchFullText(cc, attrs)
+	}
+	return false
+}
+
+// matchFullText is MemoryStore's naive fallback for Datalevin's
+// `(fulltext $ "query")` predicate: it scans every string-valued
+// attribute on the entity and reports a match if any value contains
+// the query as a case-insensitive substring. A backend with real
+// FTS indices (Datalevin's `:db/fulltext true`) will out-perform
+// this trivially, but the fallback is enough for the REPL and
+// MemoryStore-backed tests.
+func matchFullText(f *FullText, attrs map[string]any) bool {
+	if f.Query == "" {
+		return false
+	}
+	needle := strings.ToLower(f.Query)
+	for _, v := range attrs {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		if strings.Contains(strings.ToLower(s), needle) {
+			return true
+		}
 	}
 	return false
 }
