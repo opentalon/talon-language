@@ -385,9 +385,9 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 }
 
 func runExecute() {
-	// Parse args: talon run <file.talon> [--store backend] [--datalevin URL] [--seed file.talon.test]
+	// Parse args: talon run <file.talon> [--store backend] [--datalevin URL] [--tenant NAME] [--seed file.talon.test]
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--store datalevin|memory] [--datalevin URL] [--seed file.talon.test]")
+		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--store datalevin|memory] [--datalevin URL] [--tenant NAME] [--seed file.talon.test]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -395,6 +395,7 @@ func runExecute() {
 	serverURL := "http://localhost:8898"
 	seedPath := ""
 	storeKind := "datalevin"
+	tenant := ""
 	for i := 3; i < len(os.Args); i++ {
 		switch {
 		case os.Args[i] == "--datalevin" && i+1 < len(os.Args):
@@ -405,6 +406,9 @@ func runExecute() {
 			i++
 		case os.Args[i] == "--store" && i+1 < len(os.Args):
 			storeKind = os.Args[i+1]
+			i++
+		case os.Args[i] == "--tenant" && i+1 < len(os.Args):
+			tenant = os.Args[i+1]
 			i++
 		}
 	}
@@ -435,6 +439,9 @@ func runExecute() {
 			fmt.Fprintf(os.Stderr, "talon run: cannot reach datalevin-server at %s: %v\n", serverURL, err)
 			fmt.Fprintln(os.Stderr, "hint: start the server with: cd datalevin-server && clj -M:run")
 			os.Exit(diagnostic.ExitError)
+		}
+		if tenant != "" {
+			client = client.WithTenant(tenant)
 		}
 		store = client
 	case "memory":

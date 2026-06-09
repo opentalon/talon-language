@@ -1211,15 +1211,25 @@ func (b *queryBuilder) addAnomalyCondition(c *ast.AnomalyCondition) {
 }
 
 func (b *queryBuilder) addStringMatch(c *ast.StringMatchCondition) {
-	if c.Op == "matches" {
-		// Full-text search is entity-scoped, not attribute-scoped: it
-		// scans every fact on the entity for a substring/FTS hit. We
-		// emit a FullText clause that the Datalevin backend renders to
-		// `(fulltext $ "query")` and MemoryStore evaluates as a scan.
-		b.whereClauses = append(b.whereClauses, &factstore.FullText{
-			Entity: factstore.Var("e"),
-			Query:  c.Value,
-		})
+	if c.Op == "matches" || c.Op == "matches_phrase" {
+		// Full-text search. When the subject resolves to a concrete
+		// attribute path, scope the FTS predicate to that attribute
+		// (`(fulltext $ :attr "q")` — faster on Datalevin and matches
+		// the user's intent). Otherwise the search is entity-wide.
+		ft := &factstore.FullText{Entity: factstore.Var("e")}
+		if path, ok := exprToFieldPath(c.Subject); ok {
+			ft.Attribute = path
+		}
+		if c.Op == "matches_phrase" {
+			// Datalevin's search expression form: require the literal
+			// as an exact phrase. Quotes inside the phrase need not be
+			// escaped today because the lexer's STRING strips them and
+			// we re-wrap.
+			ft.Expr = fmt.Sprintf(`[:and {:phrase %q}]`, c.Value)
+		} else {
+			ft.Query = c.Value
+		}
+		b.whereClauses = append(b.whereClauses, ft)
 		return
 	}
 	path, ok := exprToFieldPath(c.Subject)
