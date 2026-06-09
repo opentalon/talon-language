@@ -66,34 +66,12 @@ func (c *Client) RawQuery(ctx context.Context, query string) ([][]any, error) {
 	return result.Results, nil
 }
 
-// RawQueryOpts is the wide-format variant of RawQuery that accepts
-// every optional field the server understands (rules, as_of). The
-// structured Query method funnels through this so future
-// capabilities don't keep growing the public surface.
-type RawQueryOpts struct {
-	Rules string // rule-vector form; query must declare `% ` in :in
-	AsOf  int64  // tx-id to time-travel to; 0 = current state
-}
-
 // RawQueryWithRules is the recursive-rules variant of RawQuery. The
 // `rules` string is Datalevin's rule-vector form (see
 // factstore.Query.RulesString); the query must declare `% ` in its
 // :in clause so the server can pass them through to d/q.
 func (c *Client) RawQueryWithRules(ctx context.Context, query, rules string) ([][]any, error) {
-	return c.RawQueryOptions(ctx, query, RawQueryOpts{Rules: rules})
-}
-
-// RawQueryOptions is the catch-all wire-format wrapper. Empty fields
-// in opts are omitted from the body so the server's default
-// (current-state, no rules) behaviour applies.
-func (c *Client) RawQueryOptions(ctx context.Context, query string, opts RawQueryOpts) ([][]any, error) {
-	body := map[string]any{"query": query}
-	if opts.Rules != "" {
-		body["rules"] = opts.Rules
-	}
-	if opts.AsOf != 0 {
-		body["as_of"] = opts.AsOf
-	}
+	body := map[string]any{"query": query, "rules": rules}
 	var result QueryResult
 	if err := c.post(ctx, "/q", body, &result); err != nil {
 		return nil, fmt.Errorf("datalevin query: %w", err)
@@ -101,25 +79,15 @@ func (c *Client) RawQueryOptions(ctx context.Context, query string, opts RawQuer
 	return result.Results, nil
 }
 
-// TxResult is the parsed response from POST /transact. TxID is the
-// Datalevin basis-t the transaction landed at — callers stash it and
-// pass it back via Query.AsOf for time-travel reads.
-type TxResult struct {
-	OK   bool  `json:"ok"`
-	TxID int64 `json:"tx_id"`
-}
-
 // RawTransact submits raw Datalevin transaction maps. Use Assert (which
 // satisfies the factstore.FactStore interface) for the normal path.
-// Returns the basis-t of the committed transaction so callers can
-// address that state in subsequent reads.
-func (c *Client) RawTransact(ctx context.Context, txData []map[string]any) (int64, error) {
+func (c *Client) RawTransact(ctx context.Context, txData []map[string]any) error {
 	body := map[string]any{"tx-data": txData}
-	var result TxResult
+	var result map[string]any
 	if err := c.post(ctx, "/transact", body, &result); err != nil {
-		return 0, fmt.Errorf("datalevin transact: %w", err)
+		return fmt.Errorf("datalevin transact: %w", err)
 	}
-	return result.TxID, nil
+	return nil
 }
 
 // Schema registers database schema attributes.

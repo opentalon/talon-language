@@ -48,16 +48,12 @@
 ;;       {"query": "[:find ?e :in $ % :where (r ?e)]", "rules": "[[(r ?e) ...]]"}
 ;;         — recursive form: query declares `%` in :in, rules carry
 ;;           the rule definitions as a Datalog vector.
-;;       {"query": "...", "as_of": 536870914}
-;;         — time-travel: server runs against (d/as-of db tx-id)
 ;; Response: {"results": [[1, 45000], [2, 12000]]}
 (defn handle-query [tenant {:keys [body]}]
   (let [query-str (get body "query")
         rules-str (get body "rules")
-        as-of-tx  (get body "as_of")
         conn      (:conn (tenant-state tenant))
-        db        (cond-> (d/db conn)
-                    (and as-of-tx (pos? as-of-tx)) (d/as-of as-of-tx))
+        db        (d/db conn)
         query     (read-string query-str)
         results   (if (and rules-str (seq rules-str))
                     (vec (map vec (d/q query db (read-string rules-str))))
@@ -66,24 +62,16 @@
 
 ;; POST /transact — assert facts
 ;; Body: {"tx-data": [{":record/type": "item", ...}]}
-;; Response: {"ok": true, "tx_id": 536870914}
-;;
-;; tx_id is the basis-t of the transaction Datalevin just committed;
-;; clients use it to address that state in later /q calls' as_of.
+;; Response: {"ok": true}
 (defn handle-transact [tenant {:keys [body]}]
   (let [tx-data (get body "tx-data")
         conn    (:conn (tenant-state tenant))
         ;; Convert string keys to keywords
         tx      (mapv (fn [m]
-                        (into {} (map (fn [[k v]]
-                                        ;; :db/id arrives as a JSON number; preserve
-                                        ;; the value verbatim instead of coercing to
-                                        ;; keyword like other keys.
-                                        [(keyword (subs k 1)) v])
-                                      m)))
-                      tx-data)
-        report  (d/transact! conn tx)]
-    (resp/response {"ok" true "tx_id" (get-in report [:tx-data 0 1] 0)})))
+                        (into {} (map (fn [[k v]] [(keyword (subs k 1)) v]) m)))
+                      tx-data)]
+    (d/transact! conn tx)
+    (resp/response {"ok" true})))
 
 ;; POST /schema — register schema attributes
 ;; Body: {"attrs": {":attr/km": {"db/valueType": "db.type/long"}}}

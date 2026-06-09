@@ -13,19 +13,11 @@ import (
 // and executes it against the server. Adding a new clause type means
 // updating the renderer in internal/factstore/render.go; this package
 // stays as the thin HTTP bridge.
-//
-// Rules and AsOf both ride on RawQueryOptions so the JSON body grows
-// only when something is set — single-shape queries stay on the
-// minimal `{query}` wire form.
 func (c *Client) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
-	opts := RawQueryOpts{
-		Rules: q.RulesString(),
-		AsOf:  q.AsOf,
+	if rules := q.RulesString(); rules != "" {
+		return c.RawQueryWithRules(ctx, q.String(), rules)
 	}
-	if opts.Rules == "" && opts.AsOf == 0 {
-		return c.RawQuery(ctx, q.String())
-	}
-	return c.RawQueryOptions(ctx, q.String(), opts)
+	return c.RawQuery(ctx, q.String())
 }
 
 // Retract satisfies factstore.FactStore. It translates the
@@ -105,48 +97,6 @@ func (c *Client) Assert(ctx context.Context, facts []factstore.Fact) error {
 		}
 	}
 
-	txData := make([]map[string]any, 0, len(byID))
-	for id, row := range byID {
-		if eid, err := strconv.ParseInt(id, 10, 64); err == nil {
-			row[":db/id"] = eid
-		}
-		txData = append(txData, map[string]any(row))
-	}
-	_, err := c.RawTransact(ctx, txData)
-	return err
-}
-
-// AssertWithTxID is Assert that also returns the basis-t of the
-// committed transaction. Callers stash the tx-id and pass it back
-// via factstore.Query.AsOf for time-travel reads.
-func (c *Client) AssertWithTxID(ctx context.Context, facts []factstore.Fact) (int64, error) {
-	if len(facts) == 0 {
-		return 0, nil
-	}
-	type entityRow map[string]any
-	byID := map[string]entityRow{}
-	schema := map[string]map[string]string{}
-	for _, f := range facts {
-		if f.RecordID == "" {
-			continue
-		}
-		row := byID[f.RecordID]
-		if row == nil {
-			row = entityRow{}
-			byID[f.RecordID] = row
-		}
-		if f.Attribute != "" {
-			row[f.Attribute] = f.Value
-			if _, exists := schema[f.Attribute]; !exists && f.Value != nil {
-				schema[f.Attribute] = map[string]string{"db/valueType": inferType(f.Value)}
-			}
-		}
-	}
-	if len(schema) > 0 {
-		if err := c.Schema(ctx, schema); err != nil {
-			return 0, err
-		}
-	}
 	txData := make([]map[string]any, 0, len(byID))
 	for id, row := range byID {
 		if eid, err := strconv.ParseInt(id, 10, 64); err == nil {

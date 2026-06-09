@@ -103,18 +103,6 @@ type Query struct {
 	// of degrading to a Go-side filter.
 	Rules []Rule
 
-	// AsOf, when non-zero, executes the query against the database
-	// as it existed at the given transaction. tx IDs are returned
-	// by FactStore implementations that support history (the
-	// Datalevin client's Assert returns the latest tx via the
-	// response; callers stash it and pass it back here for
-	// time-travel).
-	//
-	// MemoryStore doesn't keep history, so this field is ignored
-	// there; non-zero AsOf against an in-memory store returns
-	// today's results.
-	AsOf int64
-
 	// Pull, when non-empty, replaces the :find columns with one
 	// `(pull ?e [...])` expression per entry. Each entry is the
 	// Datalog pull-pattern body (e.g. `[:* {:friends 2}]`) and is
