@@ -2,6 +2,7 @@ package datalevin
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/opentalon/talon-language/internal/factstore"
 )
@@ -13,6 +14,39 @@ import (
 // stays as the thin HTTP bridge.
 func (c *Client) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
 	return c.RawQuery(ctx, q.String())
+}
+
+// Retract satisfies factstore.FactStore. It translates the
+// RetractPattern into Datalevin tx-data using the
+// `[:db/retract eid attr value]` (specific cell) or
+// `[:db.fn/retractEntity eid]` (whole entity) shapes Datalevin
+// accepts on `/transact`.
+//
+// RecordID is required. When Attribute is empty the entire entity is
+// retracted. When Attribute is set and Value is non-nil the specific
+// cell is targeted; when Value is nil the server runs a Datalog
+// query first to enumerate the entity's current value for that
+// attribute (Datalevin's `:db/retract` requires a value), then
+// retracts each matching cell. The query-then-retract dance happens
+// inside `/retract` on the server so the wire shape stays simple.
+func (c *Client) Retract(ctx context.Context, p factstore.RetractPattern) error {
+	if p.RecordID == "" {
+		return fmt.Errorf("datalevin retract: RecordID is required")
+	}
+	body := map[string]any{
+		"record_id": p.RecordID,
+	}
+	if p.Attribute != "" {
+		body["attribute"] = p.Attribute
+	}
+	if p.Value != nil {
+		body["value"] = p.Value
+	}
+	var result map[string]any
+	if err := c.post(ctx, "/retract", body, &result); err != nil {
+		return fmt.Errorf("datalevin retract: %w", err)
+	}
+	return nil
 }
 
 // Assert satisfies factstore.FactStore. It groups facts by RecordID,

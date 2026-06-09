@@ -64,6 +64,48 @@
     (swap! state assoc :schema merged)
     (resp/response {"ok" true})))
 
+;; POST /retract — retract facts matching the pattern
+;; Body shapes:
+;;   {"record_id": "501"}                                        — drop whole entity
+;;   {"record_id": "501", "attribute": ":attr/km"}               — drop one attribute (any value)
+;;   {"record_id": "501", "attribute": ":attr/km", "value": 50}  — drop one specific cell
+;; Response: {"ok": true, "retracted": N}
+;;
+;; record_id is the entity ID as a string of digits. The handler
+;; parses it back to an int because Datalevin's tx-data wants the
+;; numeric entity ID. When `attribute` is omitted the entire entity
+;; is removed via :db.fn/retractEntity. When `attribute` is set but
+;; `value` is omitted the handler queries Datalevin for the current
+;; value(s) and retracts each — :db/retract requires a value because
+;; Datalevin stores history of every (entity, attribute, value)
+;; triple.
+(defn handle-retract [{:keys [body]}]
+  (let [record-id   (get body "record_id")
+        attribute   (get body "attribute")
+        value       (get body "value")
+        conn        (:conn @state)
+        eid         (Long/parseLong record-id)]
+    (cond
+      (nil? attribute)
+      (do (d/transact! conn [[:db.fn/retractEntity eid]])
+          (resp/response {"ok" true "retracted" 1}))
+
+      (nil? value)
+      (let [db      (d/db conn)
+            attr-kw (keyword (subs attribute 1))
+            vals    (d/q '[:find ?v
+                           :in $ ?e ?a
+                           :where [?e ?a ?v]]
+                         db eid attr-kw)]
+        (d/transact! conn
+                     (vec (for [[v] vals] [:db/retract eid attr-kw v])))
+        (resp/response {"ok" true "retracted" (count vals)}))
+
+      :else
+      (let [attr-kw (keyword (subs attribute 1))]
+        (d/transact! conn [[:db/retract eid attr-kw value]])
+        (resp/response {"ok" true "retracted" 1})))))
+
 ;; GET /health
 (defn handle-health [_]
   (resp/response {"status" "ok"}))
@@ -74,6 +116,7 @@
     [:post "/q"]         (handle-query req)
     [:post "/transact"]  (handle-transact req)
     [:post "/schema"]    (handle-schema req)
+    [:post "/retract"]   (handle-retract req)
     (resp/not-found {"error" "not found"})))
 
 (def app
