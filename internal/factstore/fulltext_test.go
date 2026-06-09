@@ -78,7 +78,7 @@ func TestFullTextRendersDatalevinPredicate(t *testing.T) {
 	if !strings.Contains(got, `(fulltext $ "transit")`) {
 		t.Fatalf("want fulltext predicate in Datalog output, got:\n%s", got)
 	}
-	if !strings.Contains(got, "[?e ?ft-a ?ft-v ?ft-s]") {
+	if !strings.Contains(got, "[?e ?ft-a ?ft-v]") {
 		t.Fatalf("want destructured FTS binding, got:\n%s", got)
 	}
 }
