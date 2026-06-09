@@ -1129,6 +1129,17 @@ func (b *queryBuilder) addAnomalyCondition(c *ast.AnomalyCondition) {
 }
 
 func (b *queryBuilder) addStringMatch(c *ast.StringMatchCondition) {
+	if c.Op == "matches" {
+		// Full-text search is entity-scoped, not attribute-scoped: it
+		// scans every fact on the entity for a substring/FTS hit. We
+		// emit a FullText clause that the Datalevin backend renders to
+		// `(fulltext $ "query")` and MemoryStore evaluates as a scan.
+		b.whereClauses = append(b.whereClauses, &factstore.FullText{
+			Entity: factstore.Var("e"),
+			Query:  c.Value,
+		})
+		return
+	}
 	path, ok := exprToFieldPath(c.Subject)
 	if !ok {
 		b.goConditions = append(b.goConditions, c)

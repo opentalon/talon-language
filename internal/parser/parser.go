@@ -1340,7 +1340,7 @@ func (p *parser) parseWhenClause() ast.Condition {
 	if p.isBlockKeyword(p.peek().Type) {
 		kind := p.advance().Value
 		name := p.expectString()
-		if p.at(lexer.TokenIdent) && p.peek().Value == "matches" {
+		if p.at(lexer.TokenMatches) || (p.at(lexer.TokenIdent) && p.peek().Value == "matches") {
 			p.advance()
 		}
 		return &ast.BlockMatchesCondition{Kind: kind, Name: name}
@@ -1463,6 +1463,11 @@ func (p *parser) parseExprCondition() ast.Condition {
 		p.advance()
 		val := p.expectString()
 		return &ast.StringMatchCondition{Subject: expr, Op: "ends_with", Value: val}
+
+	case lexer.TokenMatches:
+		p.advance()
+		val := p.expectString()
+		return &ast.StringMatchCondition{Subject: expr, Op: "matches", Value: val}
 
 	case lexer.TokenIs:
 		p.advance()

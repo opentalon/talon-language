@@ -121,10 +121,25 @@ type Not struct {
 	Body []Clause
 }
 
+// FullText matches an entity whose facts contain Query as a full-text
+// term. MemoryStore evaluates this as a substring scan across every
+// attribute value on the entity. The Datalevin backend renders it to
+// the `(fulltext $ "query")` predicate so the server can use its
+// native FTS indices when configured.
+//
+// Entity is the entity variable the match binds (conventionally
+// "?e") so the FullText clause plays well with sibling Pattern
+// clauses on the same row.
+type FullText struct {
+	Entity Term
+	Query  string
+}
+
 func (*Pattern) clauseNode()   {}
 func (*Predicate) clauseNode() {}
 func (*Or) clauseNode()        {}
 func (*Not) clauseNode()       {}
+func (*FullText) clauseNode()  {}
 
 // Term carries either a variable reference or a literal value. Use the
 // constructors below — the zero value is the wildcard "any".
