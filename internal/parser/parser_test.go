@@ -981,3 +981,77 @@ rule "Bad" {
 		t.Errorf("expected ML-filter diagnostic, got:\n%v", pd)
 	}
 }
+
+// ─── Logger statements in detect/rule/recommend (#19) ────────────────────────
+
+func TestParseDetectWithLoggerStatements(t *testing.T) {
+	prog := mustParse(t, `
+detect "Watch items" {
+  for records where type == "item"
+  flag matching items
+  logger.info "matched: {item.name}"
+  logger.warn "{count} items overdue"
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if len(b.Loggers) != 2 {
+		t.Fatalf("want 2 logger statements, got %d", len(b.Loggers))
+	}
+	if b.Loggers[0].Level != "info" || b.Loggers[1].Level != "warn" {
+		t.Errorf("levels: %v %v", b.Loggers[0].Level, b.Loggers[1].Level)
+	}
+	if b.Loggers[0].Message.Raw != "matched: {item.name}" {
+		t.Errorf("message: %q", b.Loggers[0].Message.Raw)
+	}
+	// Templates pre-parse Nodes so {item.name} interpolation works at render time.
+	if len(b.Loggers[0].Message.Nodes) == 0 {
+		t.Error("logger template Nodes not populated by parser")
+	}
+}
+
+func TestParseRuleWithLoggerStatement(t *testing.T) {
+	prog := mustParse(t, `
+rule "Audit deletes" {
+  when tool_action contains "delete"
+  block "delete"
+  logger.warn "blocked delete attempt from {context.role}"
+}`)
+	b := block[*ast.RuleBlock](t, prog, 0)
+	if len(b.Loggers) != 1 || b.Loggers[0].Level != "warn" {
+		t.Fatalf("want one warn logger, got %v", b.Loggers)
+	}
+}
+
+func TestParseRecommendWithLoggerStatement(t *testing.T) {
+	prog := mustParse(t, `
+recommend "Order more" {
+  when detect "Low stock" matches
+  suggest "order {item.name}"
+  logger.info "recommendation fired for {item.name}"
+}`)
+	b := block[*ast.RecommendBlock](t, prog, 0)
+	if len(b.Loggers) != 1 {
+		t.Fatalf("want one logger, got %v", b.Loggers)
+	}
+}
+
+func TestParseLoggerRejectsUnknownLevel(t *testing.T) {
+	tokens, _ := lexer.Lex("t.talon", `
+detect "Bad" {
+  for records where type == "x"
+  flag matching items
+  logger.shout "loud"
+}`)
+	_, pd := Parse("t.talon", tokens)
+	if !pd.HasErrors() {
+		t.Fatal("expected error for unknown log level")
+	}
+	found := false
+	for _, d := range pd {
+		if strings.Contains(d.Message, "logger level") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected logger-level diagnostic, got %v", pd)
+	}
+}

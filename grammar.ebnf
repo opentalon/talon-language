@@ -35,6 +35,7 @@ DetectBody  = Selector
               [ ScoreAnnotation ]
               [ SourceAnnotation ]
               { CalculateClause }
+              { LoggerStmt }
               [ AnomalyClause ]
               [ PredictClause ]
               [ ForecastClause ]
@@ -69,6 +70,7 @@ RuleBody    = ( Selector | WhenClause )
               [ PriorityClause ]
               [ ScoreAnnotation ]
               [ SourceAnnotation ]
+              { LoggerStmt }
 
 OverridesClause = "overrides" STRING { "," STRING }
 
@@ -80,6 +82,7 @@ RecommendBody  = WhenClause
                  { CalculateClause }
                  SuggestClause
                  [ PriorityClause ]
+                 { LoggerStmt }
 
 (* ─── combine ────────────────────────────────────────────────────────────────── *)
 

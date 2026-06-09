@@ -72,10 +72,37 @@ time=… level=INFO msg=block_eval rule="Cement running low" type=detect matched
 The log line precedes the `:eval` output so you can watch both in
 real time.
 
+### Logger statements inside any block
+
+Per-row logger statements work inside `detect`, `rule`, and
+`recommend` bodies — usually the most useful shape for "this rule
+fired for which row":
+
+```talon
+detect "Service overdue" {
+  for records where type == "item"
+    and attr "km" > attr "last_service_km" + 20000
+  flag matching items
+  label "{item.name}: overdue"
+  logger.info "fired for {item.name}: {attr.km} km"
+}
+```
+
+The template renders against the matched row the same way
+`label` / `reason` / `suggest` do — `{item.name}`, `{attr.x}`,
+`{context.role}`, and the template functions from #60 (`{count}`,
+`{avg(attr.x)}`, …) all work. One log record per flagged entity,
+emitted at the declared level (`info` / `warn` / `error`) through
+`internal/log`.
+
+Each record carries `source=block_logger`, `block=<name>`,
+`entity_id=<id>` so downstream aggregators can pivot on rule firings.
+
 ### Logger statements inside `on { }` blocks
 
-The `logger.info|warn|error "…"` statement parsed in v0.3.0 now actually
-runs. Wire up a dispatcher with `reactive.LoggingActionHandler()`:
+The same `logger.info|warn|error "…"` statement also works inside
+reactive `on { }` bodies. Wire up a dispatcher with
+`reactive.LoggingActionHandler()`:
 
 ```go
 d := reactive.New(reactive.LoggingActionHandler())
