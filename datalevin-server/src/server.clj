@@ -58,20 +58,56 @@
 ;; Facts in LMDB survive that pattern, but the runtime forgets the
 ;; attribute types — any further query against a "lost" attr falls
 ;; back to coarse coercion. The merge form is the correct shape.
+(defn- coerce-schema-value
+  "Schema property values arrive as JSON strings but Datalevin expects
+   typed Clojure values: keyword (`:db.type/string`) for type ids, but
+   plain booleans for flags like `:db/fulltext`. Map the JSON-string
+   form to the right Clojure type so the wire stays string-only."
+  [sv]
+  (case sv
+    "true"  true
+    "false" false
+    (keyword sv)))
+
+(defn- has-fulltext?
+  "True when any attribute in the schema map has :db/fulltext set.
+   Datalevin's search engines are constructed at conn-open time from
+   the schema passed to get-conn; update-schema persists the FTS
+   flag but does not retroactively initialize the engine. So FTS
+   attrs require a close+reopen with the merged schema, while other
+   schema updates take the in-place fast path."
+  [schema]
+  (some (fn [[_ attr-spec]] (get attr-spec :db/fulltext)) schema))
+
 (defn handle-schema [{:keys [body]}]
   (let [attrs      (get body "attrs")
         new-schema (into {}
                          (map (fn [[k v]]
                                 [(keyword (subs k 1))
                                  (into {} (map (fn [[sk sv]]
-                                                 [(keyword sk) (keyword sv)])
+                                                 [(keyword sk) (coerce-schema-value sv)])
                                                v))])
                               attrs))
-        conn       (:conn @state)
         prior      (or (:schema @state) {})
-        merged     (merge prior new-schema)]
-    (when (seq new-schema)
-      (d/update-schema conn new-schema))
+        ;; Deep-merge per-attr specs so re-registering an existing
+        ;; attribute with a subset of properties (e.g. talon-go's
+        ;; Assert path posts just :db/valueType to confirm presence)
+        ;; doesn't drop previously-set flags like :db/fulltext. The
+        ;; outer merge-with's inner `merge` runs once per attribute,
+        ;; combining prior + new property maps.
+        merged     (merge-with merge prior new-schema)
+        ;; Only attrs the server doesn't already know about need to
+        ;; round-trip through Datalevin; reposting an existing attr
+        ;; is a no-op so the search-engine init isn't triggered for
+        ;; every Assert.
+        truly-new  (apply dissoc new-schema (keys prior))
+        db-path    (or (System/getenv "DATALEVIN_PATH") "/tmp/talon-datalevin")]
+    (when (seq truly-new)
+      (if (has-fulltext? truly-new)
+        (do
+          (d/close (:conn @state))
+          (init-db! db-path merged))
+        (d/update-schema (:conn @state) truly-new)))
     (swap! state assoc :schema merged)
     (resp/response {"ok" true})))
 

@@ -115,3 +115,7 @@ jobs:
           echo "$output"
           echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
           echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }
+      - name: Smoke tests — schema merge, Retract, FullText, recursive rules
+        env:
+          DATALEVIN_URL: http://localhost:8898
+        run: go test -tags=datalevin -run Smoke -v ./internal/datalevin/...

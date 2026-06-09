@@ -129,21 +129,27 @@ func renderClause(c Clause) string {
 
 // renderFullText emits Datalevin's full-text predicate:
 //
-//	[(fulltext $ "query") [[?e ?a ?v ?s]]]
+//	[(fulltext $ "query") [[?e ?a ?v]]]
 //
 // The destructured binding pulls the matched entity into ?e (or the
-// caller-supplied entity var) and ignores ?a/?v/?s — we only care that
+// caller-supplied entity var) and ignores ?a/?v — we only care that
 // the entity is anchored so sibling Pattern clauses join correctly.
 //
+// Per Datalevin's default `:display :refs` mode, fulltext returns
+// `[e a v]` tuples — three positions. Asking for four (with a score)
+// requires `:display :texts+offsets` in the options map; we stick
+// with the default shape so attributes don't need extra config.
+//
 // Datalevin requires attributes to be configured with `:db/fulltext
-// true` for this to use the FTS index; otherwise the server falls back
-// to a sequential scan, matching MemoryStore's behaviour.
+// true` for this to use the FTS index; otherwise the server returns
+// no matches. MemoryStore's matchFullText fallback handles the same
+// clause shape via a substring scan for in-process tests.
 func renderFullText(f *FullText) string {
 	eVar := f.Entity.Var
 	if eVar == "" {
 		eVar = "?e"
 	}
-	return fmt.Sprintf("[(fulltext $ %q) [[%s ?ft-a ?ft-v ?ft-s]]]", f.Query, eVar)
+	return fmt.Sprintf("[(fulltext $ %q) [[%s ?ft-a ?ft-v]]]", f.Query, eVar)
 }
 
 func renderRuleCall(r *RuleCall) string {

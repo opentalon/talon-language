@@ -26,11 +26,15 @@ detect "Tools subtree items" {
 		if r.Name != "category-in-tree" {
 			t.Errorf("unexpected rule name %q", r.Name)
 		}
-		if len(r.Body) == 1 {
-			if p, ok := r.Body[0].(*factstore.Predicate); ok && p.Op == "=" {
-				foundBase = true
+		// Base body: [:category/name pattern, (= ?c ?root) predicate]
+		if len(r.Body) == 2 {
+			if _, p := r.Body[0].(*factstore.Pattern); p {
+				if pr, ok := r.Body[1].(*factstore.Predicate); ok && pr.Op == "=" {
+					foundBase = true
+				}
 			}
 		}
+		// Step body: [:category/name pattern, :category/parent pattern, recursive RuleCall]
 		if len(r.Body) >= 3 {
 			foundStep = true
 		}
