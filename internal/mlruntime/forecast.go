@@ -2,7 +2,6 @@ package mlruntime
 
 import (
 	"context"
-	"fmt"
 )
 
 // ExpSmoothingForecast satisfies the ForecastExpSmoothing primitive.
@@ -59,9 +58,16 @@ func (f *ExpSmoothingForecast) Compute(_ context.Context, in Input) ([]Result, e
 	maxSteps := readIntOr(in.Params, "max_steps", 365)
 	predicate := readString(in.Params, "predicate")
 	if predicate == "" {
+		// Default to the stock-out interpretation: how many days until
+		// the value reaches zero. Matches every example forecast block
+		// today (`forecast "Stock-out" { series attr "x" ... }`).
 		predicate = "<="
 	}
 	threshold, hasThreshold := readFloat(in.Params, "threshold")
+	if !hasThreshold {
+		threshold = 0
+		hasThreshold = true
+	}
 
 	// Two shapes for the series data: map[int][]float64 (per-entity) or
 	// []float64 (one series shared across all rows — useful for testing).
@@ -150,9 +156,7 @@ func (f *ExpSmoothingForecast) Compute(_ context.Context, in Input) ([]Result, e
 			},
 		})
 	}
-	if !hasThreshold {
-		return results, fmt.Errorf("forecast_exponential_smoothing: a `threshold` param is required to know when the projection has crossed")
-	}
+	_ = hasThreshold
 	return results, nil
 }
 

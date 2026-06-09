@@ -103,6 +103,31 @@ func TestForecastSeriesByID(t *testing.T) {
 	}
 }
 
+// Forecast blocks without a `predict value <op> N` clause should fall
+// back to the stock-out default (predicate <= 0). Reproduces the CI
+// failure where `forecast "Parts stock-out" { ... }` (no predict
+// clause) errored at runtime asking for an explicit threshold.
+func TestForecastDefaultsToStockOut(t *testing.T) {
+	prim := NewExpSmoothingForecast()
+	res, err := prim.Compute(context.Background(), Input{
+		Rows: [][]any{{1.0}},
+		Params: map[string]any{
+			// No "predicate" / "threshold" — primitive must default to
+			// `<= 0`.
+			"series": []float64{10, 9, 8, 7, 6, 5},
+			"alpha":  1.0,
+			"beta":   1.0,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Compute should not error with default predicate: %v", err)
+	}
+	// Level=5, trend=-1, threshold=0 ⇒ d such that 5 + d*(-1) <= 0 ⇒ d = 5.
+	if res[0].Value.(float64) != 5 {
+		t.Errorf("default <= 0 stock-out: want days=5, got %v", res[0].Value)
+	}
+}
+
 // Series too short to fit a trend → placeholder result with confidence 0.
 func TestForecastTooShortSeries(t *testing.T) {
 	prim := NewExpSmoothingForecast()
