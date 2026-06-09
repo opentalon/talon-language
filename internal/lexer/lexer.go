@@ -164,6 +164,10 @@ const (
 	TokenConstraint
 	TokenRequire
 
+	// Keywords — provenance annotations on rules + detect blocks
+	// (introduced for issue #3 layer-3 auto-discovered rules).
+	TokenSource
+
 	// Keywords — test blocks
 	TokenTest
 	TokenGiven
@@ -288,6 +292,7 @@ var keywords = map[string]TokenType{
 	"overrides":         TokenOverrides,
 	"constraint":        TokenConstraint,
 	"require":           TokenRequire,
+	"source":            TokenSource,
 }
 
 type Token struct {

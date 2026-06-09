@@ -107,8 +107,19 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 		pr := p.parsePriority()
 		b.Priority = &pr
 	case lexer.TokenConfidence:
-		c := p.parseConfidenceClause()
-		b.Confidence = &c
+		// Disambiguate the ML filter (`confidence >= N`) from the
+		// provenance annotation (`confidence N`) by peeking at the
+		// token right after `confidence`.
+		if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenGte {
+			c := p.parseConfidenceClause()
+			b.Confidence = &c
+		} else {
+			s := p.parseScoreAnnotation()
+			b.Score = &s
+		}
+	case lexer.TokenSource:
+		s := p.parseSourceAnnotation()
+		b.Source = &s
 	case lexer.TokenCalculate:
 		b.Calculate = append(b.Calculate, p.parseCalculateClause())
 	case lexer.TokenIs:
@@ -235,6 +246,20 @@ func (p *parser) parseRuleClause(b *ast.RuleBlock) bool {
 			p.advance()
 			b.Overrides = append(b.Overrides, p.expectString())
 		}
+	case lexer.TokenConfidence:
+		// On a rule block, only the provenance annotation form (`confidence N`)
+		// is valid — the `>= N` filter form is meaningful only for ML
+		// primitives. Reject the filter form explicitly so users see a
+		// clear diagnostic rather than a silent parser quirk.
+		if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenGte {
+			p.errorf("`confidence >= N` is an ML filter, only allowed inside detect/predict/classify; on rule blocks use the bare `confidence N` provenance form")
+			return false
+		}
+		s := p.parseScoreAnnotation()
+		b.Score = &s
+	case lexer.TokenSource:
+		s := p.parseSourceAnnotation()
+		b.Source = &s
 	default:
 		p.errorf("unexpected token %q inside rule block", p.peek().Value)
 		return false
@@ -994,6 +1019,23 @@ func (p *parser) parseConfidenceClause() float64 {
 	p.expect(lexer.TokenGte)
 	n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
 	return n
+}
+
+// parseScoreAnnotation handles the `confidence NUMBER` provenance form
+// (no `>=`). The number is the rule's self-asserted confidence in [0, 1];
+// the validator range-checks it. See docs/spec/v0.2.md section 12.
+func (p *parser) parseScoreAnnotation() float64 {
+	p.advance() // confidence
+	n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+	return n
+}
+
+// parseSourceAnnotation handles `source "..."`. The string is opaque
+// provenance metadata, surfaced in the explain output but not
+// interpreted by the runtime.
+func (p *parser) parseSourceAnnotation() string {
+	p.advance() // source
+	return p.expectString()
 }
 
 func (p *parser) parseCalculateClause() ast.CalculateClause {

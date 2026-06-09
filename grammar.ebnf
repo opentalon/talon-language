@@ -32,6 +32,8 @@ DetectBody  = Selector
               [ PriorityClause ]
               [ "when" Condition ]
               [ ConfidenceClause ]
+              [ ScoreAnnotation ]
+              [ SourceAnnotation ]
               { CalculateClause }
               [ AnomalyClause ]
               [ PredictClause ]
@@ -40,6 +42,17 @@ DetectBody  = Selector
               [ SimilarClause ]
               [ RelatedClause ]
               [ RecommendBlock ]
+
+(* ScoreAnnotation declares the rule's self-asserted confidence, intended
+   for auto-discovered rules ("mined from data with score 0.82").
+   Distinct from the ConfidenceClause filter on ML primitives — the
+   filter form requires `>=`, the annotation form takes a bare NUMBER.
+   See docs/spec/v0.2.md section 12. *)
+ScoreAnnotation  = "confidence" NUMBER
+
+(* SourceAnnotation records the provenance of an auto-discovered rule —
+   typically the data set and time window it was mined from. *)
+SourceAnnotation = "source" STRING
 
 (* ─── rule ───────────────────────────────────────────────────────────────────── *)
 
@@ -54,6 +67,8 @@ RuleBody    = ( Selector | WhenClause )
               ( BlockClause | AllowClause | RequiresClause )
               [ ReasonClause ]
               [ PriorityClause ]
+              [ ScoreAnnotation ]
+              [ SourceAnnotation ]
 
 OverridesClause = "overrides" STRING { "," STRING }
 

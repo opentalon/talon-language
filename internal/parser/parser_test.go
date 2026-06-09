@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/opentalon/talon-language/internal/ast"
@@ -891,5 +892,92 @@ constraint "Suspicious dates" {
 	b := block[*ast.ConstraintBlock](t, prog, 0)
 	if b.OnViolation.Mode != "quarantine" {
 		t.Errorf("Mode: got %q", b.OnViolation.Mode)
+	}
+}
+
+// ─── Provenance annotations (#3) ──────────────────────────────────────────────
+
+func TestParseDetectScoreAndSource(t *testing.T) {
+	prog := mustParse(t, `
+detect "auto-discovered: External Workshop correlation" {
+  for records where category == "van"
+  flag matching items
+  confidence 0.82
+  source "mined from 14 months of data, 47 matching cases"
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if b.Score == nil || *b.Score != 0.82 {
+		t.Errorf("Score: got %v, want 0.82", b.Score)
+	}
+	if b.Source == nil || *b.Source != "mined from 14 months of data, 47 matching cases" {
+		t.Errorf("Source: got %v", b.Source)
+	}
+	// The ML filter form is a separate field and should remain nil.
+	if b.Confidence != nil {
+		t.Errorf("Confidence (ML filter): unexpectedly set to %v", *b.Confidence)
+	}
+}
+
+func TestParseDetectConfidenceFilterStillWorks(t *testing.T) {
+	// Regression: adding the bare-NUMBER annotation form must not break
+	// the existing `>=` filter form on ML-style detect blocks.
+	prog := mustParse(t, `
+detect "High confidence ML" {
+  for records where type == "item"
+  flag matching items
+  confidence >= 0.9
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if b.Confidence == nil || *b.Confidence != 0.9 {
+		t.Errorf("Confidence filter: got %v", b.Confidence)
+	}
+	if b.Score != nil {
+		t.Errorf("Score annotation: unexpectedly set to %v", *b.Score)
+	}
+}
+
+func TestParseRuleScoreAndSource(t *testing.T) {
+	prog := mustParse(t, `
+rule "Auto: block delete on stale records" {
+  when tool_action contains "delete"
+  block "delete"
+  confidence 0.65
+  source "discovered from 90 days of audit logs"
+}`)
+	b := block[*ast.RuleBlock](t, prog, 0)
+	if b.Score == nil || *b.Score != 0.65 {
+		t.Errorf("Score: got %v", b.Score)
+	}
+	if b.Source == nil || *b.Source != "discovered from 90 days of audit logs" {
+		t.Errorf("Source: got %v", b.Source)
+	}
+}
+
+func TestParseRuleRejectsConfidenceFilter(t *testing.T) {
+	// On a rule, only the bare `confidence N` provenance form is valid.
+	// `confidence >= N` is the ML filter and must be rejected with a
+	// clean diagnostic so users learn the correct shape.
+	tokens, ld := lexer.Lex("t.talon", `
+rule "Bad" {
+  when tool_action contains "x"
+  block "x"
+  confidence >= 0.9
+}`)
+	if ld.HasErrors() {
+		t.Fatalf("lex: %v", ld)
+	}
+	_, pd := Parse("t.talon", tokens)
+	if !pd.HasErrors() {
+		t.Fatal("expected a parse error for `confidence >= N` inside rule")
+	}
+	found := false
+	for _, d := range pd {
+		if strings.Contains(d.Message, "ML filter") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected ML-filter diagnostic, got:\n%v", pd)
 	}
 }
