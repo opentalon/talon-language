@@ -48,16 +48,24 @@
 ;;       {"query": "[:find ?e :in $ % :where (r ?e)]", "rules": "[[(r ?e) ...]]"}
 ;;         — recursive form: query declares `%` in :in, rules carry
 ;;           the rule definitions as a Datalog vector.
+;;       {"query": "[:find ?e :in $ ?fts-q-0 :where [(fulltext $ ?fts-q-0) ...]]",
+;;        "args": ["[:and {:phrase \"X\"} \"Y\"]"]}
+;;         — extra :in parameters: each entry is a Clojure-readable
+;;           string the server `read-string`s into a value. Used today
+;;           for full-text-search structured query expressions, which
+;;           Datalevin can't accept inside a :where clause.
 ;; Response: {"results": [[1, 45000], [2, 12000]]}
 (defn handle-query [tenant {:keys [body]}]
   (let [query-str (get body "query")
         rules-str (get body "rules")
+        args-vec  (get body "args")
         conn      (:conn (tenant-state tenant))
         db        (d/db conn)
         query     (read-string query-str)
-        results   (if (and rules-str (seq rules-str))
-                    (vec (map vec (d/q query db (read-string rules-str))))
-                    (vec (map vec (d/q query db))))]
+        extras    (cond-> []
+                    (and rules-str (seq rules-str)) (conj (read-string rules-str))
+                    (seq args-vec)                  (into (map read-string args-vec)))
+        results   (vec (map vec (apply d/q query db extras)))]
     (resp/response {"results" results})))
 
 ;; POST /transact — assert facts

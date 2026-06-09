@@ -71,7 +71,28 @@ func (c *Client) RawQuery(ctx context.Context, query string) ([][]any, error) {
 // factstore.Query.RulesString); the query must declare `% ` in its
 // :in clause so the server can pass them through to d/q.
 func (c *Client) RawQueryWithRules(ctx context.Context, query, rules string) ([][]any, error) {
-	body := map[string]any{"query": query, "rules": rules}
+	return c.RawQueryFull(ctx, query, rules, nil)
+}
+
+// RawQueryFull is the most general wire-format variant. `rules` is
+// Datalevin's rule-vector form (empty when none); `args` is the list
+// of extra positional `:in` parameters (each a Clojure-readable
+// string the server `read-string`s back into a value). Order:
+// the query declares `:in $ [%] [?fts-q-0 ...]` — `%` (if rules) is
+// passed first, then args in declaration order.
+//
+// Today only factstore.FullText.Expr injects args (Datalevin's
+// structured search expressions don't survive inside a :where
+// clause). The shape generalises so future clauses can ride the
+// same channel without growing the public surface.
+func (c *Client) RawQueryFull(ctx context.Context, query, rules string, args []string) ([][]any, error) {
+	body := map[string]any{"query": query}
+	if rules != "" {
+		body["rules"] = rules
+	}
+	if len(args) > 0 {
+		body["args"] = args
+	}
 	var result QueryResult
 	if err := c.post(ctx, "/q", body, &result); err != nil {
 		return nil, fmt.Errorf("datalevin query: %w", err)
