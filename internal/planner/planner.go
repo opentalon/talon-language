@@ -406,10 +406,23 @@ func (p *planner) planForecastBlock(b *ast.ForecastBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
+	forecastParams := map[string]any{
+		"series":     b.Series,
+		"series_var": attrVarName(b.Series.Attr),
+	}
+	// Translate the optional `predict days_until value <= 0` clause into
+	// primitive-friendly predicate + threshold params so the runtime
+	// doesn't have to walk the AST.
+	if b.Predict != nil {
+		if op, thr, ok := forecastPredicateOf(b.Predict.Condition); ok {
+			forecastParams["predicate"] = op
+			forecastParams["threshold"] = thr
+		}
+	}
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncForecastExpSmoothing,
 		Input:    "candidates",
-		Params:   map[string]any{"series": b.Series},
+		Params:   forecastParams,
 		Into:     "forecasts",
 	})
 	if b.Label != nil {
@@ -435,8 +448,11 @@ func (p *planner) planClusterBlock(b *ast.ClusterBlock) *QueryPlan {
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncClusterDBSCAN,
 		Input:    "candidates",
-		Params:   map[string]any{"by": b.ByAttrs},
-		Into:     "clusters",
+		Params: map[string]any{
+			"by":       b.ByAttrs,
+			"features": exprListToAttrNames(b.ByAttrs),
+		},
+		Into: "clusters",
 	})
 	return plan
 }
@@ -453,8 +469,11 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncClassifyKNN,
 		Input:    "candidates",
-		Params:   map[string]any{"features": b.Features},
-		Into:     "classifications",
+		Params: map[string]any{
+			"features":      b.Features,
+			"feature_names": exprListToAttrNames(b.Features),
+		},
+		Into: "classifications",
 	})
 	return plan
 }
@@ -471,8 +490,12 @@ func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncSimilarityCosine,
 		Input:    "candidates",
-		Params:   map[string]any{"to": b.To, "within": b.Within},
-		Into:     "similar_records",
+		Params: map[string]any{
+			"to":       b.To,
+			"within":   b.Within,
+			"features": []string{attrVarName(b.To)},
+		},
+		Into: "similar_records",
 	})
 	return plan
 }
@@ -1156,6 +1179,45 @@ func attrVarName(e ast.Expr) string {
 		return v.Name
 	}
 	return "val"
+}
+
+// exprListToAttrNames flattens a slice of AST expressions into the bare
+// attribute names they reference. Used to pre-resolve ML primitive
+// params at plan time so the runtime stays decoupled from the AST.
+// Expressions that aren't simple attr/ident references are dropped.
+func exprListToAttrNames(exprs []ast.Expr) []string {
+	out := make([]string, 0, len(exprs))
+	for _, e := range exprs {
+		name := attrVarName(e)
+		if name != "" && name != "val" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// forecastPredicateOf extracts the comparison operator + numeric
+// threshold from a `predict days_until value <op> <number>` clause. The
+// forecast primitive uses these to know when to stop projecting.
+// Returns (op, threshold, ok=true) on success.
+func forecastPredicateOf(cond ast.Condition) (string, float64, bool) {
+	cc, ok := cond.(*ast.CompareCondition)
+	if !ok {
+		return "", 0, false
+	}
+	lit, ok := cc.Right.(*ast.LiteralExpr)
+	if !ok {
+		return "", 0, false
+	}
+	switch v := lit.Value.(type) {
+	case float64:
+		return cc.Op, v, true
+	case int:
+		return cc.Op, float64(v), true
+	case int64:
+		return cc.Op, float64(v), true
+	}
+	return "", 0, false
 }
 
 func sanitizeIdent(s string) string {

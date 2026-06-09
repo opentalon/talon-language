@@ -40,10 +40,21 @@ type Primitive interface {
 // Input is the data and parameters handed to a Primitive.
 // Rows come from the upstream FactQuery; Schema maps column names to
 // row indices; Params carries the planner's MLComputation.Params verbatim.
+//
+// Entities is the optional full-attribute view of each candidate entity.
+// Single-attribute primitives (z-score anomaly, learned threshold) use
+// Rows + Schema. Multi-attribute primitives (cosine similarity, DBSCAN,
+// classify, predict) read attributes directly from Entities so they
+// don't have to pre-coordinate column ordering with the dispatcher.
+//
+// Keys in the inner map are bare attribute names — without the
+// `:record/` or `:attr/` namespace prefix the FactStore uses internally
+// — matching the form a Talon source file references via `attr "name"`.
 type Input struct {
-	Rows   [][]any
-	Schema map[string]int
-	Params map[string]any
+	Rows     [][]any
+	Schema   map[string]int
+	Params   map[string]any
+	Entities map[int]map[string]any
 }
 
 // Result is one entity's prediction + its explanation.
