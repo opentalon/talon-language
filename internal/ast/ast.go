@@ -27,7 +27,9 @@ type DetectBlock struct {
 	Flag       *FlagTarget
 	Label      *Template
 	Priority   *Priority
-	Confidence *float64
+	Confidence *float64 // ML filter — accept matches only above this score
+	Score      *float64 // provenance annotation — the rule's own confidence
+	Source     *string  // provenance annotation — where the rule came from
 	Calculate  []CalculateClause
 	Anomaly    *AnomalyClause
 	Predict    *PredictClause
@@ -62,6 +64,8 @@ type RuleBlock struct {
 	Priority  *Priority
 	Strict    bool     // strict rules cannot be overridden
 	Overrides []string // names of rules this rule defeats when both match
+	Score     *float64 // provenance annotation — the rule's own confidence
+	Source    *string  // provenance annotation — where the rule came from
 }
 
 type RecommendBlock struct {

@@ -31,10 +31,36 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkReferences()
 	v.checkOverrides()
 	v.checkTemplates()
+	v.checkScore()
 	v.checkTypes()
 	v.checkCycles()
 	v.checkWorkflows()
 	return v.diags
+}
+
+// checkScore range-checks `confidence N` provenance annotations to [0, 1].
+// The ML filter form (`confidence >= N`) is enforced separately by the
+// ConfidenceClause grammar and runtime; here we only see the bare-NUMBER
+// annotation form populated by parseScoreAnnotation.
+func (v *validator) checkScore() {
+	check := func(pos ast.Pos, name string, score *float64) {
+		if score == nil {
+			return
+		}
+		if *score < 0 || *score > 1 {
+			v.errAt(pos,
+				fmt.Sprintf("%s: confidence annotation %.3f is outside [0, 1]", name, *score),
+				"confidence annotations are probabilities — provenance generators emit values in that range")
+		}
+	}
+	for _, b := range v.prog.Blocks {
+		switch bb := b.(type) {
+		case *ast.DetectBlock:
+			check(bb.Pos, "detect "+bb.Name, bb.Score)
+		case *ast.RuleBlock:
+			check(bb.Pos, "rule "+bb.Name, bb.Score)
+		}
+	}
 }
 
 // checkTemplates flags unknown function names inside `{...}` template

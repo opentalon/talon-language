@@ -36,6 +36,14 @@ type Decision struct {
 	TriggeredBy []Decision `json:"triggered_by,omitempty"` // upstream decisions
 	Confidence  string     `json:"confidence,omitempty"`   // "High", "Medium", "Low", or ""
 	Priority    string     `json:"priority,omitempty"`     // CRITICAL/HIGH/MEDIUM/LOW
+
+	// Provenance — populated from the block's `confidence N` /
+	// `source "..."` annotations (issue #3 layer-3). Score is the
+	// rule's self-asserted confidence in [0, 1]; Source is opaque
+	// metadata, typically describing how the rule was discovered
+	// (e.g. "mined from 14 months of data, 47 matching cases").
+	Score  *float64 `json:"score,omitempty"`
+	Source string   `json:"source,omitempty"`
 }
 
 // Fact is one piece of evidence cited in a decision. ObservedAt is the
@@ -112,6 +120,12 @@ func Render(d Decision) string {
 
 	if d.Confidence != "" {
 		fmt.Fprintf(&b, "\nCONFIDENCE   %s\n", d.Confidence)
+	}
+	if d.Score != nil {
+		fmt.Fprintf(&b, "SCORE        %.2f\n", *d.Score)
+	}
+	if d.Source != "" {
+		fmt.Fprintf(&b, "SOURCE       %s\n", d.Source)
 	}
 	b.WriteString(rule)
 	return b.String()

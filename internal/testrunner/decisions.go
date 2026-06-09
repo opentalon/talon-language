@@ -137,6 +137,10 @@ func buildDecisionsForBlock(
 			Why:        why,
 			Evidence:   evidence,
 		}
+		if score, source := blockProvenance(b); score != nil || source != "" {
+			d.Score = score
+			d.Source = source
+		}
 		if tmpl := blockTemplate(b); tmpl != nil {
 			d.Action = template.Render(*tmpl, renderContextFor(ent, flagged, entities, now))
 		}
@@ -499,6 +503,27 @@ func blockKind(b ast.Block) string {
 		return "combine"
 	}
 	return "block"
+}
+
+// blockProvenance returns the (score, source) provenance annotations
+// for a block — currently supported on detect and rule blocks for
+// auto-discovered / layer-3 rules. Both halves are optional; a missing
+// annotation surfaces as the zero value.
+func blockProvenance(b ast.Block) (*float64, string) {
+	switch bb := b.(type) {
+	case *ast.DetectBlock:
+		return bb.Score, derefString(bb.Source)
+	case *ast.RuleBlock:
+		return bb.Score, derefString(bb.Source)
+	}
+	return nil, ""
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // blockTemplate returns the user-supplied template for a block —

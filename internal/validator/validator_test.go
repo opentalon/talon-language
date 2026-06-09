@@ -370,3 +370,23 @@ detect "Known fns" {
   label "{count} items, avg {avg(attr.km)} km, max {max(attr.km)}; expires in {days_until(attr.expires_at)} days"
 }`)
 }
+
+func TestValidateScoreOutOfRange(t *testing.T) {
+	mustError(t, `
+detect "Bad score" {
+  for records where type == "item"
+  flag matching items
+  confidence 1.5
+}`, "outside [0, 1]")
+}
+
+func TestValidateScoreInRangeClean(t *testing.T) {
+	mustClean(t, `
+detect "Good score" {
+  for records where type == "item"
+  flag matching items
+  confidence 0.82
+  source "auto-discovered"
+}`)
+}
+
