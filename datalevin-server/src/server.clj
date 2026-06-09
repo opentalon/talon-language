@@ -69,6 +69,16 @@
     "false" false
     (keyword sv)))
 
+(defn- has-fulltext?
+  "True when any attribute in the schema map has :db/fulltext set.
+   Datalevin's search engines are constructed at conn-open time from
+   the schema passed to get-conn; update-schema persists the FTS
+   flag but does not retroactively initialize the engine. So FTS
+   attrs require a close+reopen with the merged schema, while other
+   schema updates take the in-place fast path."
+  [schema]
+  (some (fn [[_ attr-spec]] (get attr-spec :db/fulltext)) schema))
+
 (defn handle-schema [{:keys [body]}]
   (let [attrs      (get body "attrs")
         new-schema (into {}
@@ -78,11 +88,15 @@
                                                  [(keyword sk) (coerce-schema-value sv)])
                                                v))])
                               attrs))
-        conn       (:conn @state)
         prior      (or (:schema @state) {})
-        merged     (merge prior new-schema)]
+        merged     (merge prior new-schema)
+        db-path    (or (System/getenv "DATALEVIN_PATH") "/tmp/talon-datalevin")]
     (when (seq new-schema)
-      (d/update-schema conn new-schema))
+      (if (has-fulltext? new-schema)
+        (do
+          (d/close (:conn @state))
+          (init-db! db-path merged))
+        (d/update-schema (:conn @state) new-schema)))
     (swap! state assoc :schema merged)
     (resp/response {"ok" true})))
 

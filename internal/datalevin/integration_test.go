@@ -158,7 +158,11 @@ func TestSmoke_FullText(t *testing.T) {
 	// subsequent run.
 	attr := fmt.Sprintf(":smoke/text-%s", uniqueID())
 	if err := c.Schema(ctx, map[string]map[string]string{
-		attr: {"db/valueType": "db.type/string", "db/fulltext": "true"},
+		attr: {
+			"db/valueType":            "db.type/string",
+			"db/fulltext":             "true",
+			"db.fulltext/autoDomain":  "true",
+		},
 	}); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
