@@ -2,6 +2,8 @@
 
 ## Language
 
+- **[Language Specification v0.2](./spec/v0.2.md)** — canonical syntax +
+  semantics reference. Start here.
 - **[REPL walkthrough](./repl.md)** — interactive exploration with `:eval`,
   `:trace`, and an end-to-end insurance-claims example.
 - **[FactStore](./factstore.md)** — the database abstraction, structured
