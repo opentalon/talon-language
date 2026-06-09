@@ -10,9 +10,15 @@ import (
 )
 
 // Client talks to the datalevin-server HTTP service.
+//
+// Tenant is the per-request URL prefix: when set, every request is
+// posted to `<BaseURL>/t/<Tenant>/...` so the server can route to a
+// separate Datalevin DB per tenant. Empty Tenant uses the
+// server's default DB (the original single-tenant layout).
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
+	Tenant     string
 }
 
 // NewClient creates a client pointing at the given base URL (e.g. "http://localhost:8898").
@@ -21,6 +27,25 @@ func NewClient(baseURL string) *Client {
 		BaseURL:    baseURL,
 		HTTPClient: http.DefaultClient,
 	}
+}
+
+// WithTenant returns a clone of c that targets the named tenant. The
+// underlying transport is shared so callers can hand the same Client
+// to one tenant and another concurrently.
+func (c *Client) WithTenant(name string) *Client {
+	cp := *c
+	cp.Tenant = name
+	return &cp
+}
+
+// tenantPath returns the URL path prefix for this client's tenant.
+// Empty for the default tenant; "/t/<name>" otherwise. Combined with
+// the request path (e.g. "/q") it produces the final URL.
+func (c *Client) tenantPath() string {
+	if c.Tenant == "" {
+		return ""
+	}
+	return "/t/" + c.Tenant
 }
 
 // QueryResult is the parsed response from POST /q.
@@ -41,12 +66,34 @@ func (c *Client) RawQuery(ctx context.Context, query string) ([][]any, error) {
 	return result.Results, nil
 }
 
+// RawQueryOpts is the wide-format variant of RawQuery that accepts
+// every optional field the server understands (rules, as_of). The
+// structured Query method funnels through this so future
+// capabilities don't keep growing the public surface.
+type RawQueryOpts struct {
+	Rules string // rule-vector form; query must declare `% ` in :in
+	AsOf  int64  // tx-id to time-travel to; 0 = current state
+}
+
 // RawQueryWithRules is the recursive-rules variant of RawQuery. The
 // `rules` string is Datalevin's rule-vector form (see
 // factstore.Query.RulesString); the query must declare `% ` in its
 // :in clause so the server can pass them through to d/q.
 func (c *Client) RawQueryWithRules(ctx context.Context, query, rules string) ([][]any, error) {
-	body := map[string]any{"query": query, "rules": rules}
+	return c.RawQueryOptions(ctx, query, RawQueryOpts{Rules: rules})
+}
+
+// RawQueryOptions is the catch-all wire-format wrapper. Empty fields
+// in opts are omitted from the body so the server's default
+// (current-state, no rules) behaviour applies.
+func (c *Client) RawQueryOptions(ctx context.Context, query string, opts RawQueryOpts) ([][]any, error) {
+	body := map[string]any{"query": query}
+	if opts.Rules != "" {
+		body["rules"] = opts.Rules
+	}
+	if opts.AsOf != 0 {
+		body["as_of"] = opts.AsOf
+	}
 	var result QueryResult
 	if err := c.post(ctx, "/q", body, &result); err != nil {
 		return nil, fmt.Errorf("datalevin query: %w", err)
@@ -54,20 +101,43 @@ func (c *Client) RawQueryWithRules(ctx context.Context, query, rules string) ([]
 	return result.Results, nil
 }
 
+// TxResult is the parsed response from POST /transact. TxID is the
+// Datalevin basis-t the transaction landed at — callers stash it and
+// pass it back via Query.AsOf for time-travel reads.
+type TxResult struct {
+	OK   bool  `json:"ok"`
+	TxID int64 `json:"tx_id"`
+}
+
 // RawTransact submits raw Datalevin transaction maps. Use Assert (which
 // satisfies the factstore.FactStore interface) for the normal path.
-func (c *Client) RawTransact(ctx context.Context, txData []map[string]any) error {
+// Returns the basis-t of the committed transaction so callers can
+// address that state in subsequent reads.
+func (c *Client) RawTransact(ctx context.Context, txData []map[string]any) (int64, error) {
 	body := map[string]any{"tx-data": txData}
-	var result map[string]any
+	var result TxResult
 	if err := c.post(ctx, "/transact", body, &result); err != nil {
-		return fmt.Errorf("datalevin transact: %w", err)
+		return 0, fmt.Errorf("datalevin transact: %w", err)
 	}
-	return nil
+	return result.TxID, nil
 }
 
 // Schema registers database schema attributes.
 // attrs maps attribute name → property map (e.g. {":attr/km": {"db/valueType": "db.type/long"}}).
 func (c *Client) Schema(ctx context.Context, attrs map[string]map[string]string) error {
+	body := map[string]any{"attrs": attrs}
+	var result map[string]any
+	if err := c.post(ctx, "/schema", body, &result); err != nil {
+		return fmt.Errorf("datalevin schema: %w", err)
+	}
+	return nil
+}
+
+// SchemaRich is Schema for attribute specs where some values are
+// lists (e.g. :db.fulltext/domains taking ["docs" "items"]). The
+// server's coerce-schema-value recursively maps vector entries to
+// keywords, so callers can mix string and list values per attr.
+func (c *Client) SchemaRich(ctx context.Context, attrs map[string]map[string]any) error {
 	body := map[string]any{"attrs": attrs}
 	var result map[string]any
 	if err := c.post(ctx, "/schema", body, &result); err != nil {
@@ -98,7 +168,7 @@ func (c *Client) post(ctx context.Context, path string, body any, result any) er
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+path, bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+c.tenantPath()+path, bytes.NewReader(jsonBody))
 	if err != nil {
 		return err
 	}

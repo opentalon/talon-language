@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -278,6 +280,283 @@ func TestSmoke_RecursiveRules(t *testing.T) {
 	}
 	if len(rows) == 0 {
 		t.Fatalf("recursive rule returned no matches for leaf category %q under root %q", leafName, rootName)
+	}
+}
+
+// TestSmoke_AsOf — time-travel reads. Assert a fact, capture the
+// resulting tx-id, retract the entity, then query the same entity
+// twice: once at the current state (should miss) and once via
+// Query.AsOf set to the pre-retraction tx (should hit).
+func TestSmoke_AsOf(t *testing.T) {
+	c := smokeClient(t)
+	ctx := context.Background()
+
+	if err := c.Schema(ctx, map[string]map[string]string{
+		":smoke/asof": {"db/valueType": "db.type/string"},
+	}); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+
+	id := uniqueID()
+	idInt, _ := strconv.ParseInt(id, 10, 64)
+	txID, err := c.AssertWithTxID(ctx, []factstore.Fact{
+		{RecordID: id, Attribute: ":smoke/asof", Value: "before"},
+	})
+	if err != nil {
+		t.Fatalf("assert: %v", err)
+	}
+	if txID == 0 {
+		t.Fatalf("AssertWithTxID returned 0; expected basis-t")
+	}
+
+	if err := c.Retract(ctx, factstore.RetractPattern{RecordID: id}); err != nil {
+		t.Fatalf("retract: %v", err)
+	}
+
+	q := factstore.Query{
+		Find: []string{"?v"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Lit(idInt), Attribute: ":smoke/asof", Value: factstore.Var("v")},
+		},
+	}
+
+	// Current state: the value must be gone.
+	rowsNow, err := c.Query(ctx, q)
+	if err != nil {
+		t.Fatalf("query current: %v", err)
+	}
+	for _, r := range rowsNow {
+		if s, _ := r[0].(string); s == "before" {
+			t.Fatalf("value not retracted in current state: %v", rowsNow)
+		}
+	}
+
+	// As-of just after the assert: the value must reappear.
+	q.AsOf = txID
+	rowsBefore, err := c.Query(ctx, q)
+	if err != nil {
+		t.Fatalf("query as-of: %v", err)
+	}
+	found := false
+	for _, r := range rowsBefore {
+		if s, _ := r[0].(string); s == "before" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("as-of read missed pre-retraction value: %v", rowsBefore)
+	}
+}
+
+// TestSmoke_MultiTenant — facts asserted in tenant A must not appear
+// from tenant B, and vice versa. Different DBs under DATALEVIN_PATH/t/.
+func TestSmoke_MultiTenant(t *testing.T) {
+	base := smokeClient(t)
+	ctx := context.Background()
+
+	tA := "smoke-a-" + uniqueID()[:6]
+	tB := "smoke-b-" + uniqueID()[:6]
+	cA := base.WithTenant(tA)
+	cB := base.WithTenant(tB)
+
+	if err := cA.Schema(ctx, map[string]map[string]string{
+		":smoke/owner": {"db/valueType": "db.type/string"},
+	}); err != nil {
+		t.Fatalf("schema A: %v", err)
+	}
+	if err := cB.Schema(ctx, map[string]map[string]string{
+		":smoke/owner": {"db/valueType": "db.type/string"},
+	}); err != nil {
+		t.Fatalf("schema B: %v", err)
+	}
+
+	idA := uniqueID()
+	if err := cA.Assert(ctx, []factstore.Fact{
+		{RecordID: idA, Attribute: ":smoke/owner", Value: "tenant-A-only"},
+	}); err != nil {
+		t.Fatalf("assert A: %v", err)
+	}
+
+	q := factstore.Query{
+		Find: []string{"?v"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: ":smoke/owner", Value: factstore.Var("v")},
+		},
+	}
+	rowsA, err := cA.Query(ctx, q)
+	if err != nil {
+		t.Fatalf("query A: %v", err)
+	}
+	rowsB, err := cB.Query(ctx, q)
+	if err != nil {
+		t.Fatalf("query B: %v", err)
+	}
+
+	seenInA := false
+	for _, r := range rowsA {
+		if s, _ := r[0].(string); s == "tenant-A-only" {
+			seenInA = true
+		}
+	}
+	if !seenInA {
+		t.Fatalf("tenant A didn't see its own fact: %v", rowsA)
+	}
+	for _, r := range rowsB {
+		if s, _ := r[0].(string); s == "tenant-A-only" {
+			t.Fatalf("tenant B saw tenant A's fact — isolation breach: %v", rowsB)
+		}
+	}
+}
+
+// TestSmoke_FullTextPhrase — Datalevin's search syntax accepts
+// structured expressions; FullText.Expr drops the raw expression in
+// verbatim. We seed three sentences and use [:and {:phrase "..."}]
+// to require a multi-word match.
+func TestSmoke_FullTextPhrase(t *testing.T) {
+	c := smokeClient(t)
+	ctx := context.Background()
+
+	attr := fmt.Sprintf(":smoke/phrase-%s", uniqueID())
+	if err := c.Schema(ctx, map[string]map[string]string{
+		attr: {
+			"db/valueType":           "db.type/string",
+			"db/fulltext":            "true",
+			"db.fulltext/autoDomain": "true",
+		},
+	}); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+
+	id1, id2 := uniqueID(), uniqueID()
+	if err := c.Assert(ctx, []factstore.Fact{
+		{RecordID: id1, Attribute: attr, Value: "Mary had a little lamb whose fleece was red as fire"},
+		{RecordID: id2, Attribute: attr, Value: "little white lamb is unrelated to the phrase"},
+	}); err != nil {
+		t.Fatalf("assert: %v", err)
+	}
+
+	q := factstore.Query{
+		Find: []string{"?e"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: attr, Value: factstore.Var("v")},
+			&factstore.FullText{Entity: factstore.Var("e"), Expr: `[:and {:phrase "little lamb"} "red"]`},
+		},
+	}
+	rows, err := c.Query(ctx, q)
+	if err != nil {
+		t.Fatalf("phrase query: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatalf("phrase search returned no rows; expected the Mary sentence")
+	}
+}
+
+// TestSmoke_PullSyntax — verify Query.Pull surfaces. Seed an entity
+// with two attributes and ask Datalevin to pull both via
+// `[:smoke/pull-name :smoke/pull-tag]`. The result row carries the
+// nested entity map as Datalevin's response shape.
+func TestSmoke_PullSyntax(t *testing.T) {
+	c := smokeClient(t)
+	ctx := context.Background()
+
+	if err := c.Schema(ctx, map[string]map[string]string{
+		":smoke/pull-name": {"db/valueType": "db.type/string"},
+		":smoke/pull-tag":  {"db/valueType": "db.type/string"},
+	}); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+
+	id := uniqueID()
+	if err := c.Assert(ctx, []factstore.Fact{
+		{RecordID: id, Attribute: ":smoke/pull-name", Value: "Pull subject"},
+		{RecordID: id, Attribute: ":smoke/pull-tag", Value: "alpha"},
+	}); err != nil {
+		t.Fatalf("assert: %v", err)
+	}
+
+	q := factstore.Query{
+		Where: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: ":smoke/pull-name", Value: factstore.Var("n")},
+		},
+		Pull: []factstore.PullSpec{
+			{EntityVar: "?e", Pattern: `[:smoke/pull-name :smoke/pull-tag]`},
+		},
+	}
+	rows, err := c.Query(ctx, q)
+	if err != nil {
+		t.Fatalf("pull query: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatalf("pull returned no rows")
+	}
+	// The pull result is a Datalevin map serialized into JSON as an
+	// object. We just spot-check that the pulled attribute values
+	// appear somewhere in the row.
+	serialized := fmt.Sprintf("%v", rows[0])
+	if !strings.Contains(serialized, "Pull subject") || !strings.Contains(serialized, "alpha") {
+		t.Fatalf("pull row missing expected fields: %v", rows[0])
+	}
+}
+
+// TestSmoke_SearchDomains — attribute-scoped FTS via
+// FullText.Attribute. Two FTS attrs participate in the same domain;
+// querying with an attribute scope filters to that one. We register
+// both with :db.fulltext/autoDomain so each attribute is its own
+// domain, then query with `:attr` scoping on the one we want.
+func TestSmoke_SearchDomains(t *testing.T) {
+	c := smokeClient(t)
+	ctx := context.Background()
+
+	titleAttr := fmt.Sprintf(":smoke/title-%s", uniqueID())
+	bodyAttr := fmt.Sprintf(":smoke/body-%s", uniqueID())
+	if err := c.Schema(ctx, map[string]map[string]string{
+		titleAttr: {
+			"db/valueType":           "db.type/string",
+			"db/fulltext":            "true",
+			"db.fulltext/autoDomain": "true",
+		},
+		bodyAttr: {
+			"db/valueType":           "db.type/string",
+			"db/fulltext":            "true",
+			"db.fulltext/autoDomain": "true",
+		},
+	}); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+
+	id1, id2 := uniqueID(), uniqueID()
+	if err := c.Assert(ctx, []factstore.Fact{
+		// id1: needle in body only
+		{RecordID: id1, Attribute: titleAttr, Value: "Annual report"},
+		{RecordID: id1, Attribute: bodyAttr, Value: "Talon language overview, performance gains"},
+		// id2: needle in title only
+		{RecordID: id2, Attribute: titleAttr, Value: "Talon language deep dive"},
+		{RecordID: id2, Attribute: bodyAttr, Value: "Unrelated content here"},
+	}); err != nil {
+		t.Fatalf("assert: %v", err)
+	}
+
+	// Scope FTS to the title attribute: only id2 should match.
+	q := factstore.Query{
+		Find: []string{"?e"},
+		Where: []factstore.Clause{
+			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: titleAttr, Value: factstore.Var("t")},
+			&factstore.FullText{Entity: factstore.Var("e"), Attribute: titleAttr, Query: "Talon"},
+		},
+	}
+	rows, err := c.Query(ctx, q)
+	if err != nil {
+		t.Fatalf("scoped fulltext: %v", err)
+	}
+	id2Int, _ := strconv.ParseInt(id2, 10, 64)
+	hit := false
+	for _, r := range rows {
+		if f, ok := r[0].(float64); ok && int64(f) == id2Int {
+			hit = true
+		}
+	}
+	if !hit {
+		t.Fatalf("title-scoped fulltext didn't return id2 (%d): %v", id2Int, rows)
 	}
 }
 

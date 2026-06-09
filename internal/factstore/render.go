@@ -18,7 +18,18 @@ import (
 func (q Query) String() string {
 	var b strings.Builder
 	b.WriteString("[:find ")
-	if len(q.Aggregates) > 0 {
+	switch {
+	case len(q.Pull) > 0:
+		// Pull replaces the :find columns: one (pull ?e <pattern>)
+		// per spec. Callers' pull pattern is dropped in verbatim;
+		// they own the Datalog pull-syntax surface.
+		for i, p := range q.Pull {
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			b.WriteString(fmt.Sprintf("(pull %s %s)", p.EntityVar, p.Pattern))
+		}
+	case len(q.Aggregates) > 0:
 		// Group-by columns first, then aggregate expressions.
 		first := true
 		for _, v := range q.GroupBy {
@@ -35,7 +46,7 @@ func (q Query) String() string {
 			b.WriteString(renderAggregate(a))
 			first = false
 		}
-	} else {
+	default:
 		b.WriteString(strings.Join(q.Find, " "))
 	}
 	if len(q.Rules) > 0 {
@@ -127,29 +138,38 @@ func renderClause(c Clause) string {
 	return ""
 }
 
-// renderFullText emits Datalevin's full-text predicate:
+// renderFullText emits Datalevin's full-text predicate. Three shapes:
 //
-//	[(fulltext $ "query") [[?e ?a ?v]]]
+//	[(fulltext $ "query")        [[?e ?a ?v]]]   ; whole-db search
+//	[(fulltext $ :attr "query")  [[?e ?a ?v]]]   ; single-attribute scope
+//	[(fulltext $ [:and {:phrase "lamb"} "red"]) [[?e ?a ?v]]]
+//	                                             ; raw expr form (Expr)
 //
 // The destructured binding pulls the matched entity into ?e (or the
-// caller-supplied entity var) and ignores ?a/?v — we only care that
-// the entity is anchored so sibling Pattern clauses join correctly.
-//
-// Per Datalevin's default `:display :refs` mode, fulltext returns
-// `[e a v]` tuples — three positions. Asking for four (with a score)
-// requires `:display :texts+offsets` in the options map; we stick
-// with the default shape so attributes don't need extra config.
+// caller-supplied entity var) and ignores ?a/?v. Per Datalevin's
+// default `:display :refs` mode fulltext returns `[e a v]` tuples;
+// asking for four (with a score) requires `:display :texts+offsets`
+// in the options map, which we don't surface here.
 //
 // Datalevin requires attributes to be configured with `:db/fulltext
-// true` for this to use the FTS index; otherwise the server returns
-// no matches. MemoryStore's matchFullText fallback handles the same
-// clause shape via a substring scan for in-process tests.
+// true` for this to use the FTS index. MemoryStore's matchFullText
+// fallback handles the simple Query field via substring scan.
 func renderFullText(f *FullText) string {
 	eVar := f.Entity.Var
 	if eVar == "" {
 		eVar = "?e"
 	}
-	return fmt.Sprintf("[(fulltext $ %q) [[%s ?ft-a ?ft-v]]]", f.Query, eVar)
+	var qArg string
+	switch {
+	case f.Expr != "":
+		qArg = f.Expr
+	default:
+		qArg = fmt.Sprintf("%q", f.Query)
+	}
+	if f.Attribute != "" {
+		return fmt.Sprintf("[(fulltext $ %s %s) [[%s ?ft-a ?ft-v]]]", f.Attribute, qArg, eVar)
+	}
+	return fmt.Sprintf("[(fulltext $ %s) [[%s ?ft-a ?ft-v]]]", qArg, eVar)
 }
 
 func renderRuleCall(r *RuleCall) string {
