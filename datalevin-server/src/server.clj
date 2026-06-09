@@ -39,19 +39,29 @@
 ;; POST /schema — register schema attributes
 ;; Body: {"attrs": {":attr/km": {"db/valueType": "db.type/long"}}}
 ;; Response: {"ok": true}
+;;
+;; The incoming attrs are MERGED into the existing schema map and
+;; applied via datalevin.core/update-schema. The previous implementation
+;; closed and reopened the DB with only the new attrs, which silently
+;; dropped previously-registered attrs from the active schema (#78).
+;; Facts in LMDB survive that pattern, but the runtime forgets the
+;; attribute types — any further query against a "lost" attr falls
+;; back to coarse coercion. The merge form is the correct shape.
 (defn handle-schema [{:keys [body]}]
-  (let [attrs    (get body "attrs")
-        db-path  (or (System/getenv "DATALEVIN_PATH") "/tmp/talon-datalevin")
-        schema   (into {}
-                       (map (fn [[k v]]
-                              [(keyword (subs k 1))
-                               (into {} (map (fn [[sk sv]]
-                                               [(keyword sk) (keyword sv)])
-                                             v))])
-                            attrs))]
-    (when-let [old (:conn @state)]
-      (d/close old))
-    (init-db! db-path schema)
+  (let [attrs      (get body "attrs")
+        new-schema (into {}
+                         (map (fn [[k v]]
+                                [(keyword (subs k 1))
+                                 (into {} (map (fn [[sk sv]]
+                                                 [(keyword sk) (keyword sv)])
+                                               v))])
+                              attrs))
+        conn       (:conn @state)
+        prior      (or (:schema @state) {})
+        merged     (merge prior new-schema)]
+    (when (seq new-schema)
+      (d/update-schema conn new-schema))
+    (swap! state assoc :schema merged)
     (resp/response {"ok" true})))
 
 ;; GET /health
