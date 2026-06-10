@@ -250,6 +250,56 @@ type ConstraintBlock struct {
 	OnViolation ViolationClause
 }
 
+// StateMachineBlock declares a finite-state machine over a class of
+// entities. Each matched entity carries a current state in StateAttr
+// (default ":record/state"); transitions move the entity from one
+// declared state to another when their guard condition holds.
+// Substates (parent state qualified with "/") form a two-level
+// hierarchy: in_flight/boarding, in_flight/cruising. A parent-state
+// transition that targets the parent moves the entity into the
+// parent's Initial substate; a transition from a parent matches any
+// of its substates (Harel-style "outermost matches first").
+type StateMachineBlock struct {
+	Pos         Pos
+	Name        string
+	Selector    Selector
+	States      []StateDecl
+	Initial     string
+	StateAttr   string         // attribute holding current state; "" defaults to ":record/state"
+	Transitions []Transition
+	Invariants  []StateInvariant
+}
+
+// StateDecl is one state declaration. Substates name their parent via
+// Parent ("" for top-level). Initial is the substate to enter when a
+// transition targets the parent.
+type StateDecl struct {
+	Name    string
+	Parent  string   // "" for top-level
+	Initial string   // substate to enter when transitioning into a composite parent
+}
+
+// Transition is one labelled arrow in the state machine. When the
+// entity is currently in From and When holds, write To into
+// StateAttr. From may be a parent state — matches any of its
+// substates.
+type Transition struct {
+	Pos  Pos
+	From string
+	To   string
+	When Condition
+}
+
+// StateInvariant is an integrity check active only while the entity
+// is in State. The semantics mirror ConstraintBlock.Require:
+// Required must hold; on violation the runtime warns (we don't
+// reject mutations from a state_machine block — that's what
+// ConstraintBlock is for).
+type StateInvariant struct {
+	State    string
+	Required Condition
+}
+
 type ViolationClause struct {
 	Mode    string // "reject" | "warn" | "quarantine"
 	Message string // optional; empty if not provided
@@ -268,7 +318,8 @@ func (*ClassifyBlock) blockNode()   {}
 func (*SimilarBlock) blockNode()    {}
 func (*RelatedBlock) blockNode()    {}
 func (*OnBlock) blockNode()         {}
-func (*ConstraintBlock) blockNode() {}
+func (*ConstraintBlock) blockNode()    {}
+func (*StateMachineBlock) blockNode() {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -283,7 +334,8 @@ func (b *ClassifyBlock) BlockName() string   { return b.Name }
 func (b *SimilarBlock) BlockName() string    { return b.Name }
 func (b *RelatedBlock) BlockName() string    { return b.Name }
 func (b *OnBlock) BlockName() string         { return b.Name }
-func (b *ConstraintBlock) BlockName() string { return b.Name }
+func (b *ConstraintBlock) BlockName() string    { return b.Name }
+func (b *StateMachineBlock) BlockName() string { return b.Name }
 
 // ─── Expressions ──────────────────────────────────────────────────────────────
 

@@ -194,6 +194,8 @@ func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map
 		return e.execFilter(s, vars)
 	case *planner.GraphSnapshot:
 		return e.execGraphSnapshot(ctx, s, vars)
+	case *planner.StateMachineStep:
+		return e.execStateMachine(ctx, s, vars)
 	default:
 		return StepResult{}, fmt.Errorf("unknown step type: %T", step)
 	}

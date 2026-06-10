@@ -99,6 +99,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseOnBlock()
 	case lexer.TokenConstraint:
 		return p.parseConstraintBlock()
+	case lexer.TokenStateMachine:
+		return p.parseStateMachineBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
 	default:
@@ -716,6 +718,114 @@ func (p *parser) parseConstraintBlock() *ast.ConstraintBlock {
 	} else {
 		p.errorf("constraint %q: expected 'on_violation' clause", name)
 		b.OnViolation.Mode = "reject"
+	}
+
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// ─── state_machine ────────────────────────────────────────────────────────────
+
+// parseStateMachineBlock reads a finite-state machine declaration:
+//
+//	state_machine "Order lifecycle" {
+//	  for records where type == "order"
+//	  states pending, approved, shipped, delivered, cancelled
+//	  initial pending
+//	  state_attr "lifecycle_state"   ; optional, default ":record/state"
+//	  transition pending -> approved when attr "amount" > 1000
+//	  transition pending -> cancelled when older_than 7 days
+//	  invariant in shipped require has "tracking_number"
+//	}
+//
+// State names are bare identifiers; transitions name them on both
+// sides of `->`. Guards reuse the same condition grammar `rule` /
+// `detect` use, so any `when` expression that fits elsewhere fits
+// here. Invariants attach to a state name and run while an entity
+// is in that state — warning-level enforcement, not reject.
+func (p *parser) parseStateMachineBlock() *ast.StateMachineBlock {
+	tok := p.advance() // state_machine
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.StateMachineBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+
+	if p.at(lexer.TokenFor) {
+		b.Selector = p.parseSelector()
+	} else {
+		p.errorf("state_machine %q: expected 'for records where ...' selector", name)
+	}
+
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch p.peek().Type {
+		case lexer.TokenStates:
+			p.advance()
+			for {
+				if !p.at(lexer.TokenIdent) {
+					p.errorf("state_machine %q: expected state name, got %q", name, p.peek().Value)
+					break
+				}
+				b.States = append(b.States, ast.StateDecl{Name: p.advance().Value})
+				if !p.at(lexer.TokenComma) {
+					break
+				}
+				p.advance() // ,
+			}
+		case lexer.TokenInitial:
+			p.advance()
+			if p.at(lexer.TokenIdent) {
+				b.Initial = p.advance().Value
+			} else {
+				p.errorf("state_machine %q: expected initial state name", name)
+			}
+		case lexer.TokenStateAttr:
+			p.advance()
+			b.StateAttr = p.expectString()
+		case lexer.TokenTransition:
+			tp := p.advance()
+			t := ast.Transition{Pos: ast.Pos{Line: tp.Line, Col: tp.Col}}
+			if p.at(lexer.TokenIdent) {
+				t.From = p.advance().Value
+			} else {
+				p.errorf("transition: expected source state, got %q", p.peek().Value)
+			}
+			if !p.expect(lexer.TokenArrow) {
+				p.synchronize()
+				continue
+			}
+			if p.at(lexer.TokenIdent) {
+				t.To = p.advance().Value
+			} else {
+				p.errorf("transition: expected target state, got %q", p.peek().Value)
+			}
+			if p.at(lexer.TokenWhen) {
+				p.advance()
+				t.When = p.parseOrCondition()
+			}
+			b.Transitions = append(b.Transitions, t)
+		case lexer.TokenInvariant:
+			p.advance()
+			if !p.expect(lexer.TokenIn) {
+				p.synchronize()
+				continue
+			}
+			if !p.at(lexer.TokenIdent) {
+				p.errorf("invariant: expected state name, got %q", p.peek().Value)
+				continue
+			}
+			state := p.advance().Value
+			if !p.expect(lexer.TokenRequire) {
+				p.synchronize()
+				continue
+			}
+			cond := p.parseOrCondition()
+			b.Invariants = append(b.Invariants, ast.StateInvariant{State: state, Required: cond})
+		default:
+			p.errorf("state_machine %q: unexpected token %q (expected states/initial/state_attr/transition/invariant)", name, p.peek().Value)
+			p.advance()
+		}
 	}
 
 	p.expect(lexer.TokenRBrace)

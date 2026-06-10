@@ -165,6 +165,18 @@ const (
 	TokenConstraint
 	TokenRequire
 
+	// Keywords — state machines + Markov primitives (this PR)
+	TokenStateMachine
+	TokenStates
+	TokenInitial
+	TokenTransition
+	TokenInvariant
+	TokenArrow      // "->" in transition declarations
+	TokenStateAttr  // "state_attr <name>"
+	TokenEvent      // event_sequence keyword head
+	TokenHmm        // anomaly method
+	TokenProb       // "with probability N"
+
 	// Keywords — local imports (#19 follow-up)
 	TokenImport
 
@@ -299,6 +311,16 @@ var keywords = map[string]TokenType{
 	"require":           TokenRequire,
 	"source":            TokenSource,
 	"import":            TokenImport,
+
+	"state_machine":     TokenStateMachine,
+	"states":            TokenStates,
+	"initial":           TokenInitial,
+	"transition":        TokenTransition,
+	"invariant":         TokenInvariant,
+	"state_attr":        TokenStateAttr,
+	"event_sequence":    TokenEvent,
+	"hmm":               TokenHmm,
+	"probability":       TokenProb,
 }
 
 type Token struct {
@@ -447,7 +469,16 @@ func (s *scanner) scanSymbol(line, col int) {
 	case '+':
 		s.emit(TokenPlus, "+", line, col)
 	case '-':
-		s.emit(TokenMinus, "-", line, col)
+		// `->` is the state-machine transition arrow; everything else
+		// stays minus (arithmetic). The lookahead is tiny so this is
+		// cheap; without it `pending -> approved` would lex as MINUS
+		// MINUS GT which the parser can't disambiguate.
+		if !s.atEnd() && s.peek() == '>' {
+			s.advance()
+			s.emit(TokenArrow, "->", line, col)
+		} else {
+			s.emit(TokenMinus, "-", line, col)
+		}
 	case '*':
 		s.emit(TokenStar, "*", line, col)
 	case '/':
