@@ -173,6 +173,44 @@ state_machine "Priority order" {
 	}
 }
 
+func TestStateMachine_SubstatesParentTransitionMatchesAnyChild(t *testing.T) {
+	// in_flight/boarding and in_flight/cruising both inherit the
+	// in_flight -> failed transition: any entity in a substate of
+	// in_flight should fail when emergency flag is set.
+	src := `
+state_machine "Flight" {
+  for records where type == "flight"
+  states grounded, in_flight/boarding, in_flight/cruising, failed
+  initial grounded
+  transition grounded -> in_flight/boarding when attr "ready" == true
+  transition in_flight -> failed when attr "emergency" == true
+}
+`
+	plans := compileSrc(t, src)
+	store := factstore.NewMemoryStore()
+	ctx := context.Background()
+
+	// Entity in "in_flight/cruising" with emergency=true should
+	// hit the parent-state in_flight → failed transition.
+	seedEntity(t, store, 1, map[string]any{
+		"__type":    "flight",
+		"emergency": true,
+		"ready":     true,
+	})
+	_ = store.Assert(ctx, []factstore.Fact{
+		{RecordID: "1", Attribute: ":record/state", Value: "in_flight/cruising"},
+	})
+
+	ex := NewExecutor(store)
+	_, err := ex.RunAll(ctx, plans)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if s := currentState(t, store, 1); s != "failed" {
+		t.Errorf("substate of in_flight didn't pick up parent transition: state = %q, want failed", s)
+	}
+}
+
 func TestStateMachine_InvariantRecordsViolation(t *testing.T) {
 	src := `
 state_machine "Shipping" {

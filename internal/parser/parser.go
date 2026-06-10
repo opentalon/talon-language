@@ -788,7 +788,21 @@ func (p *parser) parseStateMachineBlock() *ast.StateMachineBlock {
 					p.errorf("state_machine %q: expected state name, got %q", name, p.peek().Value)
 					break
 				}
-				b.States = append(b.States, ast.StateDecl{Name: p.advance().Value})
+				decl := ast.StateDecl{Name: p.advance().Value}
+				// Optional substate suffix: `parent / child`. The
+				// lexer emits IDENT SLASH IDENT for `parent/child`
+				// since `/` isn't allowed in identifiers.
+				if p.at(lexer.TokenSlash) {
+					p.advance() // /
+					if !p.at(lexer.TokenIdent) {
+						p.errorf("state_machine %q: expected child name after %q/", name, decl.Name)
+					} else {
+						child := p.advance().Value
+						decl.Parent = decl.Name
+						decl.Name = decl.Parent + "/" + child
+					}
+				}
+				b.States = append(b.States, decl)
 				if !p.at(lexer.TokenComma) {
 					break
 				}
@@ -807,18 +821,16 @@ func (p *parser) parseStateMachineBlock() *ast.StateMachineBlock {
 		case lexer.TokenTransition:
 			tp := p.advance()
 			t := ast.Transition{Pos: ast.Pos{Line: tp.Line, Col: tp.Col}}
-			if p.at(lexer.TokenIdent) {
-				t.From = p.advance().Value
-			} else {
+			t.From = parseStateRef(p)
+			if t.From == "" {
 				p.errorf("transition: expected source state, got %q", p.peek().Value)
 			}
 			if !p.expect(lexer.TokenArrow) {
 				p.synchronize()
 				continue
 			}
-			if p.at(lexer.TokenIdent) {
-				t.To = p.advance().Value
-			} else {
+			t.To = parseStateRef(p)
+			if t.To == "" {
 				p.errorf("transition: expected target state, got %q", p.peek().Value)
 			}
 			if p.at(lexer.TokenWhen) {
@@ -1547,6 +1559,29 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	default:
 		return p.parseExprCondition()
 	}
+}
+
+// parseStateRef reads a state name with optional substate suffix:
+//
+//	pending          → "pending"
+//	in_flight        → "in_flight"
+//	in_flight / boarding → "in_flight/boarding"
+//
+// Returns "" if no ident is at the current position. Used by
+// transitions where the parser doesn't have access to the closing
+// brace token sets parseStateMachineBlock relies on.
+func parseStateRef(p *parser) string {
+	if !p.at(lexer.TokenIdent) {
+		return ""
+	}
+	name := p.advance().Value
+	if p.at(lexer.TokenSlash) {
+		p.advance()
+		if p.at(lexer.TokenIdent) {
+			name = name + "/" + p.advance().Value
+		}
+	}
+	return name
 }
 
 // parseEventSequenceCondition reads:

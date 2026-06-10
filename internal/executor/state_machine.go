@@ -84,7 +84,11 @@ func (e *Executor) execStateMachine(ctx context.Context, s *planner.StateMachine
 		out := StateMachineOutcome{EntityID: eid, FromState: curState, ToState: curState}
 
 		for _, t := range s.Transitions {
-			if t.From != curState {
+			// Substate semantics: a transition from a parent ("a")
+			// matches when the entity is in any child of that
+			// parent ("a/sub1", "a/sub2"). Direct match still
+			// wins when both transitions are declared.
+			if !stateMatches(curState, t.From) {
 				continue
 			}
 			if t.When != nil {
@@ -134,6 +138,23 @@ func (e *Executor) execStateMachine(ctx context.Context, s *planner.StateMachine
 		Name:   s.BlockName,
 		Output: outcomes,
 	}, nil
+}
+
+// stateMatches reports whether an entity in `cur` is governed by a
+// transition declared `from`. Direct equality always matches; a
+// parent-state transition (e.g. "in_flight" with no substate
+// suffix) matches any child state ("in_flight/boarding"). Used by
+// the executor to implement Harel-style outermost-matches-first
+// semantics in a flat declaration syntax.
+func stateMatches(cur, from string) bool {
+	if cur == from {
+		return true
+	}
+	// Parent prefix match: cur = "in_flight/boarding", from = "in_flight"
+	if len(cur) > len(from) && cur[:len(from)] == from && cur[len(from)] == '/' {
+		return true
+	}
+	return false
 }
 
 // stripNamespace removes a ":attr/" or ":record/" prefix from an

@@ -161,6 +161,14 @@ type ForecastBlock struct {
 	When     Condition
 	Label    *Template
 	Priority *Priority
+
+	// MarkovTarget switches the forecast to a Markov-chain mode that
+	// reads the entity's state-change history (events with
+	// :event/state) and predicts the probability of reaching this
+	// state from the current one within Predict.HorizonSteps state
+	// transitions. Empty MarkovTarget = numeric/exp-smoothing mode
+	// (the original ForecastBlock semantics).
+	MarkovTarget string
 }
 
 type ClusterBlock struct {
