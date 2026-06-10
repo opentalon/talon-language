@@ -45,7 +45,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: talon [--log-format=text|json] [--log-level=debug|info|warn|error] <command> [args]")
-		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, explain, mod, version")
+		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, explain, why, mod, version")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -65,6 +65,8 @@ func main() {
 		runTrace()
 	case "explain":
 		runExplain()
+	case "why":
+		runWhy()
 	case "mod":
 		fmt.Fprintln(os.Stderr, "talon mod: not yet implemented")
 		os.Exit(diagnostic.ExitError)
@@ -787,6 +789,156 @@ func runExplain() {
 		}
 		fmt.Printf("== %s ==\n", n)
 		fmt.Println(explain.RenderAll(ds))
+	}
+}
+
+// runWhy answers "why did <block> flag <entity>?" by walking the same
+// Decision chain that `talon explain` materialises, then filtering it to
+// the single (block, entity) pair the user asked about. Backward-chained
+// debugging: instead of dumping every decision a rule file produces, the
+// caller anchors on one observable outcome and gets just the evidence
+// and upstream triggers that led to it.
+//
+// Reuses talon explain's compile+seed flow verbatim — see runExplain.
+// The only divergence is the post-filter that keeps decisions where
+// (BlockName matches if --block given) AND (EntityID matches if
+// --entity given).
+//
+// Usage:
+//
+//	talon why <rules.talon> <tests.talon.test> [--block NAME] [--entity ID] [--test NAME] [--json]
+func runWhy() {
+	if len(os.Args) < 4 {
+		fmt.Fprintln(os.Stderr, "usage: talon why <rules.talon> <tests.talon.test> [--block NAME] [--entity ID] [--test NAME] [--json]")
+		os.Exit(diagnostic.ExitUsage)
+	}
+
+	rulesPath := os.Args[2]
+	testPath := os.Args[3]
+	wantTest := ""
+	wantBlock := ""
+	wantEntity := -1
+	asJSON := false
+	for i := 4; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--test":
+			if i+1 < len(os.Args) {
+				wantTest = os.Args[i+1]
+				i++
+			}
+		case "--block":
+			if i+1 < len(os.Args) {
+				wantBlock = os.Args[i+1]
+				i++
+			}
+		case "--entity":
+			if i+1 < len(os.Args) {
+				n, err := strconv.Atoi(os.Args[i+1])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "talon why: --entity must be an integer, got %q\n", os.Args[i+1])
+					os.Exit(diagnostic.ExitUsage)
+				}
+				wantEntity = n
+				i++
+			}
+		case "--json":
+			asJSON = true
+		}
+	}
+	if wantBlock == "" && wantEntity < 0 {
+		fmt.Fprintln(os.Stderr, "talon why: provide at least one of --block or --entity (a goal to chain backwards from)")
+		os.Exit(diagnostic.ExitUsage)
+	}
+
+	rulesSrc, err := os.ReadFile(rulesPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon why: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+	rulesFile := filepath.Base(rulesPath)
+	plans, ok := compile(rulesFile, rulesPath, string(rulesSrc))
+	if !ok {
+		os.Exit(diagnostic.ExitError)
+	}
+	rulesTokens, _ := lexer.Lex(rulesFile, string(rulesSrc))
+	rulesProg, _ := parser.Parse(rulesFile, rulesTokens)
+
+	testSrc, err := os.ReadFile(testPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "talon why: %v\n", err)
+		os.Exit(diagnostic.ExitError)
+	}
+	testFile := filepath.Base(testPath)
+	testTokens, tld := lexer.Lex(testFile, string(testSrc))
+	if tld.HasErrors() {
+		for _, d := range tld {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+	testProg, tpd := parser.Parse(testFile, testTokens)
+	if tpd.HasErrors() {
+		for _, d := range tpd {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+
+	merged := *rulesProg
+	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
+	decisions := testrunner.Decisions(&merged, plans)
+
+	// Filter by --test name first (the testrunner keys decisions by test
+	// block name), then by --block / --entity within each test's chain.
+	filtered := map[string][]explain.Decision{}
+	for testName, ds := range decisions {
+		if wantTest != "" && testName != wantTest {
+			continue
+		}
+		var matched []explain.Decision
+		for _, d := range ds {
+			if wantBlock != "" && d.BlockName != wantBlock {
+				continue
+			}
+			if wantEntity >= 0 && d.EntityID != wantEntity {
+				continue
+			}
+			matched = append(matched, d)
+		}
+		if len(matched) > 0 {
+			filtered[testName] = matched
+		}
+	}
+
+	if len(filtered) == 0 {
+		// No match isn't an error — it's the answer ("nothing fired this
+		// way"). Exit 1 so scripts can branch on it, but say so clearly.
+		switch {
+		case wantBlock != "" && wantEntity >= 0:
+			fmt.Fprintf(os.Stderr, "talon why: no decision matched block %q on entity %d\n", wantBlock, wantEntity)
+		case wantBlock != "":
+			fmt.Fprintf(os.Stderr, "talon why: no decision matched block %q\n", wantBlock)
+		default:
+			fmt.Fprintf(os.Stderr, "talon why: no decision matched entity %d\n", wantEntity)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
+
+	if asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(filtered)
+		return
+	}
+
+	names := make([]string, 0, len(filtered))
+	for n := range filtered {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		fmt.Printf("== %s ==\n", n)
+		fmt.Println(explain.RenderAll(filtered[n]))
 	}
 }
 
