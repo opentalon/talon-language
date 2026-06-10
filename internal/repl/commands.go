@@ -5,9 +5,12 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/explain"
+	"github.com/opentalon/talon-language/internal/testrunner"
 )
 
 // runCommand executes a slash command and writes output to w. It returns
@@ -42,6 +45,8 @@ func runCommand(s *Session, line string, w io.Writer) (done bool) {
 		runFind(s, tail, w, false)
 	case "count":
 		runFind(s, tail, w, true)
+	case "why":
+		runWhy(s, tail, w)
 	default:
 		fmt.Fprintf(w, "  unknown command :%s — try :help\n", head)
 	}
@@ -65,6 +70,9 @@ func printHelp(w io.Writer) {
     :eval "name"            evaluate one block
     :eval all               evaluate every detect/rule block
     :trace "name"           evaluate with step-by-step trace
+    :why "block" [id]       show the decision chain backing a flag
+                            e.g. :why "Service overdue" 501
+                            id-only form lists every block that flagged it
     :find <selector>        return matching record IDs
                             e.g. :find for records where type == "item"
     :count <selector>       like :find but just the count
@@ -355,4 +363,181 @@ func runFind(s *Session, tail string, w io.Writer, countOnly bool) {
 	for _, id := range ids {
 		fmt.Fprintf(w, "  %d\n", id)
 	}
+}
+
+// runWhy answers "why did this block flag this entity?" interactively.
+// Shapes:
+//
+//	:why "Block Name"             — every flag this block produced, with chain
+//	:why "Block Name" 501         — only the flag on entity 501
+//	:why 501                      — every block that flagged 501
+//
+// Internally synthesises a TestBlock (same pattern as :eval) so the
+// testrunner's Decision-chain pipeline runs unchanged, then filters
+// the resulting Decisions by block name and/or entity ID. Reuses
+// the CLI's `talon why` plumbing semantically — same Decision +
+// explain.RenderAll output format — so users learning one surface
+// know the other.
+func runWhy(s *Session, tail string, w io.Writer) {
+	if tail == "" {
+		fmt.Fprintln(w, `  usage: :why "block name" [entity-id]   |   :why <entity-id>`)
+		return
+	}
+
+	blockName, entityID, err := parseWhyArgs(tail)
+	if err != nil {
+		fmt.Fprintf(w, "  :why: %v\n", err)
+		return
+	}
+	// Need at least one anchor — a block to chain back from, or an
+	// entity to look up. Matches the CLI's same-named guard.
+	if blockName == "" && entityID < 0 {
+		fmt.Fprintln(w, "  :why: provide a block name (quoted) or an entity ID")
+		return
+	}
+
+	// Determine which session blocks to evaluate. If the user gave a
+	// block name, just that one; if they gave only an entity ID, walk
+	// every eval-able block (detect/rule/etc.) so we find every
+	// flagger of that entity.
+	var targets []ast.Block
+	if blockName != "" {
+		b := s.BlockByName(blockName)
+		if b == nil {
+			fmt.Fprintf(w, "  :why: no block named %q in session — use :rules to list\n", blockName)
+			return
+		}
+		targets = []ast.Block{b}
+	} else {
+		for _, b := range s.Blocks {
+			if isEvalKind(b) {
+				targets = append(targets, b)
+			}
+		}
+		if len(targets) == 0 {
+			fmt.Fprintln(w, "  :why: no evaluable blocks in session")
+			return
+		}
+	}
+
+	// One synthetic TestBlock per target so the testrunner's Decisions
+	// pipeline produces a chain anchored on a known test name. We
+	// merge the results below and filter by block/entity.
+	prog := s.Program()
+	testNames := make([]string, 0, len(targets))
+	for _, b := range targets {
+		synthName := "__repl_why__" + b.BlockName()
+		prog.Blocks = append(prog.Blocks, &ast.TestBlock{
+			Name:      synthName,
+			Given:     append([]ast.TestDatum(nil), s.Facts...),
+			WhenKind:  "detect",
+			WhenBlock: b.BlockName(),
+		})
+		testNames = append(testNames, synthName)
+	}
+
+	plans, diags, err := compileProgram(prog)
+	printDiagnostics(diags, w)
+	if err != nil {
+		fmt.Fprintf(w, "  :why: %v\n", err)
+		return
+	}
+	decisions := testrunner.Decisions(prog, plans)
+
+	// Filter: keep only decisions for the synthesised tests we just
+	// added, and within those, only ones matching the user's anchors.
+	wantTest := map[string]bool{}
+	for _, n := range testNames {
+		wantTest[n] = true
+	}
+	var filtered []explain.Decision
+	for name, ds := range decisions {
+		if !wantTest[name] {
+			continue
+		}
+		for _, d := range ds {
+			if !decisionMatches(d, blockName, entityID) {
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+	}
+
+	if len(filtered) == 0 {
+		switch {
+		case blockName != "" && entityID >= 0:
+			fmt.Fprintf(w, "  :why: %q didn't flag entity %d\n", blockName, entityID)
+		case blockName != "":
+			fmt.Fprintf(w, "  :why: %q flagged nothing\n", blockName)
+		default:
+			fmt.Fprintf(w, "  :why: nothing flagged entity %d\n", entityID)
+		}
+		return
+	}
+
+	fmt.Fprintln(w, explain.RenderAll(filtered))
+}
+
+// decisionMatches reports whether a decision satisfies the user's
+// (blockName, entityID) anchors. A chain is a match if any node in
+// it (the leaf Decision OR anything in TriggeredBy, recursively)
+// satisfies all of the supplied filters. Walking the chain matters
+// because the testrunner anchors output at the most-downstream block
+// (the `recommend` after a `detect`, for example) — a user asking
+// "why did Service overdue flag 501" expects a hit even when
+// Service overdue is the *upstream* trigger of a recommend chain.
+func decisionMatches(d explain.Decision, blockName string, entityID int) bool {
+	if (blockName == "" || d.BlockName == blockName) &&
+		(entityID < 0 || d.EntityID == entityID) {
+		return true
+	}
+	for _, up := range d.TriggeredBy {
+		if decisionMatches(up, blockName, entityID) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseWhyArgs splits a `:why` tail into a (blockName, entityID) pair.
+// Accepts three shapes:
+//
+//	"Block name"          → ("Block name", -1)
+//	"Block name" 501      → ("Block name", 501)
+//	501                   → ("", 501)
+//
+// Returns entityID = -1 when not supplied (the caller treats that as
+// "no entity filter"). An unparseable tail returns an error with a
+// hint at the right shape.
+func parseWhyArgs(tail string) (block string, entityID int, err error) {
+	tail = strings.TrimSpace(tail)
+	entityID = -1
+	if tail == "" {
+		return "", -1, fmt.Errorf("empty arguments")
+	}
+
+	// Quoted block name comes first when present.
+	if strings.HasPrefix(tail, `"`) {
+		end := strings.Index(tail[1:], `"`)
+		if end < 0 {
+			return "", -1, fmt.Errorf("unterminated block name (missing closing quote)")
+		}
+		block = tail[1 : end+1]
+		rest := strings.TrimSpace(tail[end+2:])
+		if rest != "" {
+			n, perr := strconv.Atoi(rest)
+			if perr != nil {
+				return "", -1, fmt.Errorf("expected integer entity ID after block name, got %q", rest)
+			}
+			entityID = n
+		}
+		return block, entityID, nil
+	}
+
+	// No quote — must be a bare entity ID.
+	n, perr := strconv.Atoi(tail)
+	if perr != nil {
+		return "", -1, fmt.Errorf(`expected "block name" [entity-id] or <entity-id>, got %q`, tail)
+	}
+	return "", n, nil
 }
