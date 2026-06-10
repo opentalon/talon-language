@@ -451,13 +451,18 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 
 	if b.Suggest != nil {
 		params := map[string]any{"template": b.Suggest.Raw}
-		// SuggestProbability gates per-row firing. Executor reads
-		// `probability` from params and uses a seeded RNG so a
-		// single Run is deterministic; the block name + a process
-		// nonce form the seed.
 		if b.SuggestProbability > 0 && b.SuggestProbability < 1 {
 			params["probability"] = b.SuggestProbability
 			params["block_name"] = b.Name
+		}
+		// Feedback window turns the prior probability into a
+		// Beta-posterior: executor queries the FactStore for
+		// recent accept/reject facts and adjusts the sample
+		// rate at fire time. Trace IDs are minted per fired
+		// suggestion so the host can correlate user actions back
+		// to the suggestion that prompted them.
+		if b.FeedbackWindowDays > 0 {
+			params["feedback_window_days"] = b.FeedbackWindowDays
 		}
 		plan.Steps = append(plan.Steps, &GoComputation{
 			Function: FuncRenderTemplate,

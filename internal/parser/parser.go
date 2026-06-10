@@ -362,10 +362,13 @@ func (p *parser) parseRecommend() *ast.RecommendBlock {
 		case lexer.TokenCalculate:
 			b.Calculate = append(b.Calculate, p.parseCalculateClause())
 		case lexer.TokenSuggest:
-			// `suggest "<template>" [ with probability N ]` — when the
-			// optional probability modifier is present, the executor
-			// gates the suggestion via a seeded RNG so the language
-			// can express ε-greedy / canary rollouts directly.
+			// `suggest "<template>" [ with probability N
+			//   [ learn from feedback within M days ] ]` —
+			// the probability modifier gates firing via a seeded
+			// RNG; the learn modifier turns the constant
+			// probability into a Bayesian prior that observed
+			// accept/reject feedback updates per-Run. See
+			// docs/design/0005-mdp-feedback.md.
 			p.advance() // suggest
 			raw := p.expectString()
 			tpl := ast.ParseTemplate(raw)
@@ -382,6 +385,28 @@ func (p *parser) parseRecommend() *ast.RecommendBlock {
 					prob = 1
 				}
 				b.SuggestProbability = prob
+				// Optional learn-from-feedback modifier.
+				if p.at(lexer.TokenIdent) && p.peek().Value == "learn" {
+					p.advance() // learn
+					if p.at(lexer.TokenFrom) {
+						p.advance() // from
+					}
+					if !p.at(lexer.TokenIdent) || p.peek().Value != "feedback" {
+						p.errorf("recommend %q: expected 'feedback' after 'learn from'", b.Name)
+					} else {
+						p.advance() // feedback
+					}
+					if !p.expect(lexer.TokenWithin) {
+						p.synchronize()
+						continue
+					}
+					n, _ := strconv.Atoi(p.expectNumberStr())
+					unit := p.expectDurationUnit()
+					if unit != "days" {
+						p.errorf("recommend %q: feedback window unit must be days, got %q", b.Name, unit)
+					}
+					b.FeedbackWindowDays = n
+				}
 			}
 			continue
 		case lexer.TokenPriority:

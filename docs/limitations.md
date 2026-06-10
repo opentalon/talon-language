@@ -78,11 +78,20 @@ needs. We call those out explicitly so:
 | History pseudo-states (Harel-style "return to last substate") | ❌ Not implemented. Needs a separate `:record/last-substate` attribute per parent. |
 | Parallel regions | ❌ Not in scope — current AST is single-state-per-entity. Parallel regions need a fundamentally different model. |
 
-## MDP feedback
+## MDP feedback (bandit-style adaptive ε-greedy)
 
 | Concern | Status against Datalevin |
 |---|---|
-| Everything | ❌ Not implemented; see ADR-0005. Datalevin's lack of `:as-of` is the primary blocker for off-policy evaluation. |
+| Beta-posterior update from accept/reject feedback | ✅ Works — executor queries `:feedback/block`/`outcome`/`at` facts and computes posterior live |
+| Trace ID per fired suggestion | ✅ Works — `:suggest/trace`/`block`/`entity`/`at` facts written on fire |
+| Compile-time prior probability | ✅ Works — `suggest "X" with probability 0.5 learn from feedback within 30 days` |
+| Posterior clamping (avoid ε=0 / ε=1 lock-in) | ✅ Works — clamps to [0.01, 0.99] |
+| Multi-arm bandits (multiple `suggest` per block) | ❌ Single-suggest only — grammar doesn't yet support multiple competing arms per recommend |
+| UCB1 / Thompson sampling | ❌ Beta-mean only. Algorithm choice deferred until multi-arm grammar exists |
+| Off-policy correction | ❌ Posterior assumes feedback was drawn under the current policy; if probability changes during the window, the estimate is biased. Importance-sampling correction is research-grade |
+| Cross-tenant policy isolation | ⚠️ Feedback facts inherit tenant scope (per PR #87 routing) — works, but the host must wire each tenant's feedback ingest separately |
+| Window-based feedback ordering | ⚠️ Same `:event/at` in-memory sort applies — fine at scale of thousands of feedback events per block, falls over at millions |
+| Live policy updates between Runs | ✅ Recompute on every recommend evaluation; no caching today (acceptable cost for low-frequency recommend blocks) |
 
 ## What lands cleanly in MemoryStore but not Datalevin (yet)
 

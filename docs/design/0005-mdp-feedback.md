@@ -2,11 +2,24 @@
 
 ## Status
 
-Proposed. Companion to PR landing state_machine + event_sequence +
-probabilistic suggest + Markov forecast + HMM anomaly + substates
-(this PR). MDP feedback is the one of the seven that doesn't ship
-with executable code — telemetry infrastructure prerequisites + a
-calibration story warrant a separate effort.
+**Phase 1 shipped** (this PR) — single-arm Beta-posterior adaptive
+ε-greedy with trace ID minting and feedback-fact ingestion. The
+grammar is:
+
+```talon
+suggest "X" with probability 0.5 learn from feedback within 30 days
+```
+
+The executor queries `:feedback/block`/`outcome`/`at` facts within
+the window, computes a Beta posterior with the declared
+probability as prior, clamps to [0.01, 0.99], and gates suggestion
+firing at the posterior rate. Each fired suggestion writes a
+`:suggest/trace` fact so the host can correlate user actions back.
+
+**Phase 2 deferred** — multi-arm bandits, contextual selection
+(LinUCB / Thompson sampling), full MDP / Q-learning, off-policy
+correction. Each needs more grammar surface (multiple `suggest`
+per block, feature vectors, etc.).
 
 ## Context
 

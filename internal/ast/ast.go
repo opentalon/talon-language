@@ -98,6 +98,13 @@ type RecommendBlock struct {
 	// different Runs explore. Useful for ε-greedy rollouts of new
 	// recommendation logic.
 	SuggestProbability float64
+	// FeedbackWindowDays, when > 0, switches the block to
+	// adaptive ε-greedy: before sampling, the executor queries
+	// recent accept/reject feedback facts and computes a Beta-
+	// distributed posterior probability. Compile-time
+	// SuggestProbability becomes the prior; observed feedback
+	// shifts it. See docs/design/0005-mdp-feedback.md.
+	FeedbackWindowDays int
 	Priority           *Priority
 	Loggers            []*LoggerAction // logger statements fired per matched row
 }

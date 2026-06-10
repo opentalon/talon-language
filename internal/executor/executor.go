@@ -318,17 +318,38 @@ func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputatio
 			"input":    input,
 			"template": gc.Params["template"],
 		}
-		// Probabilistic gating: when `probability` is set on a
-		// recommend's suggest, the executor samples per-row from a
-		// seeded RNG. Block name + an executor nonce form the seed
-		// so the same Run is deterministic but different Runs
-		// explore. Rows that lose the coin flip are dropped from
-		// the input passed to the template stage; downstream
-		// consumers see only the kept rows.
+		// Probabilistic gating + optional Bayesian update from
+		// feedback. When `feedback_window_days` is set, we treat
+		// the declared `probability` as a Beta prior and shift
+		// it toward observed accept rate within the window. Then
+		// sample at the posterior rate. Fired suggestions are
+		// stamped with a trace ID so the host can later attribute
+		// user actions back to which suggestion prompted them.
 		if prob, ok := gc.Params["probability"].(float64); ok && prob > 0 && prob < 1 {
 			blockName, _ := gc.Params["block_name"].(string)
-			out["probability"] = prob
-			out["input"] = e.probabilisticGate(input, prob, blockName)
+			window, _ := gc.Params["feedback_window_days"].(int)
+			effective := prob
+			if window > 0 {
+				if updated, err := e.adjustWithFeedback(ctx, blockName, prob, window); err == nil {
+					effective = updated
+				}
+				// On error we silently fall back to the prior —
+				// missing feedback infra shouldn't break the
+				// recommend path; it just means no learning yet.
+			}
+			out["probability"] = effective
+			out["prior_probability"] = prob
+			gated := e.probabilisticGate(input, effective, blockName)
+			out["input"] = gated
+			if window > 0 {
+				// Mint trace IDs for kept rows so the host can
+				// attribute feedback later. Best-effort: errors
+				// don't fail the recommend.
+				if rows, ok := gated.([][]any); ok && len(rows) > 0 {
+					ids, _ := e.mintTraces(ctx, blockName, rows)
+					out["trace_ids"] = ids
+				}
+			}
 		}
 		vars[gc.Into] = out
 	case "resolve_block_matches":
