@@ -99,6 +99,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseOnBlock()
 	case lexer.TokenConstraint:
 		return p.parseConstraintBlock()
+	case lexer.TokenStateMachine:
+		return p.parseStateMachineBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
 	default:
@@ -360,7 +362,53 @@ func (p *parser) parseRecommend() *ast.RecommendBlock {
 		case lexer.TokenCalculate:
 			b.Calculate = append(b.Calculate, p.parseCalculateClause())
 		case lexer.TokenSuggest:
-			b.Suggest = p.parseLabelClause()
+			// `suggest "<template>" [ with probability N
+			//   [ learn from feedback within M days ] ]` —
+			// the probability modifier gates firing via a seeded
+			// RNG; the learn modifier turns the constant
+			// probability into a Bayesian prior that observed
+			// accept/reject feedback updates per-Run. See
+			// docs/design/0005-mdp-feedback.md.
+			p.advance() // suggest
+			raw := p.expectString()
+			tpl := ast.ParseTemplate(raw)
+			b.Suggest = &tpl
+			if p.at(lexer.TokenIdent) && p.peek().Value == "with" {
+				p.advance() // with
+				if !p.expect(lexer.TokenProb) {
+					p.synchronize()
+					continue
+				}
+				prob, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+				if prob < 0 || prob > 1 {
+					p.errorf("recommend %q: probability must be in [0, 1], got %v", b.Name, prob)
+					prob = 1
+				}
+				b.SuggestProbability = prob
+				// Optional learn-from-feedback modifier.
+				if p.at(lexer.TokenIdent) && p.peek().Value == "learn" {
+					p.advance() // learn
+					if p.at(lexer.TokenFrom) {
+						p.advance() // from
+					}
+					if !p.at(lexer.TokenIdent) || p.peek().Value != "feedback" {
+						p.errorf("recommend %q: expected 'feedback' after 'learn from'", b.Name)
+					} else {
+						p.advance() // feedback
+					}
+					if !p.expect(lexer.TokenWithin) {
+						p.synchronize()
+						continue
+					}
+					n, _ := strconv.Atoi(p.expectNumberStr())
+					unit := p.expectDurationUnit()
+					if unit != "days" {
+						p.errorf("recommend %q: feedback window unit must be days, got %q", b.Name, unit)
+					}
+					b.FeedbackWindowDays = n
+				}
+			}
+			continue
 		case lexer.TokenPriority:
 			pr := p.parsePriority()
 			b.Priority = &pr
@@ -716,6 +764,126 @@ func (p *parser) parseConstraintBlock() *ast.ConstraintBlock {
 	} else {
 		p.errorf("constraint %q: expected 'on_violation' clause", name)
 		b.OnViolation.Mode = "reject"
+	}
+
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// ─── state_machine ────────────────────────────────────────────────────────────
+
+// parseStateMachineBlock reads a finite-state machine declaration:
+//
+//	state_machine "Order lifecycle" {
+//	  for records where type == "order"
+//	  states pending, approved, shipped, delivered, cancelled
+//	  initial pending
+//	  state_attr "lifecycle_state"   ; optional, default ":record/state"
+//	  transition pending -> approved when attr "amount" > 1000
+//	  transition pending -> cancelled when older_than 7 days
+//	  invariant in shipped require has "tracking_number"
+//	}
+//
+// State names are bare identifiers; transitions name them on both
+// sides of `->`. Guards reuse the same condition grammar `rule` /
+// `detect` use, so any `when` expression that fits elsewhere fits
+// here. Invariants attach to a state name and run while an entity
+// is in that state — warning-level enforcement, not reject.
+func (p *parser) parseStateMachineBlock() *ast.StateMachineBlock {
+	tok := p.advance() // state_machine
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.StateMachineBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+
+	if p.at(lexer.TokenFor) {
+		b.Selector = p.parseSelector()
+	} else {
+		p.errorf("state_machine %q: expected 'for records where ...' selector", name)
+	}
+
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch p.peek().Type {
+		case lexer.TokenStates:
+			p.advance()
+			for {
+				if !p.at(lexer.TokenIdent) {
+					p.errorf("state_machine %q: expected state name, got %q", name, p.peek().Value)
+					break
+				}
+				decl := ast.StateDecl{Name: p.advance().Value}
+				// Optional substate suffix: `parent / child`. The
+				// lexer emits IDENT SLASH IDENT for `parent/child`
+				// since `/` isn't allowed in identifiers.
+				if p.at(lexer.TokenSlash) {
+					p.advance() // /
+					if !p.at(lexer.TokenIdent) {
+						p.errorf("state_machine %q: expected child name after %q/", name, decl.Name)
+					} else {
+						child := p.advance().Value
+						decl.Parent = decl.Name
+						decl.Name = decl.Parent + "/" + child
+					}
+				}
+				b.States = append(b.States, decl)
+				if !p.at(lexer.TokenComma) {
+					break
+				}
+				p.advance() // ,
+			}
+		case lexer.TokenInitial:
+			p.advance()
+			if p.at(lexer.TokenIdent) {
+				b.Initial = p.advance().Value
+			} else {
+				p.errorf("state_machine %q: expected initial state name", name)
+			}
+		case lexer.TokenStateAttr:
+			p.advance()
+			b.StateAttr = p.expectString()
+		case lexer.TokenTransition:
+			tp := p.advance()
+			t := ast.Transition{Pos: ast.Pos{Line: tp.Line, Col: tp.Col}}
+			t.From = parseStateRef(p)
+			if t.From == "" {
+				p.errorf("transition: expected source state, got %q", p.peek().Value)
+			}
+			if !p.expect(lexer.TokenArrow) {
+				p.synchronize()
+				continue
+			}
+			t.To = parseStateRef(p)
+			if t.To == "" {
+				p.errorf("transition: expected target state, got %q", p.peek().Value)
+			}
+			if p.at(lexer.TokenWhen) {
+				p.advance()
+				t.When = p.parseOrCondition()
+			}
+			b.Transitions = append(b.Transitions, t)
+		case lexer.TokenInvariant:
+			p.advance()
+			if !p.expect(lexer.TokenIn) {
+				p.synchronize()
+				continue
+			}
+			if !p.at(lexer.TokenIdent) {
+				p.errorf("invariant: expected state name, got %q", p.peek().Value)
+				continue
+			}
+			state := p.advance().Value
+			if !p.expect(lexer.TokenRequire) {
+				p.synchronize()
+				continue
+			}
+			cond := p.parseOrCondition()
+			b.Invariants = append(b.Invariants, ast.StateInvariant{State: state, Required: cond})
+		default:
+			p.errorf("state_machine %q: unexpected token %q (expected states/initial/state_attr/transition/invariant)", name, p.peek().Value)
+			p.advance()
+		}
 	}
 
 	p.expect(lexer.TokenRBrace)
@@ -1396,6 +1564,8 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	switch p.peek().Type {
 	case lexer.TokenHas:
 		return p.parseHasCondition()
+	case lexer.TokenEvent:
+		return p.parseEventSequenceCondition()
 	case lexer.TokenIs:
 		// standalone "is STRING" — no subject
 		p.advance()
@@ -1414,6 +1584,54 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	default:
 		return p.parseExprCondition()
 	}
+}
+
+// parseStateRef reads a state name with optional substate suffix:
+//
+//	pending          → "pending"
+//	in_flight        → "in_flight"
+//	in_flight / boarding → "in_flight/boarding"
+//
+// Returns "" if no ident is at the current position. Used by
+// transitions where the parser doesn't have access to the closing
+// brace token sets parseStateMachineBlock relies on.
+func parseStateRef(p *parser) string {
+	if !p.at(lexer.TokenIdent) {
+		return ""
+	}
+	name := p.advance().Value
+	if p.at(lexer.TokenSlash) {
+		p.advance()
+		if p.at(lexer.TokenIdent) {
+			name = name + "/" + p.advance().Value
+		}
+	}
+	return name
+}
+
+// parseEventSequenceCondition reads:
+//
+//	event_sequence "A" -> "B" [ -> "C" ... ] within N <unit>
+//
+// Steps are ordered strings; `within` is the upper bound on the
+// elapsed time between the first and last step. Used by the executor
+// as a small regex over an entity's event history.
+func (p *parser) parseEventSequenceCondition() ast.Condition {
+	p.advance() // event_sequence
+	first := p.expectString()
+	steps := []string{first}
+	for p.at(lexer.TokenArrow) {
+		p.advance()
+		steps = append(steps, p.expectString())
+	}
+	cond := &ast.EventSequenceCondition{Steps: steps}
+	if p.at(lexer.TokenWithin) {
+		p.advance()
+		n, _ := strconv.Atoi(p.expectNumberStr())
+		unit := p.expectDurationUnit()
+		cond.Window = ast.Duration{Value: n, Unit: unit}
+	}
+	return cond
 }
 
 func (p *parser) parseHasCondition() ast.Condition {

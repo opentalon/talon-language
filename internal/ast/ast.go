@@ -91,8 +91,22 @@ type RecommendBlock struct {
 	When      Condition
 	Calculate []CalculateClause
 	Suggest   *Template
-	Priority  *Priority
-	Loggers   []*LoggerAction // logger statements fired per matched row
+	// SuggestProbability gates whether Suggest fires on a given
+	// matched row. 0 (zero value) means "always fire" — preserves
+	// the historical behaviour. Values in (0, 1) gate via a
+	// per-Run seeded RNG so the same Run is deterministic but
+	// different Runs explore. Useful for ε-greedy rollouts of new
+	// recommendation logic.
+	SuggestProbability float64
+	// FeedbackWindowDays, when > 0, switches the block to
+	// adaptive ε-greedy: before sampling, the executor queries
+	// recent accept/reject feedback facts and computes a Beta-
+	// distributed posterior probability. Compile-time
+	// SuggestProbability becomes the prior; observed feedback
+	// shifts it. See docs/design/0005-mdp-feedback.md.
+	FeedbackWindowDays int
+	Priority           *Priority
+	Loggers            []*LoggerAction // logger statements fired per matched row
 }
 
 type CombineBlock struct {
@@ -154,6 +168,14 @@ type ForecastBlock struct {
 	When     Condition
 	Label    *Template
 	Priority *Priority
+
+	// MarkovTarget switches the forecast to a Markov-chain mode that
+	// reads the entity's state-change history (events with
+	// :event/state) and predicts the probability of reaching this
+	// state from the current one within Predict.HorizonSteps state
+	// transitions. Empty MarkovTarget = numeric/exp-smoothing mode
+	// (the original ForecastBlock semantics).
+	MarkovTarget string
 }
 
 type ClusterBlock struct {
@@ -250,6 +272,75 @@ type ConstraintBlock struct {
 	OnViolation ViolationClause
 }
 
+// StateMachineBlock declares a finite-state machine over a class of
+// entities. Each matched entity carries a current state in StateAttr
+// (default ":record/state"); transitions move the entity from one
+// declared state to another when their guard condition holds.
+// Substates (parent state qualified with "/") form a two-level
+// hierarchy: in_flight/boarding, in_flight/cruising. A parent-state
+// transition that targets the parent moves the entity into the
+// parent's Initial substate; a transition from a parent matches any
+// of its substates (Harel-style "outermost matches first").
+type StateMachineBlock struct {
+	Pos         Pos
+	Name        string
+	Selector    Selector
+	States      []StateDecl
+	Initial     string
+	StateAttr   string         // attribute holding current state; "" defaults to ":record/state"
+	Transitions []Transition
+	Invariants  []StateInvariant
+}
+
+// StateDecl is one state declaration. Substates name their parent via
+// Parent ("" for top-level). Initial is the substate to enter when a
+// transition targets the parent.
+type StateDecl struct {
+	Name    string
+	Parent  string   // "" for top-level
+	Initial string   // substate to enter when transitioning into a composite parent
+}
+
+// Transition is one labelled arrow in the state machine. When the
+// entity is currently in From and When holds, write To into
+// StateAttr. From may be a parent state — matches any of its
+// substates.
+type Transition struct {
+	Pos  Pos
+	From string
+	To   string
+	When Condition
+}
+
+// StateInvariant is an integrity check active only while the entity
+// is in State. The semantics mirror ConstraintBlock.Require:
+// Required must hold; on violation the runtime warns (we don't
+// reject mutations from a state_machine block — that's what
+// ConstraintBlock is for).
+type StateInvariant struct {
+	State    string
+	Required Condition
+}
+
+// EventSequenceCondition matches entities whose event history
+// contains the given ordered sequence of events within a sliding
+// window. Each step is an event name (e.g. "cart_opened"); the
+// runtime walks the entity's event facts (records with attribute
+// :event/name and :event/at timestamp) ordered by time and checks
+// that all Steps appear in order with relative gaps bounded by
+// Window. Used inside selectors like:
+//
+//	for records where event_sequence "cart_opened" -> "item_added"
+//	                  -> "abandoned" within 7 days
+//
+// Implemented as a regular automaton at runtime, hence the name —
+// it's effectively a regex over event streams with one star-free
+// pattern per step.
+type EventSequenceCondition struct {
+	Steps  []string
+	Window Duration // upper bound on total elapsed time across the sequence
+}
+
 type ViolationClause struct {
 	Mode    string // "reject" | "warn" | "quarantine"
 	Message string // optional; empty if not provided
@@ -268,7 +359,8 @@ func (*ClassifyBlock) blockNode()   {}
 func (*SimilarBlock) blockNode()    {}
 func (*RelatedBlock) blockNode()    {}
 func (*OnBlock) blockNode()         {}
-func (*ConstraintBlock) blockNode() {}
+func (*ConstraintBlock) blockNode()    {}
+func (*StateMachineBlock) blockNode() {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -283,7 +375,8 @@ func (b *ClassifyBlock) BlockName() string   { return b.Name }
 func (b *SimilarBlock) BlockName() string    { return b.Name }
 func (b *RelatedBlock) BlockName() string    { return b.Name }
 func (b *OnBlock) BlockName() string         { return b.Name }
-func (b *ConstraintBlock) BlockName() string { return b.Name }
+func (b *ConstraintBlock) BlockName() string    { return b.Name }
+func (b *StateMachineBlock) BlockName() string { return b.Name }
 
 // ─── Expressions ──────────────────────────────────────────────────────────────
 
@@ -453,6 +546,7 @@ func (*AnomalyCondition) condNode()      {}
 func (*TemporalCondition) condNode()     {}
 func (*ChangedToCondition) condNode()    {}
 func (*BlockMatchesCondition) condNode() {}
+func (*EventSequenceCondition) condNode() {}
 
 // ─── Supporting types ─────────────────────────────────────────────────────────
 

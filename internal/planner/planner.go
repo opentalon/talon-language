@@ -98,11 +98,68 @@ type GraphSnapshot struct {
 	Into     string
 }
 
-func (*FactQuery) stepType() string { return "FactQuery" }
-func (*GoComputation) stepType() string  { return "GoComputation" }
-func (*MLComputation) stepType() string  { return "MLComputation" }
-func (*Filter) stepType() string         { return "Filter" }
-func (*GraphSnapshot) stepType() string  { return "GraphSnapshot" }
+// StateMachineStep applies a finite-state machine to every entity
+// matched by Input. For each row, the executor reads the current
+// state from the row's StateColumn, iterates Transitions in source
+// order, and writes the target state when the first matching
+// guard holds. Invariants run after the transition; violations
+// attach to outcomes. Stays in the plan-step family (not
+// GoComputation) because the semantics — guard ordering, conflict
+// resolution, side-effects to the FactStore — are too specific to
+// generic dispatch.
+//
+// Columns names the unqualified attribute exposed by each Find-var
+// in the FactQuery row, in column order, so the executor can build
+// a flat attr map for the guard evaluator without follow-up
+// queries to the FactStore. Index 0 is conventionally "?e" /
+// entity ID and is not in Columns; Columns starts at row[1].
+type StateMachineStep struct {
+	BlockName   string
+	Input       string
+	StateAttr   string
+	StateColumn int    // index in row where the current state lives
+	Columns     []string // unqualified attribute names per row column starting at index 1
+	Initial     string
+	States      []string
+	Transitions []StateTransition
+	Invariants  []StateInvariantSpec
+	Into        string
+}
+
+// StateTransition is one transition arrow with its guard condition.
+type StateTransition struct {
+	From string
+	To   string
+	When ast.Condition // optional; nil = always-fires guard
+}
+
+// StateInvariantSpec is one state-scoped requirement.
+type StateInvariantSpec struct {
+	State    string
+	Required ast.Condition
+}
+
+func (*FactQuery) stepType() string         { return "FactQuery" }
+func (*GoComputation) stepType() string     { return "GoComputation" }
+func (*MLComputation) stepType() string     { return "MLComputation" }
+func (*Filter) stepType() string            { return "Filter" }
+func (*GraphSnapshot) stepType() string     { return "GraphSnapshot" }
+func (*StateMachineStep) stepType() string  { return "StateMachineStep" }
+func (*EventSequenceStep) stepType() string { return "EventSequenceStep" }
+
+// EventSequenceStep filters Input rows to those whose entity has an
+// event history matching the given ordered Steps within the given
+// Window (a duration in seconds; planner converts grammar units to
+// canonical seconds). The executor queries the FactStore for
+// `:event/name` + `:event/at` facts per candidate entity and walks
+// them in time order.
+type EventSequenceStep struct {
+	BlockName     string
+	Input         string
+	Steps         []string
+	WindowSeconds float64
+	Into          string
+}
 
 // anomalyFunctionFor maps an `is anomaly using <METHOD>` method string to
 // the planner function constant the executor dispatches on. Empty string
@@ -200,6 +257,8 @@ func (p *planner) planAll() (map[string]*QueryPlan, diagnostic.List) {
 			plans[bb.Name] = p.planCombine(bb)
 		case *ast.WorkflowBlock:
 			plans[bb.Name] = p.planWorkflow(bb)
+		case *ast.StateMachineBlock:
+			plans[bb.Name] = p.planStateMachine(bb)
 		}
 	}
 	return plans, p.diags
@@ -219,6 +278,22 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 		Into:     "candidates",
 	})
 	last := "candidates"
+
+	// Event-sequence conditions need per-entity event history lookups;
+	// they can't ride on Filter (no FactStore access there). Each
+	// condition becomes one EventSequenceStep — runs in the order the
+	// selector wrote them.
+	for i, es := range qb.eventSeqConds {
+		into := fmt.Sprintf("eventseq_%d", i)
+		plan.Steps = append(plan.Steps, &EventSequenceStep{
+			BlockName:     b.Name,
+			Input:         last,
+			Steps:         append([]string(nil), es.Steps...),
+			WindowSeconds: durationToSeconds(es.Window),
+			Into:          into,
+		})
+		last = into
+	}
 
 	if len(qb.goConditions) > 0 {
 		plan.Steps = append(plan.Steps, &Filter{
@@ -375,10 +450,24 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 	}
 
 	if b.Suggest != nil {
+		params := map[string]any{"template": b.Suggest.Raw}
+		if b.SuggestProbability > 0 && b.SuggestProbability < 1 {
+			params["probability"] = b.SuggestProbability
+			params["block_name"] = b.Name
+		}
+		// Feedback window turns the prior probability into a
+		// Beta-posterior: executor queries the FactStore for
+		// recent accept/reject facts and adjusts the sample
+		// rate at fire time. Trace IDs are minted per fired
+		// suggestion so the host can correlate user actions back
+		// to the suggestion that prompted them.
+		if b.FeedbackWindowDays > 0 {
+			params["feedback_window_days"] = b.FeedbackWindowDays
+		}
 		plan.Steps = append(plan.Steps, &GoComputation{
 			Function: FuncRenderTemplate,
 			Input:    "matches",
-			Params:   map[string]any{"template": b.Suggest.Raw},
+			Params:   params,
 			Into:     "suggestions",
 		})
 	}
@@ -803,6 +892,149 @@ func (p *planner) planWorkflow(b *ast.WorkflowBlock) *QueryPlan {
 	return plan
 }
 
+// planStateMachine compiles a state_machine block into a two-step
+// plan: a FactQuery that returns every entity matching the selector
+// plus every attribute any guard or invariant references, followed
+// by a StateMachineStep that drives those entities through the
+// declared transitions.
+//
+// Walking transition guards up front means the executor never
+// needs follow-up per-entity attr queries — the row from the
+// FactQuery already carries every attribute the guard evaluator
+// will read. That's the difference between a state_machine block
+// running in O(1 query) vs O(N queries) on a thousand-entity store.
+//
+// Transitions fire in source order — first matching guard wins.
+// State-attribute defaults to ":record/state" when unset.
+func (p *planner) planStateMachine(b *ast.StateMachineBlock) *QueryPlan {
+	plan := &QueryPlan{BlockName: b.Name}
+
+	qb := p.newQueryBuilder()
+	qb.addSelector(b.Selector)
+
+	stateAttr := b.StateAttr
+	if stateAttr == "" {
+		stateAttr = ":record/state"
+	} else if stateAttr[0] != ':' {
+		stateAttr = ":attr/" + stateAttr
+	}
+	stateVar := qb.varFor("state")
+	qb.addPattern(stateAttr, factstore.Var(stateVar))
+	qb.findVars = appendUniq(qb.findVars, stateVar)
+	// Index of the state column in the resulting row. findVars[0] is
+	// the entity binding "?e", so the state lands at len(findVars)-1
+	// after we appended stateVar.
+	stateCol := len(qb.findVars) - 1
+
+	// Collect every attribute referenced by any guard or invariant,
+	// so the FactQuery returns those as additional columns and the
+	// guard evaluator can read them without a follow-up query.
+	attrNames := collectAttrNames(b)
+	columns := make([]string, 0, len(attrNames))
+	for _, name := range attrNames {
+		path := ":attr/" + name
+		v := qb.varFor("attr_" + name)
+		qb.addPattern(path, factstore.Var(v))
+		qb.findVars = appendUniq(qb.findVars, v)
+		columns = append(columns, name)
+	}
+
+	plan.Steps = append(plan.Steps, &FactQuery{
+		Query:    qb.build(),
+		BindVars: qb.bindVars(),
+		Into:     "candidates",
+	})
+
+	stateNames := make([]string, 0, len(b.States))
+	for _, s := range b.States {
+		stateNames = append(stateNames, s.Name)
+	}
+	transitions := make([]StateTransition, 0, len(b.Transitions))
+	for _, t := range b.Transitions {
+		transitions = append(transitions, StateTransition{From: t.From, To: t.To, When: t.When})
+	}
+	invariants := make([]StateInvariantSpec, 0, len(b.Invariants))
+	for _, inv := range b.Invariants {
+		invariants = append(invariants, StateInvariantSpec{State: inv.State, Required: inv.Required})
+	}
+
+	plan.Steps = append(plan.Steps, &StateMachineStep{
+		BlockName:   b.Name,
+		Input:       "candidates",
+		StateAttr:   stateAttr,
+		StateColumn: stateCol,
+		Columns:     columns,
+		Initial:     b.Initial,
+		States:      stateNames,
+		Transitions: transitions,
+		Invariants:  invariants,
+		Into:        "sm_result",
+	})
+	return plan
+}
+
+// collectAttrNames walks every guard and invariant condition in the
+// block to find AttrExpr / IdentExpr references. The returned slice
+// is deduped and stable-ordered so the FactQuery's columns line up
+// across runs (tests rely on this).
+func collectAttrNames(b *ast.StateMachineBlock) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	for _, t := range b.Transitions {
+		walkAttrRefs(t.When, add)
+	}
+	for _, inv := range b.Invariants {
+		walkAttrRefs(inv.Required, add)
+	}
+	return out
+}
+
+// walkAttrRefs visits a condition tree and calls `add` for every
+// AttrExpr.Name it finds. Conservative: covers the conditions
+// state-machine guards actually use today (compare, logical, not,
+// membership, string-match). Anything else is silently skipped —
+// at runtime the executor would just see an empty attr map for
+// those refs and the guard would fail; that's a defensive default
+// matching what other planners do for unfamiliar AST shapes.
+func walkAttrRefs(c ast.Condition, add func(string)) {
+	switch cc := c.(type) {
+	case *ast.LogicalCondition:
+		walkAttrRefs(cc.Left, add)
+		walkAttrRefs(cc.Right, add)
+	case *ast.NotCondition:
+		walkAttrRefs(cc.Inner, add)
+	case *ast.CompareCondition:
+		walkExprAttrs(cc.Left, add)
+		walkExprAttrs(cc.Right, add)
+	case *ast.MembershipCondition:
+		walkExprAttrs(cc.Expr, add)
+	case *ast.StringMatchCondition:
+		walkExprAttrs(cc.Subject, add)
+	case *ast.HasCondition:
+		walkExprAttrs(cc.Subject, add)
+		add(cc.Type)
+	}
+}
+
+func walkExprAttrs(e ast.Expr, add func(string)) {
+	switch ee := e.(type) {
+	case *ast.AttrExpr:
+		add(ee.Name)
+	case *ast.IdentExpr:
+		add(ee.Name)
+	case *ast.BinaryExpr:
+		walkExprAttrs(ee.Left, add)
+		walkExprAttrs(ee.Right, add)
+	}
+}
+
 // topoSortSteps returns workflow steps in topological order using Kahn's algorithm.
 // The validator guarantees no cycles, so this always succeeds.
 func topoSortSteps(steps []ast.WorkflowStep) []ast.WorkflowStep {
@@ -860,6 +1092,7 @@ type queryBuilder struct {
 	goConditions   []ast.Condition
 	anomalyConds   []anomalyBinding
 	thresholdConds []thresholdBinding
+	eventSeqConds  []*ast.EventSequenceCondition
 	usedVars       map[string]int // base name → count (for dedup)
 }
 
@@ -958,6 +1191,8 @@ func (b *queryBuilder) addCondition(cond ast.Condition) {
 		b.addStringMatch(c)
 	case *ast.AnomalyCondition:
 		b.addAnomalyCondition(c)
+	case *ast.EventSequenceCondition:
+		b.eventSeqConds = append(b.eventSeqConds, c)
 	default:
 		// TemporalCondition, ChangedToCondition, HasCondition — cannot express
 		// in Datalog, defer to Go.
@@ -1348,6 +1583,25 @@ func renderGoConditions(conds []ast.Condition) string {
 		parts = append(parts, fmt.Sprintf("/* %T */", c))
 	}
 	return strings.Join(parts, " && ")
+}
+
+// durationToSeconds converts a grammar Duration (e.g. {Value: 7,
+// Unit: "days"}) to canonical seconds. Used by EventSequenceStep
+// to bound its sliding window. Unknown units fall through to 0 so
+// `within 7 km` (which doesn't make temporal sense) effectively
+// disables the window check — validator should catch that earlier.
+func durationToSeconds(d ast.Duration) float64 {
+	switch d.Unit {
+	case "days":
+		return float64(d.Value) * 86400
+	case "weeks":
+		return float64(d.Value) * 7 * 86400
+	case "months":
+		return float64(d.Value) * 30 * 86400
+	case "years":
+		return float64(d.Value) * 365 * 86400
+	}
+	return 0
 }
 
 func (p *planner) buildCalculateQuery(calc ast.CalculateClause) factstore.Query {
