@@ -145,6 +145,21 @@ func (*MLComputation) stepType() string     { return "MLComputation" }
 func (*Filter) stepType() string            { return "Filter" }
 func (*GraphSnapshot) stepType() string     { return "GraphSnapshot" }
 func (*StateMachineStep) stepType() string  { return "StateMachineStep" }
+func (*EventSequenceStep) stepType() string { return "EventSequenceStep" }
+
+// EventSequenceStep filters Input rows to those whose entity has an
+// event history matching the given ordered Steps within the given
+// Window (a duration in seconds; planner converts grammar units to
+// canonical seconds). The executor queries the FactStore for
+// `:event/name` + `:event/at` facts per candidate entity and walks
+// them in time order.
+type EventSequenceStep struct {
+	BlockName     string
+	Input         string
+	Steps         []string
+	WindowSeconds float64
+	Into          string
+}
 
 // anomalyFunctionFor maps an `is anomaly using <METHOD>` method string to
 // the planner function constant the executor dispatches on. Empty string
@@ -263,6 +278,22 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 		Into:     "candidates",
 	})
 	last := "candidates"
+
+	// Event-sequence conditions need per-entity event history lookups;
+	// they can't ride on Filter (no FactStore access there). Each
+	// condition becomes one EventSequenceStep — runs in the order the
+	// selector wrote them.
+	for i, es := range qb.eventSeqConds {
+		into := fmt.Sprintf("eventseq_%d", i)
+		plan.Steps = append(plan.Steps, &EventSequenceStep{
+			BlockName:     b.Name,
+			Input:         last,
+			Steps:         append([]string(nil), es.Steps...),
+			WindowSeconds: durationToSeconds(es.Window),
+			Into:          into,
+		})
+		last = into
+	}
 
 	if len(qb.goConditions) > 0 {
 		plan.Steps = append(plan.Steps, &Filter{
@@ -1047,6 +1078,7 @@ type queryBuilder struct {
 	goConditions   []ast.Condition
 	anomalyConds   []anomalyBinding
 	thresholdConds []thresholdBinding
+	eventSeqConds  []*ast.EventSequenceCondition
 	usedVars       map[string]int // base name → count (for dedup)
 }
 
@@ -1145,6 +1177,8 @@ func (b *queryBuilder) addCondition(cond ast.Condition) {
 		b.addStringMatch(c)
 	case *ast.AnomalyCondition:
 		b.addAnomalyCondition(c)
+	case *ast.EventSequenceCondition:
+		b.eventSeqConds = append(b.eventSeqConds, c)
 	default:
 		// TemporalCondition, ChangedToCondition, HasCondition — cannot express
 		// in Datalog, defer to Go.
@@ -1535,6 +1569,25 @@ func renderGoConditions(conds []ast.Condition) string {
 		parts = append(parts, fmt.Sprintf("/* %T */", c))
 	}
 	return strings.Join(parts, " && ")
+}
+
+// durationToSeconds converts a grammar Duration (e.g. {Value: 7,
+// Unit: "days"}) to canonical seconds. Used by EventSequenceStep
+// to bound its sliding window. Unknown units fall through to 0 so
+// `within 7 km` (which doesn't make temporal sense) effectively
+// disables the window check — validator should catch that earlier.
+func durationToSeconds(d ast.Duration) float64 {
+	switch d.Unit {
+	case "days":
+		return float64(d.Value) * 86400
+	case "weeks":
+		return float64(d.Value) * 7 * 86400
+	case "months":
+		return float64(d.Value) * 30 * 86400
+	case "years":
+		return float64(d.Value) * 365 * 86400
+	}
+	return 0
 }
 
 func (p *planner) buildCalculateQuery(calc ast.CalculateClause) factstore.Query {

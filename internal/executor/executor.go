@@ -110,12 +110,25 @@ func (e *Executor) Run(ctx context.Context, plan *planner.QueryPlan) (*BlockResu
 // MLComputation step downstream.
 func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 	var rows [][]any
+	// Walk the plan in order so any row-narrowing step (Filter,
+	// EventSequenceStep) downstream of the FactQuery is applied
+	// before ML steps prune by entity ID. The last [][]any-shaped
+	// `Into` becomes the canonical "flagged rows" the block
+	// observed.
 	for _, step := range plan.Steps {
-		if dq, ok := step.(*planner.FactQuery); ok {
-			if arr, ok := vars[dq.Into].([][]any); ok {
+		switch s := step.(type) {
+		case *planner.FactQuery:
+			if arr, ok := vars[s.Into].([][]any); ok {
 				rows = arr
 			}
-			break
+		case *planner.Filter:
+			if arr, ok := vars[s.Into].([][]any); ok {
+				rows = arr
+			}
+		case *planner.EventSequenceStep:
+			if arr, ok := vars[s.Into].([][]any); ok {
+				rows = arr
+			}
 		}
 	}
 	if rows == nil {
@@ -196,6 +209,8 @@ func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map
 		return e.execGraphSnapshot(ctx, s, vars)
 	case *planner.StateMachineStep:
 		return e.execStateMachine(ctx, s, vars)
+	case *planner.EventSequenceStep:
+		return e.execEventSequence(ctx, s, vars)
 	default:
 		return StepResult{}, fmt.Errorf("unknown step type: %T", step)
 	}

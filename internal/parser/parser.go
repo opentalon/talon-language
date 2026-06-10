@@ -1506,6 +1506,8 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	switch p.peek().Type {
 	case lexer.TokenHas:
 		return p.parseHasCondition()
+	case lexer.TokenEvent:
+		return p.parseEventSequenceCondition()
 	case lexer.TokenIs:
 		// standalone "is STRING" — no subject
 		p.advance()
@@ -1524,6 +1526,31 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	default:
 		return p.parseExprCondition()
 	}
+}
+
+// parseEventSequenceCondition reads:
+//
+//	event_sequence "A" -> "B" [ -> "C" ... ] within N <unit>
+//
+// Steps are ordered strings; `within` is the upper bound on the
+// elapsed time between the first and last step. Used by the executor
+// as a small regex over an entity's event history.
+func (p *parser) parseEventSequenceCondition() ast.Condition {
+	p.advance() // event_sequence
+	first := p.expectString()
+	steps := []string{first}
+	for p.at(lexer.TokenArrow) {
+		p.advance()
+		steps = append(steps, p.expectString())
+	}
+	cond := &ast.EventSequenceCondition{Steps: steps}
+	if p.at(lexer.TokenWithin) {
+		p.advance()
+		n, _ := strconv.Atoi(p.expectNumberStr())
+		unit := p.expectDurationUnit()
+		cond.Window = ast.Duration{Value: n, Unit: unit}
+	}
+	return cond
 }
 
 func (p *parser) parseHasCondition() ast.Condition {

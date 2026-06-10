@@ -300,6 +300,25 @@ type StateInvariant struct {
 	Required Condition
 }
 
+// EventSequenceCondition matches entities whose event history
+// contains the given ordered sequence of events within a sliding
+// window. Each step is an event name (e.g. "cart_opened"); the
+// runtime walks the entity's event facts (records with attribute
+// :event/name and :event/at timestamp) ordered by time and checks
+// that all Steps appear in order with relative gaps bounded by
+// Window. Used inside selectors like:
+//
+//	for records where event_sequence "cart_opened" -> "item_added"
+//	                  -> "abandoned" within 7 days
+//
+// Implemented as a regular automaton at runtime, hence the name —
+// it's effectively a regex over event streams with one star-free
+// pattern per step.
+type EventSequenceCondition struct {
+	Steps  []string
+	Window Duration // upper bound on total elapsed time across the sequence
+}
+
 type ViolationClause struct {
 	Mode    string // "reject" | "warn" | "quarantine"
 	Message string // optional; empty if not provided
@@ -505,6 +524,7 @@ func (*AnomalyCondition) condNode()      {}
 func (*TemporalCondition) condNode()     {}
 func (*ChangedToCondition) condNode()    {}
 func (*BlockMatchesCondition) condNode() {}
+func (*EventSequenceCondition) condNode() {}
 
 // ─── Supporting types ─────────────────────────────────────────────────────────
 
