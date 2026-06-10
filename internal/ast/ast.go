@@ -91,8 +91,15 @@ type RecommendBlock struct {
 	When      Condition
 	Calculate []CalculateClause
 	Suggest   *Template
-	Priority  *Priority
-	Loggers   []*LoggerAction // logger statements fired per matched row
+	// SuggestProbability gates whether Suggest fires on a given
+	// matched row. 0 (zero value) means "always fire" — preserves
+	// the historical behaviour. Values in (0, 1) gate via a
+	// per-Run seeded RNG so the same Run is deterministic but
+	// different Runs explore. Useful for ε-greedy rollouts of new
+	// recommendation logic.
+	SuggestProbability float64
+	Priority           *Priority
+	Loggers            []*LoggerAction // logger statements fired per matched row
 }
 
 type CombineBlock struct {

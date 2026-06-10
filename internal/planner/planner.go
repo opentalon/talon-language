@@ -450,10 +450,19 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 	}
 
 	if b.Suggest != nil {
+		params := map[string]any{"template": b.Suggest.Raw}
+		// SuggestProbability gates per-row firing. Executor reads
+		// `probability` from params and uses a seeded RNG so a
+		// single Run is deterministic; the block name + a process
+		// nonce form the seed.
+		if b.SuggestProbability > 0 && b.SuggestProbability < 1 {
+			params["probability"] = b.SuggestProbability
+			params["block_name"] = b.Name
+		}
 		plan.Steps = append(plan.Steps, &GoComputation{
 			Function: FuncRenderTemplate,
 			Input:    "matches",
-			Params:   map[string]any{"template": b.Suggest.Raw},
+			Params:   params,
 			Into:     "suggestions",
 		})
 	}

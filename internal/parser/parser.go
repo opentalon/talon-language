@@ -362,7 +362,28 @@ func (p *parser) parseRecommend() *ast.RecommendBlock {
 		case lexer.TokenCalculate:
 			b.Calculate = append(b.Calculate, p.parseCalculateClause())
 		case lexer.TokenSuggest:
-			b.Suggest = p.parseLabelClause()
+			// `suggest "<template>" [ with probability N ]` — when the
+			// optional probability modifier is present, the executor
+			// gates the suggestion via a seeded RNG so the language
+			// can express ε-greedy / canary rollouts directly.
+			p.advance() // suggest
+			raw := p.expectString()
+			tpl := ast.ParseTemplate(raw)
+			b.Suggest = &tpl
+			if p.at(lexer.TokenIdent) && p.peek().Value == "with" {
+				p.advance() // with
+				if !p.expect(lexer.TokenProb) {
+					p.synchronize()
+					continue
+				}
+				prob, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+				if prob < 0 || prob > 1 {
+					p.errorf("recommend %q: probability must be in [0, 1], got %v", b.Name, prob)
+					prob = 1
+				}
+				b.SuggestProbability = prob
+			}
+			continue
 		case lexer.TokenPriority:
 			pr := p.parsePriority()
 			b.Priority = &pr

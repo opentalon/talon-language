@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,13 @@ import (
 	"github.com/opentalon/talon-language/internal/mlruntime"
 	"github.com/opentalon/talon-language/internal/planner"
 )
+
+// newDeterministicRNG returns a *rand.Rand seeded with the given
+// value. Wrapped behind a constructor so a future migration to
+// math/rand/v2 doesn't ripple across the package.
+func newDeterministicRNG(seed int64) *rand.Rand {
+	return rand.New(rand.NewSource(seed))
+}
 
 // FactStore is the database abstraction layer the executor talks to. The
 // canonical type lives in internal/factstore; this is the executor's
@@ -54,6 +62,51 @@ type Executor struct {
 	// building a snapshot from in-scope row variables — useful for tests
 	// where the dataset is seeded directly.
 	GraphProvider GraphSnapshotProvider
+
+	// RandSeed optionally fixes the seed for probabilistic features
+	// (recommend `suggest "X" with probability N`). When zero, the
+	// executor falls back to a per-block deterministic seed derived
+	// from the block name — same Run reproduces, different Runs
+	// explore. Tests set this explicitly to assert exact outcomes.
+	RandSeed int64
+}
+
+// probabilisticGate samples each row in `input` with probability
+// `prob`, keeping only those that pass. Used by the recommend
+// suggest-with-probability path so we can express ε-greedy /
+// canary-rollout shaped policies directly in the language.
+//
+// Determinism: when Executor.RandSeed is set, the same seed plus
+// block name produce identical outcomes across runs — important
+// for tests and audit. When RandSeed is 0, the seed is derived
+// from the block name alone, so re-running the same program is
+// deterministic but two different blocks with the same probability
+// don't share fate.
+func (e *Executor) probabilisticGate(input any, prob float64, blockName string) any {
+	rows, ok := input.([][]any)
+	if !ok {
+		return input
+	}
+	seed := e.RandSeed
+	if seed == 0 {
+		// FNV-1a hash of the block name — small but stable. We
+		// don't need cryptographic strength; we need
+		// reproducibility across Runs.
+		var h uint64 = 14695981039346656037
+		for i := 0; i < len(blockName); i++ {
+			h ^= uint64(blockName[i])
+			h *= 1099511628211
+		}
+		seed = int64(h)
+	}
+	rng := newDeterministicRNG(seed)
+	kept := make([][]any, 0, len(rows))
+	for _, r := range rows {
+		if rng.Float64() < prob {
+			kept = append(kept, r)
+		}
+	}
+	return kept
 }
 
 // GraphSnapshotProvider builds or retrieves a factstore.GraphSnapshot for
@@ -261,10 +314,23 @@ func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputatio
 
 	switch gc.Function {
 	case planner.FuncRenderTemplate:
-		vars[gc.Into] = map[string]any{
+		out := map[string]any{
 			"input":    input,
 			"template": gc.Params["template"],
 		}
+		// Probabilistic gating: when `probability` is set on a
+		// recommend's suggest, the executor samples per-row from a
+		// seeded RNG. Block name + an executor nonce form the seed
+		// so the same Run is deterministic but different Runs
+		// explore. Rows that lose the coin flip are dropped from
+		// the input passed to the template stage; downstream
+		// consumers see only the kept rows.
+		if prob, ok := gc.Params["probability"].(float64); ok && prob > 0 && prob < 1 {
+			blockName, _ := gc.Params["block_name"].(string)
+			out["probability"] = prob
+			out["input"] = e.probabilisticGate(input, prob, blockName)
+		}
+		vars[gc.Into] = out
 	case "resolve_block_matches":
 		vars[gc.Into] = input
 	case "mcp_call":
