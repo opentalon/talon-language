@@ -252,14 +252,14 @@ func TestAdapterQueryWithPredicate(t *testing.T) {
 	}
 }
 
-func TestAdapterUnsupportedClause(t *testing.T) {
+func TestAdapterUnsupportedAggregates(t *testing.T) {
 	t.Parallel()
 	a, _ := newTestAdapter()
 	_, err := a.Query(context.Background(), factstore.Query{
-		Find:  []string{"?e"},
-		Where: []factstore.Clause{&factstore.Or{Branches: [][]factstore.Clause{}}},
+		Find:       []string{"?e"},
+		Aggregates: []factstore.Aggregate{{Fn: "count"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("Or should return unsupported, got %v", err)
+		t.Fatalf("Aggregates should return unsupported, got %v", err)
 	}
 }

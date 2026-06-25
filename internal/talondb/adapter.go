@@ -11,9 +11,21 @@ import (
 	pb "github.com/opentalon/talon-db/proto/talondbpb"
 )
 
-// Adapter is the FactStore implementation that talks to a talondb
-// server via the Client. It satisfies factstore.FactStore for the
-// subset of clauses the fleet_maintenance.talon example exercises.
+// Adapter implements factstore.FactStore against a remote talondb-server.
+//
+// The Query evaluator is a hybrid two-phase pass:
+//
+//  1. **Narrow** — every top-level Pattern with literal attribute +
+//     literal value contributes a docID bitmap via Lookup. The bitmaps
+//     are intersected; the survivors are the candidate set.
+//  2. **Evaluate** — each candidate document is fetched once, decoded
+//     into a map[string]any, and every clause in the query is matched
+//     against it. Variable bindings (?e, ?attr-name, etc.) are
+//     produced here; Predicates / Or / Not / FullText are evaluated
+//     against the in-memory representation.
+//
+// This mirrors the talon-language MemoryStore solver while delegating
+// the candidate-set narrowing to the server's indexes.
 type Adapter struct {
 	client *Client
 }
@@ -108,60 +120,27 @@ func (a *Adapter) Retract(ctx context.Context, p factstore.RetractPattern) error
 
 // ---------- Query ----------
 
-// Query evaluates the planner's structured query against the talondb
-// server. The strategy:
-//
-//  1. Identify "anchor" patterns — those with a literal attribute and
-//     literal value. For each, Lookup the composite term and collect
-//     a sorted []string of matching docIDs.
-//  2. Intersect every anchor's docIDs (sorted-merge join).
-//  3. For each surviving docID, Get the JSON doc and bind every
-//     variable that any pattern names against its attribute.
-//  4. Apply Predicates Go-side. Drop rows that fail.
-//  5. Project Find columns.
+// Query implements the hybrid index+eval strategy described in the
+// package doc-comment.
 func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
 	if len(q.Aggregates) > 0 || len(q.Pull) > 0 || len(q.Rules) > 0 {
 		return nil, errors.ErrUnsupported
 	}
 
-	anchors, varPatterns, err := splitPatterns(q.Where)
+	tenant := a.client.Tenant()
+	anchors := collectAnchors(q.Where)
+	if len(anchors) == 0 {
+		// We could fall back to a full scan via Lookup("") + Get; for
+		// now match Datalevin's behaviour and reject — every query the
+		// planner emits today has at least one literal anchor.
+		return nil, fmt.Errorf("talondb adapter: query has no anchor pattern (literal attr + literal value)")
+	}
+
+	candidates, err := a.gatherCandidates(ctx, tenant, anchors)
 	if err != nil {
 		return nil, err
 	}
-
-	tenant := a.client.Tenant()
-	var candidates []string
-
-	if len(anchors) > 0 {
-		first := true
-		for _, p := range anchors {
-			term := composeTerm(p.Attribute, p.Value.Literal)
-			resp, err := a.client.svc.Lookup(ctx, &pb.LookupRequest{
-				EntityId: tenant,
-				Term:     term,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("talondb adapter: Lookup %q: %w", term, err)
-			}
-			got := resp.GetDocIds()
-			sort.Strings(got)
-			if first {
-				candidates = got
-				first = false
-			} else {
-				candidates = intersectSorted(candidates, got)
-			}
-			if len(candidates) == 0 {
-				return nil, nil
-			}
-		}
-	} else if len(varPatterns) > 0 {
-		// No anchor — we'd need a full Scan. The Query engine for
-		// fleet_maintenance always emits at least one anchor pattern
-		// per clause group, so we error here rather than silently
-		// degrading.
-		return nil, fmt.Errorf("talondb adapter: query has no anchor pattern (literal attr + literal value)")
-	} else {
+	if len(candidates) == 0 {
 		return nil, nil
 	}
 
@@ -172,21 +151,7 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 			return nil, fmt.Errorf("talondb adapter: fetch %q: %w", docID, err)
 		}
 		bindings := map[string]any{"?e": parseRecordIDOrString(docID)}
-		// Bind every var-named attribute named in any pattern.
-		for _, p := range varPatterns {
-			if p.Value.Var != "" && p.Attribute != "" {
-				if v, ok := doc[p.Attribute]; ok {
-					bindings[p.Value.Var] = v
-				}
-			}
-		}
-		// Also bind values referenced by anchor patterns when Find
-		// asks for them (e.g. Find: [?e ?status] with Pattern
-		// (?e, :record/status, "active") binds ?status = "active").
-		// In practice the planner names variable Value terms for
-		// fields it wants to read; anchors usually carry literals
-		// only, so this is a safety net.
-		if !applyPredicates(bindings, q.Where) {
+		if !matchAll(q.Where, doc, bindings) {
 			continue
 		}
 		row := make([]any, len(q.Find))
@@ -196,4 +161,43 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 		rows = append(rows, row)
 	}
 	return rows, nil
+}
+
+// collectAnchors returns every top-level Pattern with a literal
+// attribute AND a literal value. Patterns inside Or / Not are not
+// anchors (their semantics are different).
+func collectAnchors(clauses []factstore.Clause) []*factstore.Pattern {
+	var out []*factstore.Pattern
+	for _, c := range clauses {
+		if p, ok := c.(*factstore.Pattern); ok && p.Attribute != "" && p.Value.Literal != nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// gatherCandidates Lookups each anchor's bitmap and intersects them.
+func (a *Adapter) gatherCandidates(ctx context.Context, tenant string, anchors []*factstore.Pattern) ([]string, error) {
+	var candidates []string
+	for i, p := range anchors {
+		term := composeTerm(p.Attribute, p.Value.Literal)
+		resp, err := a.client.svc.Lookup(ctx, &pb.LookupRequest{
+			EntityId: tenant,
+			Term:     term,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("talondb adapter: Lookup %q: %w", term, err)
+		}
+		got := resp.GetDocIds()
+		sort.Strings(got)
+		if i == 0 {
+			candidates = got
+		} else {
+			candidates = intersectSorted(candidates, got)
+		}
+		if len(candidates) == 0 {
+			return nil, nil
+		}
+	}
+	return candidates, nil
 }
