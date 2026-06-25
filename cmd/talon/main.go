@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/opentalon/talon-language/internal/datalevin"
+	"github.com/opentalon/talon-language/internal/talondb"
 	"github.com/opentalon/talon-language/internal/diagnostic"
 	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/explain"
@@ -389,12 +390,13 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 func runExecute() {
 	// Parse args: talon run <file.talon> [--store backend] [--datalevin URL] [--tenant NAME] [--seed file.talon.test]
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--store datalevin|memory] [--datalevin URL] [--tenant NAME] [--seed file.talon.test]")
+		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--store datalevin|memory|talon-db] [--datalevin URL] [--talondb unix:///path] [--tenant NAME] [--seed file.talon.test]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
 	path := os.Args[2]
 	serverURL := "http://localhost:8898"
+	talondbURL := "unix:///tmp/talondb.sock"
 	seedPath := ""
 	storeKind := "datalevin"
 	tenant := ""
@@ -402,6 +404,9 @@ func runExecute() {
 		switch {
 		case os.Args[i] == "--datalevin" && i+1 < len(os.Args):
 			serverURL = os.Args[i+1]
+			i++
+		case os.Args[i] == "--talondb" && i+1 < len(os.Args):
+			talondbURL = os.Args[i+1]
 			i++
 		case os.Args[i] == "--seed" && i+1 < len(os.Args):
 			seedPath = os.Args[i+1]
@@ -448,8 +453,24 @@ func runExecute() {
 		store = client
 	case "memory":
 		store = factstore.NewMemoryStore()
+	case "talon-db":
+		tdb, err := talondb.NewClient(ctx, talondbURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "talon run: dial talondb-server at %s: %v\n", talondbURL, err)
+			os.Exit(diagnostic.ExitError)
+		}
+		defer func() { _ = tdb.Close() }()
+		if err := tdb.Health(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "talon run: cannot reach talondb-server at %s: %v\n", talondbURL, err)
+			fmt.Fprintln(os.Stderr, "hint: start the server with: talondb-server --socket /tmp/talondb.sock")
+			os.Exit(diagnostic.ExitError)
+		}
+		if tenant != "" {
+			tdb = tdb.WithTenant(tenant)
+		}
+		store = talondb.New(tdb)
 	default:
-		fmt.Fprintf(os.Stderr, "talon run: unknown --store %q (want datalevin or memory)\n", storeKind)
+		fmt.Fprintf(os.Stderr, "talon run: unknown --store %q (want datalevin, memory, or talon-db)\n", storeKind)
 		os.Exit(diagnostic.ExitUsage)
 	}
 
