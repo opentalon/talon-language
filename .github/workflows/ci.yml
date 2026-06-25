@@ -14,7 +14,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
+      - name: Clone talon-db sibling (for local replace directive)
+        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
       - run: go test ./...
 
   js-runtime:
@@ -34,8 +36,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
-      - uses: golangci/golangci-lint-action@v6
+          go-version: "1.25"
+      - name: Clone talon-db sibling (for local replace directive)
+        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: latest
 
@@ -46,7 +50,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
+      - name: Clone talon-db sibling (for local replace directive)
+        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
       - run: go build ./cmd/talon
       - run: ./talon build examples/fleet_maintenance.talon
       - run: ./talon test -v --junit junit-talon.xml examples/fleet_maintenance.talon test/fleet_maintenance.talon.test
@@ -63,7 +69,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
+      - name: Clone talon-db sibling (for local replace directive)
+        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
       - name: Install Datalevin
         run: |
           curl -sL https://github.com/datalevin/datalevin/releases/download/0.10.7/dtlv-0.10.7-ubuntu-22.04-amd64.zip -o dtlv.zip
@@ -89,14 +97,41 @@ jobs:
           go-version: "1.25"
       - name: Clone talon-db sibling repo
         run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-      - name: Verify talon-db test suite is green
-        working-directory: ../talon-db
-        run: go test -race -count=1 ./...
-      - name: Verify talon-db lint clean
-        uses: golangci/golangci-lint-action@v7
-        with:
-          working-directory: ../talon-db
-          version: latest
+      - name: Build talondb-server
+        run: |
+          cd ../talon-db
+          go build -o /tmp/talondb-server ./cmd/talondb-server
+      - name: Start talondb-server
+        run: |
+          rm -f /tmp/talon.bbolt /tmp/talondb.sock
+          /tmp/talondb-server --db /tmp/talon.bbolt --socket /tmp/talondb.sock > /tmp/talondb.log 2>&1 &
+          echo "TALONDB_PID=$!" >> $GITHUB_ENV
+          for i in $(seq 1 30); do
+            if [ -S /tmp/talondb.sock ]; then
+              echo "talondb-server is up"
+              break
+            fi
+            sleep 0.5
+          done
+          [ -S /tmp/talondb.sock ] || { echo "FAIL: server did not bind socket"; cat /tmp/talondb.log; exit 1; }
+      - run: go build ./cmd/talon
+      - run: ./talon build examples/fleet_maintenance.talon
+      - name: Run fleet_maintenance through talon-db
+        run: |
+          output=$(./talon run examples/fleet_maintenance.talon \
+                     --seed test/fleet_maintenance.talon.test \
+                     --store talon-db \
+                     --talondb unix:///tmp/talondb.sock)
+          echo "$output"
+          echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
+          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }
+      - name: Stop talondb-server
+        if: always()
+        run: |
+          if [ -n "$TALONDB_PID" ]; then
+            kill $TALONDB_PID 2>/dev/null || true
+          fi
+          cat /tmp/talondb.log 2>/dev/null || true
 
   talon-run:
     name: Talon Run (HTTP)
@@ -105,7 +140,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -115,6 +150,8 @@ jobs:
           curl -sL https://download.clojure.org/install/linux-install-1.12.5.1638.sh -o install-clojure.sh
           sudo bash install-clojure.sh || true
           clojure --version
+      - name: Clone talon-db sibling (for local replace directive)
+        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
       - run: go build ./cmd/talon
       - name: Start datalevin-server
         run: |
