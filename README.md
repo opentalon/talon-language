@@ -110,6 +110,35 @@ LLM-extracts-facts-then-Talon-decides pattern from
 [Code Mode for MCP](https://opakalex.github.io/posts/code-mode-for-mcp/),
 and what each REPL command does — is in [`docs/repl.md`](docs/repl.md).
 
+## FactStore backends
+
+`talon run` picks its fact backend with `--store`:
+
+| Backend | When to use | Setup |
+|---|---|---|
+| `datalevin` (default) | Production today. JVM sidecar, native Datalog, FTS, raft. | `cd datalevin-server && clojure -M:run` |
+| `memory` | REPL, demos, unit tests, CI smoke runs. Entirely in-process. | None — works out of the box |
+| `talon-db` | Phase-3 Go-native backend. Embedded bbolt + bitmap indexes; gRPC over Unix socket (or TCP / HTTP). | `talondb-server --db ./talon.bbolt --socket /tmp/talondb.sock` (see [opentalon/talon-db](https://github.com/opentalon/talon-db)) |
+
+Example with the talon-db sidecar:
+
+```bash
+# Terminal 1: start the daemon
+talondb-server --db /tmp/talon.bbolt --socket /tmp/talondb.sock
+
+# Terminal 2: run a .talon program against it
+talon run examples/fleet_maintenance.talon \
+  --seed test/fleet_maintenance.talon.test \
+  --store talon-db \
+  --talondb unix:///tmp/talondb.sock
+```
+
+The adapter (`internal/talondb`) translates the planner's structured
+queries into talon-db's RPC surface (Lookup, LookupNumericRange,
+WindowQuery, Stats, LastSeen, Ancestors, Descendants). It supports
+Pattern, Predicate, Or, Not, and FullText today; Aggregates, PullSpec,
+and RuleCall are tracked as follow-ups (see issues #99–#101).
+
 ## Architecture
 
 ```mermaid
@@ -423,7 +452,7 @@ will work across both editors; tracked in
 - [Self-contained language](https://github.com/opentalon/talon-language/issues/5) — Talon compiles directly to query plans, no intermediate layer
 - [ML primitives as keywords](https://github.com/opentalon/talon-language/issues/6) — predict, forecast, anomaly, cluster, classify, similar
 - [FactStore abstraction](https://github.com/opentalon/talon-language/issues/14) — database independence
-- [Storage engine and clustering](https://github.com/opentalon/talon-language/issues/15) — persistence and HA strategy
+- [opentalon/talon-db](https://github.com/opentalon/talon-db) — Go-native Phase-3 backend (bbolt + roaring + vellum, gRPC sidecar)
 
 ### Compiler
 
