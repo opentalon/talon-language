@@ -1,0 +1,28 @@
+version: "2"
+
+# golangci-lint v2 (required for Go 1.25 modules) enables several
+# checks that flag patterns this codebase already accepts: ignored
+# fmt.Fprint* returns to stdout/stderr writers, ignored Close() in
+# REPL code, and staticcheck QF (Quick-Fix) style suggestions. The
+# exclusions here keep the bar where v1 left it; tighten over time.
+
+linters:
+  default: standard
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*net/http.Response).Body.Close
+    staticcheck:
+      # Drop QF (quick-fix style) suggestions and ST style suggestions
+      # the existing code does not follow. Real correctness checks stay on.
+      checks:
+        - all
+        - -QF1003
+        - -QF1012
+        - -ST1000   # package comment requirement
+        - -ST1021   # exported type comment starts with type name
