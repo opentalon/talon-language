@@ -6,34 +6,59 @@ import (
 	"github.com/opentalon/talon-language/internal/factstore"
 )
 
-// matchAll returns true when every clause in `clauses` matches the
-// document `attrs` under the current bindings. New variables bound by
-// any clause are added to bindings.
-func matchAll(clauses []factstore.Clause, attrs map[string]any, bindings map[string]any) bool {
+// matchAllWithRules evaluates every clause against the document and
+// bindings. RuleCall clauses consult the resolver (pre-built by
+// Adapter.Query). A nil resolver fails RuleCall closed.
+func matchAllWithRules(clauses []factstore.Clause, attrs map[string]any, bindings map[string]any, resolver *ruleResolution) bool {
 	for _, c := range clauses {
-		if !matchOne(c, attrs, bindings) {
+		if !matchOneWithRules(c, attrs, bindings, resolver) {
 			return false
 		}
 	}
 	return true
 }
 
-// matchOne dispatches on clause type. Pattern, Predicate, Or, Not,
-// and FullText are supported; unknown clauses fail closed.
-func matchOne(c factstore.Clause, attrs map[string]any, bindings map[string]any) bool {
+// matchOneWithRules dispatches on clause type. Pattern, Predicate,
+// Or, Not, FullText, and RuleCall (via a pre-built resolver) are
+// supported.
+func matchOneWithRules(c factstore.Clause, attrs map[string]any, bindings map[string]any, resolver *ruleResolution) bool {
 	switch cc := c.(type) {
 	case *factstore.Pattern:
 		return matchPattern(cc, attrs, bindings)
 	case *factstore.Predicate:
 		return matchPredicate(cc, bindings)
 	case *factstore.Or:
-		return matchOr(cc, attrs, bindings)
+		return matchOrWithRules(cc, attrs, bindings, resolver)
 	case *factstore.Not:
-		return matchNot(cc, attrs, bindings)
+		return matchNotWithRules(cc, attrs, bindings, resolver)
 	case *factstore.FullText:
 		return matchFullText(cc, attrs)
+	case *factstore.RuleCall:
+		return matchRuleCall(cc, bindings, resolver)
 	}
 	return false
+}
+
+// matchRuleCall consults the pre-built resolver: the bound variable
+// (call.Args[0]) must currently bind to a value in the resolver's
+// allowed-set for this call. resolver==nil means no rules were
+// pre-resolved; fail closed.
+func matchRuleCall(call *factstore.RuleCall, bindings map[string]any, resolver *ruleResolution) bool {
+	if resolver == nil {
+		return false
+	}
+	allowed, ok := resolver.cachedAllowed(call)
+	if !ok {
+		return false
+	}
+	if len(call.Args) < 1 || !call.Args[0].IsVar() {
+		return false
+	}
+	v, bound := bindings[call.Args[0].Var]
+	if !bound {
+		return false
+	}
+	return allowed[v]
 }
 
 // matchPattern verifies / binds a Pattern against the in-memory doc.
@@ -75,16 +100,17 @@ func matchPredicate(p *factstore.Predicate, bindings map[string]any) bool {
 	return evalPredicate(p.Op, left, right)
 }
 
-// matchOr returns true when any branch matches. Per Datalog semantics,
-// bindings made inside an Or branch must NOT leak to siblings — but
-// they SHOULD leak to the enclosing query for variables that were
-// previously unbound and that all surviving branches happen to bind
-// to the same value. We follow MemoryStore's simpler rule: on the
-// first successful branch, copy new bindings into the parent.
-func matchOr(o *factstore.Or, attrs map[string]any, bindings map[string]any) bool {
+// matchOrWithRules returns true when any branch matches. Per Datalog
+// semantics, bindings made inside an Or branch must NOT leak to
+// siblings — but they SHOULD leak to the enclosing query for
+// variables that were previously unbound and that all surviving
+// branches happen to bind to the same value. We follow MemoryStore's
+// simpler rule: on the first successful branch, copy new bindings
+// into the parent.
+func matchOrWithRules(o *factstore.Or, attrs map[string]any, bindings map[string]any, resolver *ruleResolution) bool {
 	for _, branch := range o.Branches {
 		scratch := cloneBindings(bindings)
-		if matchAll(branch, attrs, scratch) {
+		if matchAllWithRules(branch, attrs, scratch, resolver) {
 			for k, v := range scratch {
 				if _, had := bindings[k]; !had {
 					bindings[k] = v
@@ -96,11 +122,12 @@ func matchOr(o *factstore.Or, attrs map[string]any, bindings map[string]any) boo
 	return false
 }
 
-// matchNot returns true when the inner clause group does NOT match.
-// Scratch bindings are discarded — Not produces no new bindings.
-func matchNot(n *factstore.Not, attrs map[string]any, bindings map[string]any) bool {
+// matchNotWithRules returns true when the inner clause group does NOT
+// match. Scratch bindings are discarded — Not produces no new
+// bindings in the parent scope.
+func matchNotWithRules(n *factstore.Not, attrs map[string]any, bindings map[string]any, resolver *ruleResolution) bool {
 	scratch := cloneBindings(bindings)
-	return !matchAll(n.Body, attrs, scratch)
+	return !matchAllWithRules(n.Body, attrs, scratch, resolver)
 }
 
 // matchFullText scans the document's string-valued attributes for the

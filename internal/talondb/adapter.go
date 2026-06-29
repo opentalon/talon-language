@@ -215,11 +215,25 @@ func (a *Adapter) Retract(ctx context.Context, p factstore.RetractPattern) error
 // Query implements the hybrid index+eval strategy described in the
 // package doc-comment.
 func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
-	if len(q.Aggregates) > 0 || len(q.Pull) > 0 || len(q.Rules) > 0 {
+	if len(q.Aggregates) > 0 || len(q.Pull) > 0 {
 		return nil, errors.ErrUnsupported
 	}
 
 	tenant := a.client.Tenant()
+
+	// Pre-resolve every RuleCall in Where. Builds a per-call set of
+	// values the bound variable may take; the matchOne dispatcher
+	// uses those sets at evaluation time (see eval.go's RuleCall
+	// case). Rule resolution is short-circuited via talon-db's
+	// closure-table RPCs — see rules.go.
+	var resolver *ruleResolution
+	if len(q.Rules) > 0 || hasRuleCall(q.Where) {
+		resolver = newRuleResolution(a.client, q.Rules)
+		if err := resolver.preResolve(ctx, q.Where); err != nil {
+			return nil, err
+		}
+	}
+
 	anchors := collectAnchors(q.Where)
 	if len(anchors) == 0 {
 		// We could fall back to a full scan via Lookup("") + Get; for
@@ -243,7 +257,7 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 			return nil, fmt.Errorf("talondb adapter: fetch %q: %w", docID, err)
 		}
 		bindings := map[string]any{"?e": parseRecordIDOrString(docID)}
-		if !matchAll(q.Where, doc, bindings) {
+		if !matchAllWithRules(q.Where, doc, bindings, resolver) {
 			continue
 		}
 		row := make([]any, len(q.Find))
