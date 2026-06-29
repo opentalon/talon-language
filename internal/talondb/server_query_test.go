@@ -181,16 +181,29 @@ func TestServerQueryFullText(t *testing.T) {
 	}
 }
 
-func TestServerQueryRejectsAggregates(t *testing.T) {
+func TestServerQueryRejectsRules(t *testing.T) {
+	t.Parallel()
+	c, cleanup := dialServerQuery(t)
+	defer cleanup()
+	_, err := c.Query(context.Background(), adapterpkg.QueryInput{
+		Find:  []string{"?e"},
+		Rules: []factstore.Rule{{Name: "category-in-tree"}},
+	})
+	if err == nil {
+		t.Fatal("expected ErrUnsupported for Rules (server-side composer)")
+	}
+}
+
+func TestServerQueryRejectsUnknownAggregateFn(t *testing.T) {
 	t.Parallel()
 	c, cleanup := dialServerQuery(t)
 	defer cleanup()
 	_, err := c.Query(context.Background(), adapterpkg.QueryInput{
 		Find:       []string{"?e"},
-		Aggregates: []factstore.Aggregate{{Fn: "count"}},
+		Aggregates: []factstore.Aggregate{{Fn: "stddev"}}, // not implemented
 	})
 	if err == nil {
-		t.Fatal("expected ErrUnsupported for Aggregates")
+		t.Fatal("expected error for unknown aggregate function")
 	}
 }
 
