@@ -81,6 +81,63 @@ func (f *fakeService) Lookup(ctx context.Context, req *pb.LookupRequest, _ ...gr
 	return &pb.DocIDList{}, nil
 }
 
+// LookupNumericRange scans the stored docs for matches on the given
+// (entity, attr). Mirrors what bboltstore's numeric index would
+// return so adapter pushdown unit tests don't need a real server.
+func (f *fakeService) LookupNumericRange(ctx context.Context, req *pb.NumericRangeRequest, _ ...grpc.CallOption) (*pb.DocIDList, error) {
+	docs := f.docs[req.GetEntityId()]
+	var out []string
+	for docID, raw := range docs {
+		var m map[string]any
+		if err := jsonUnmarshalForTest(raw, &m); err != nil {
+			continue
+		}
+		v, ok := m[req.GetAttr()]
+		if !ok {
+			continue
+		}
+		f64, ok := toFloat64ForTest(v)
+		if !ok {
+			continue
+		}
+		if req.GetMinExclusive() {
+			if f64 <= req.GetMin() {
+				continue
+			}
+		} else if f64 < req.GetMin() {
+			continue
+		}
+		if req.GetMaxExclusive() {
+			if f64 >= req.GetMax() {
+				continue
+			}
+		} else if f64 > req.GetMax() {
+			continue
+		}
+		out = append(out, docID)
+	}
+	sort.Strings(out)
+	return &pb.DocIDList{DocIds: out}, nil
+}
+
+func jsonUnmarshalForTest(raw []byte, out *map[string]any) error {
+	return json.Unmarshal(raw, out)
+}
+
+func toFloat64ForTest(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case float32:
+		return float64(x), true
+	case int:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	}
+	return 0, false
+}
+
 func (f *fakeService) termsForEntity(entity string) map[string][]string {
 	if e, ok := f.terms[entity]; ok {
 		return e

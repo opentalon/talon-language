@@ -262,9 +262,31 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 		return nil, fmt.Errorf("talondb adapter: query has no anchor pattern (literal attr + literal value)")
 	}
 
+	// Detect numeric predicate pushdowns. Each (attr, range) pair
+	// becomes a LookupNumericRange anchor that narrows the candidate
+	// set further before any Get RPCs. The Predicate clauses stay in
+	// q.Where as a defence-in-depth check at the per-doc eval step;
+	// in steady state that check is a no-op since the range already
+	// excluded violators.
+	rangeAnchors, satisfiable := detectNumericPushdowns(q.Where)
+	if !satisfiable {
+		// Unsatisfiable bounds (e.g. ?v > 100 AND ?v < 50) → no
+		// candidates can match; short-circuit before any RPC.
+		if len(q.Aggregates) > 0 {
+			return runAggregates(nil, q.GroupBy, q.Aggregates), nil
+		}
+		return nil, nil
+	}
+
 	candidates, err := a.gatherCandidates(ctx, tenant, anchors)
 	if err != nil {
 		return nil, err
+	}
+	if len(candidates) > 0 && len(rangeAnchors) > 0 {
+		candidates, err = a.narrowByRanges(ctx, tenant, candidates, rangeAnchors)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(candidates) == 0 {
 		if len(q.Aggregates) > 0 {
@@ -355,6 +377,35 @@ func (a *Adapter) gatherCandidates(ctx context.Context, tenant string, anchors [
 		} else {
 			candidates = intersectSorted(candidates, got)
 		}
+		if len(candidates) == 0 {
+			return nil, nil
+		}
+	}
+	return candidates, nil
+}
+
+// narrowByRanges issues one LookupNumericRange RPC per (attr, range)
+// pushdown and intersects the result with the existing candidate set.
+// Implements the pushdown side of opentalon/talon-db#16: predicates
+// of the form `?var OP literal` over a var bound by a literal-attr
+// Pattern become server-side range scans instead of per-candidate Get
+// + Go-side evaluation.
+func (a *Adapter) narrowByRanges(ctx context.Context, tenant string, candidates []string, ranges map[string]numericRangeBound) ([]string, error) {
+	for attr, b := range ranges {
+		resp, err := a.client.svc.LookupNumericRange(ctx, &pb.NumericRangeRequest{
+			EntityId:     tenant,
+			Attr:         attr,
+			Min:          b.lo,
+			Max:          b.hi,
+			MinExclusive: b.loExclusive,
+			MaxExclusive: b.hiExclusive,
+		})
+		if err != nil {
+			return nil, wrapStatusErrorf(err, "talondb adapter: LookupNumericRange %q", attr)
+		}
+		got := resp.GetDocIds()
+		sort.Strings(got)
+		candidates = intersectSorted(candidates, got)
 		if len(candidates) == 0 {
 			return nil, nil
 		}
