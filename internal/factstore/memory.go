@@ -34,15 +34,26 @@ func NewMemoryStore() *MemoryStore {
 // overwrite earlier ones for the same attribute, matching the test-
 // fixture semantics. Empty attribute names are skipped — they signal an
 // entity declaration with no payload.
+//
+// For every (RecordID, Attribute) cell touched:
+//
+//   - if the attribute was absent, fire EventAssert with the new fact
+//   - if the attribute existed with a different value, fire EventChange
+//     with Prev set to the prior fact
+//   - if the value is unchanged, fire nothing — Assert is idempotent
+//
+// Events are dispatched after the mutation is visible and outside the
+// store mutex so subscribers can re-enter the store without deadlock.
 func (m *MemoryStore) Assert(ctx context.Context, facts []Fact) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	var emitted []Event
 	for _, f := range facts {
 		if f.RecordID == "" {
 			continue
 		}
 		id, err := parseRecordID(f.RecordID)
 		if err != nil {
+			m.mu.Unlock()
 			return fmt.Errorf("memorystore: assert: %w", err)
 		}
 		ent := m.entities[id]
@@ -50,9 +61,33 @@ func (m *MemoryStore) Assert(ctx context.Context, facts []Fact) error {
 			ent = map[string]any{}
 			m.entities[id] = ent
 		}
-		if f.Attribute != "" {
-			ent[f.Attribute] = f.Value
+		if f.Attribute == "" {
+			continue
 		}
+		if prev, had := ent[f.Attribute]; had {
+			if equalValues(prev, f.Value) {
+				continue // idempotent — no event
+			}
+			emitted = append(emitted, Event{
+				Kind: EventChange,
+				Fact: f,
+				Prev: Fact{RecordID: f.RecordID, Attribute: f.Attribute, Value: prev},
+			})
+		} else {
+			emitted = append(emitted, Event{
+				Kind: EventAssert,
+				Fact: f,
+			})
+		}
+		ent[f.Attribute] = f.Value
+	}
+	m.mu.Unlock()
+
+	// Fan-out events outside the lock so subscribers can re-enter the
+	// store from their handler without deadlock — mirrors the Retract
+	// emission pattern below.
+	for _, ev := range emitted {
+		m.events.Emit(ctx, ev)
 	}
 	return nil
 }
@@ -169,9 +204,8 @@ func (m *MemoryStore) Retract(ctx context.Context, pattern RetractPattern) error
 }
 
 // Events returns the store's event emitter so reactive dispatchers and
-// other consumers can subscribe. The emitter is also notified on
-// Assert (today only Retract emits, but Assert events are a planned
-// follow-up — exposing the emitter keeps the subscription API stable).
+// other consumers can subscribe. The emitter fires on Assert (new fact
+// or value change) and Retract; see EventKind for the variants.
 func (m *MemoryStore) Events() *EventEmitter {
 	return &m.events
 }
