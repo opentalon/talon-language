@@ -215,10 +215,28 @@ func (a *Adapter) Retract(ctx context.Context, p factstore.RetractPattern) error
 // Query implements the hybrid index+eval strategy described in the
 // package doc-comment. When q.Aggregates is non-empty, matched
 // bindings are grouped by q.GroupBy and the aggregates are computed
-// Go-side; otherwise rows are projected to q.Find.
+// Go-side. When q.Pull is non-empty, each row carries one projected
+// entity map per PullSpec. Otherwise rows are projected to q.Find.
+// Aggregates and Pull are mutually exclusive — Datalog convention.
 func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
+	if len(q.Pull) > 0 && len(q.Aggregates) > 0 {
+		return nil, fmt.Errorf("talondb adapter: Pull and Aggregates are mutually exclusive")
+	}
+
+	// Pre-parse pull patterns so errors surface before any RPC.
+	var pulls []*pullPattern
 	if len(q.Pull) > 0 {
-		return nil, errors.ErrUnsupported
+		pulls = make([]*pullPattern, len(q.Pull))
+		for i, ps := range q.Pull {
+			if ps.EntityVar != "?e" && ps.EntityVar != "" {
+				return nil, fmt.Errorf("talondb adapter: Pull EntityVar=%q unsupported; only ?e (the candidate entity) is bound to a fetched doc", ps.EntityVar)
+			}
+			parsed, err := parsePullPattern(ps.Pattern)
+			if err != nil {
+				return nil, err
+			}
+			pulls[i] = parsed
+		}
 	}
 
 	tenant := a.client.Tenant()
@@ -258,7 +276,11 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 		return nil, nil
 	}
 
+	// matches[i] is the bindings map; matchedDocs[i] is the
+	// corresponding candidate doc when q.Pull is non-empty — we keep
+	// the doc around so the projection step doesn't re-fetch.
 	var matches []map[string]any
+	var matchedDocs []map[string]any
 	for _, docID := range candidates {
 		doc, err := a.fetchDoc(ctx, tenant, docID)
 		if err != nil {
@@ -269,10 +291,25 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 			continue
 		}
 		matches = append(matches, bindings)
+		if len(pulls) > 0 {
+			matchedDocs = append(matchedDocs, doc)
+		}
 	}
 
 	if len(q.Aggregates) > 0 {
 		return runAggregates(matches, q.GroupBy, q.Aggregates), nil
+	}
+
+	if len(pulls) > 0 {
+		rows := make([][]any, 0, len(matchedDocs))
+		for _, doc := range matchedDocs {
+			row := make([]any, len(pulls))
+			for i, p := range pulls {
+				row[i] = p.project(doc)
+			}
+			rows = append(rows, row)
+		}
+		return rows, nil
 	}
 
 	rows := make([][]any, 0, len(matches))
