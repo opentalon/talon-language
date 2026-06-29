@@ -120,6 +120,40 @@ func (c *Client) ClusterQuery(ctx context.Context, itemID string, types []string
 	return out, nil
 }
 
+// SequenceJoin asks the server to scan temporal indexes and return the
+// items whose event log contains `steps` in order, with total span at
+// most `window`. Empty `itemIDs` scans every item under the client's
+// tenant. `window=0` means no upper bound on span. Mirrors
+// talondb.IndexedStore.SequenceJoin via the gRPC wire.
+func (c *Client) SequenceJoin(ctx context.Context, itemIDs, steps []string, window time.Duration) ([]talondb.SequenceMatch, error) {
+	resp, err := c.svc.SequenceJoin(ctx, &pb.SequenceJoinRequest{
+		EntityId:    c.Tenant(),
+		ItemIds:     itemIDs,
+		Steps:       steps,
+		WindowNanos: window.Nanoseconds(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	matches := resp.GetMatches()
+	out := make([]talondb.SequenceMatch, 0, len(matches))
+	for _, m := range matches {
+		events := make([]talondb.TemporalEvent, 0, len(m.GetEvents()))
+		for _, e := range m.GetEvents() {
+			events = append(events, talondb.TemporalEvent{
+				DocID: e.GetDocId(),
+				Type:  e.GetType(),
+				At:    time.Unix(0, e.GetAtUnixNanos()),
+			})
+		}
+		out = append(out, talondb.SequenceMatch{
+			ItemID: m.GetItemId(),
+			Events: events,
+		})
+	}
+	return out, nil
+}
+
 // Health pings the server. Returns an error if the RPC fails or the
 // server reports a non-ok status.
 func (c *Client) Health(ctx context.Context) error {
