@@ -99,7 +99,7 @@ func (c *Client) ClusterQuery(ctx context.Context, itemID string, types []string
 		MinSize:     int32(minSize),
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapStatusError(err)
 	}
 	clusters := resp.GetClusters()
 	out := make([]talondb.TemporalCluster, 0, len(clusters))
@@ -134,7 +134,7 @@ func (c *Client) SequenceJoin(ctx context.Context, itemIDs, steps []string, wind
 		WindowNanos: window.Nanoseconds(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapStatusError(err)
 	}
 	matches := resp.GetMatches()
 	out := make([]talondb.SequenceMatch, 0, len(matches))
@@ -184,7 +184,7 @@ func (c *Client) Query(ctx context.Context, q QueryInput) ([][]any, error) {
 		GroupBy:    q.GroupBy,
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapStatusError(err)
 	}
 	rows := resp.GetRows()
 	out := make([][]any, 0, len(rows))
@@ -203,7 +203,7 @@ func (c *Client) Query(ctx context.Context, q QueryInput) ([][]any, error) {
 func (c *Client) Health(ctx context.Context) error {
 	resp, err := c.svc.Health(ctx, &emptypb.Empty{})
 	if err != nil {
-		return err
+		return mapStatusError(err)
 	}
 	if resp.GetStatus() != "ok" {
 		return fmt.Errorf("talondb: unhealthy: %s", resp.GetStatus())

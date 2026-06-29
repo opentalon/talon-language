@@ -146,7 +146,7 @@ func (r *ruleResolution) descendantNames(ctx context.Context, root any) (map[any
 
 	rootDocID, err := r.findCategoryDocID(ctx, root)
 	if err != nil {
-		return nil, fmt.Errorf("talondb adapter: rule resolve: locate root category: %w", err)
+		return nil, wrapStatusErrorf(err, "talondb adapter: rule resolve: locate root category")
 	}
 	if rootDocID == "" {
 		// Root category not present in the store — only the literal
@@ -158,12 +158,12 @@ func (r *ruleResolution) descendantNames(ctx context.Context, root any) (map[any
 		RootId:   rootDocID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("talondb adapter: rule resolve: Descendants: %w", err)
+		return nil, wrapStatusErrorf(err, "talondb adapter: rule resolve: Descendants")
 	}
 	for _, descDocID := range resp.GetDocIds() {
 		name, err := r.findCategoryName(ctx, descDocID)
 		if err != nil {
-			return nil, fmt.Errorf("talondb adapter: rule resolve: resolve descendant %q: %w", descDocID, err)
+			return nil, wrapStatusErrorf(err, "talondb adapter: rule resolve: resolve descendant %q", descDocID)
 		}
 		if name != "" {
 			out[name] = true
@@ -181,7 +181,7 @@ func (r *ruleResolution) findCategoryDocID(ctx context.Context, name any) (strin
 		Term:     term,
 	})
 	if err != nil {
-		return "", err
+		return "", mapStatusError(err)
 	}
 	ids := resp.GetDocIds()
 	if len(ids) == 0 {
@@ -214,7 +214,7 @@ func (r *ruleResolution) adapterFetchDoc(ctx context.Context, docID string) (map
 		DocId:    docID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapStatusError(err)
 	}
 	if !resp.GetFound() {
 		return map[string]any{}, nil

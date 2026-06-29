@@ -101,7 +101,7 @@ func (a *Adapter) Assert(ctx context.Context, facts []factstore.Fact) error {
 	for recordID, attrs := range byRecord {
 		existing, err := a.fetchDoc(ctx, tenant, recordID)
 		if err != nil {
-			return fmt.Errorf("talondb adapter: Assert read %q: %w", recordID, err)
+			return wrapStatusErrorf(err, "talondb adapter: Assert read %q", recordID)
 		}
 		for k, v := range attrs {
 			existing[k] = v
@@ -118,7 +118,7 @@ func (a *Adapter) Assert(ctx context.Context, facts []factstore.Fact) error {
 			DocId:    recordID,
 			Doc:      raw,
 		}); err != nil {
-			return fmt.Errorf("talondb adapter: Assert Put %q: %w", recordID, err)
+			return wrapStatusErrorf(err, "talondb adapter: Assert Put %q", recordID)
 		}
 	}
 	return nil
@@ -180,7 +180,7 @@ func stripNamespace(k string) string {
 func (a *Adapter) fetchDoc(ctx context.Context, tenant, recordID string) (map[string]any, error) {
 	resp, err := a.client.svc.Get(ctx, &pb.GetRequest{EntityId: tenant, DocId: recordID})
 	if err != nil {
-		return nil, err
+		return nil, mapStatusError(err)
 	}
 	if !resp.GetFound() {
 		return map[string]any{}, nil
@@ -207,7 +207,7 @@ func (a *Adapter) Retract(ctx context.Context, p factstore.RetractPattern) error
 		EntityId: a.client.Tenant(),
 		DocId:    p.RecordID,
 	})
-	return err
+	return mapStatusError(err)
 }
 
 // ---------- Query ----------
@@ -262,7 +262,7 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 	for _, docID := range candidates {
 		doc, err := a.fetchDoc(ctx, tenant, docID)
 		if err != nil {
-			return nil, fmt.Errorf("talondb adapter: fetch %q: %w", docID, err)
+			return nil, wrapStatusErrorf(err, "talondb adapter: fetch %q", docID)
 		}
 		bindings := map[string]any{"?e": parseRecordIDOrString(docID)}
 		if !matchAllWithRules(q.Where, doc, bindings, resolver) {
@@ -309,7 +309,7 @@ func (a *Adapter) gatherCandidates(ctx context.Context, tenant string, anchors [
 			Term:     term,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("talondb adapter: Lookup %q: %w", term, err)
+			return nil, wrapStatusErrorf(err, "talondb adapter: Lookup %q", term)
 		}
 		got := resp.GetDocIds()
 		sort.Strings(got)
