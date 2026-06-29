@@ -31,6 +31,14 @@ func newClientWithService(svc pb.TalonDBServiceClient) *Client {
 	return &Client{svc: svc}
 }
 
+// NewClientFromService builds a Client around an existing gRPC service
+// stub. Useful for end-to-end tests that wire their own gRPC server
+// behind a bufconn listener instead of dialing a real socket. Owns
+// nothing — the caller is responsible for the underlying connection.
+func NewClientFromService(svc pb.TalonDBServiceClient) *Client {
+	return newClientWithService(svc)
+}
+
 // NewClient dials a talondb-server. target is either
 // "unix:///path/to/talondb.sock" or "host:port" for TCP. The
 // caller must Close the client when done.
