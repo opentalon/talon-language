@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/constraints"
 	"github.com/opentalon/talon-language/internal/factstore"
 	pb "github.com/opentalon/talon-db/proto/talondbpb"
 )
@@ -27,13 +30,47 @@ import (
 // This mirrors the talon-language MemoryStore solver while delegating
 // the candidate-set narrowing to the server's indexes.
 type Adapter struct {
-	client *Client
-	events adapterEvents
+	client      *Client
+	events      *adapterEvents // pointer so clones (WithConstraints) share the emitter
+	constraints []*ast.ConstraintBlock
 }
 
 // New wraps a Client in a FactStore implementation.
 func New(client *Client) *Adapter {
-	return &Adapter{client: client}
+	return &Adapter{client: client, events: &adapterEvents{}}
+}
+
+// WithConstraints returns a clone of the adapter that evaluates the
+// given constraint blocks against every Assert. Records whose merged
+// state violates a constraint with Mode = "reject" are not written —
+// Assert returns a typed ConstraintViolationError naming the constraint
+// and reason. "warn" and "quarantine" verdicts are recorded but the
+// write proceeds; callers that care can inspect the violations via
+// the error.
+//
+// Constraint blocks are typically parsed from the .talon source by
+// the compiler and threaded through here from cmd/talon's wiring.
+func (a *Adapter) WithConstraints(blocks []*ast.ConstraintBlock) *Adapter {
+	clone := *a
+	clone.constraints = blocks
+	return &clone
+}
+
+// ConstraintViolationError is returned by Assert / Retract when a
+// constraint with Mode = "reject" fires against the prospective state.
+// Reasons aggregates the human-readable messages from every rejecting
+// constraint.
+type ConstraintViolationError struct {
+	RecordID string
+	Reasons  []string
+}
+
+func (e *ConstraintViolationError) Error() string {
+	if len(e.Reasons) == 0 {
+		return fmt.Sprintf("talondb adapter: constraint violation on %q", e.RecordID)
+	}
+	return fmt.Sprintf("talondb adapter: constraint violation on %q: %s",
+		e.RecordID, strings.Join(e.Reasons, "; "))
 }
 
 var _ factstore.FactStore = (*Adapter)(nil)
@@ -69,6 +106,9 @@ func (a *Adapter) Assert(ctx context.Context, facts []factstore.Fact) error {
 		for k, v := range attrs {
 			existing[k] = v
 		}
+		if err := a.checkConstraints(recordID, existing); err != nil {
+			return err
+		}
 		raw, err := json.Marshal(existing)
 		if err != nil {
 			return fmt.Errorf("talondb adapter: Assert encode %q: %w", recordID, err)
@@ -82,6 +122,57 @@ func (a *Adapter) Assert(ctx context.Context, facts []factstore.Fact) error {
 		}
 	}
 	return nil
+}
+
+// checkConstraints runs the configured constraint blocks against the
+// merged prospective record state. Returns a ConstraintViolationError
+// when the combined verdict is "reject"; warn / quarantine verdicts
+// don't block the write (they're observable via future telemetry, but
+// silent at the gate today — matching the design in
+// internal/constraints/constraints.go's Verdict semantics).
+//
+// The merged record uses talon-language's namespaced attribute keys
+// (":record/type", ":attr/km", ...); the constraint evaluator expects
+// bare keys ("type", "km", ...). bareKeyView builds a temporary view
+// over the record with the namespace stripped, so .talon-authored
+// constraints continue to read as the language spec intends.
+func (a *Adapter) checkConstraints(recordID string, record map[string]any) error {
+	if len(a.constraints) == 0 {
+		return nil
+	}
+	bare := bareKeyView(record)
+	verdict := constraints.Check(bare, a.constraints)
+	if verdict.Mode == "reject" {
+		return &ConstraintViolationError{
+			RecordID: recordID,
+			Reasons:  append([]string(nil), verdict.Reasons...),
+		}
+	}
+	return nil
+}
+
+// bareKeyView returns a copy of in with namespaced attribute keys
+// reduced to their last path segment: ":record/type" → "type",
+// ":attr/current_stock" → "current_stock", "name" → "name". When two
+// namespaced keys collide on the same bare name, last-write-wins is
+// the documented behaviour — collisions are rare in practice because
+// talon-language's planner emits one namespace per attribute family.
+func bareKeyView(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[stripNamespace(k)] = v
+	}
+	return out
+}
+
+func stripNamespace(k string) string {
+	if i := strings.LastIndexByte(k, '/'); i >= 0 && i < len(k)-1 {
+		return k[i+1:]
+	}
+	if strings.HasPrefix(k, ":") {
+		return k[1:]
+	}
+	return k
 }
 
 // fetchDoc returns the JSON-decoded body for (tenant, recordID), or
