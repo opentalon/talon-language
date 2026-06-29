@@ -252,14 +252,19 @@ func TestAdapterQueryWithPredicate(t *testing.T) {
 	}
 }
 
-func TestAdapterUnsupportedPullSpec(t *testing.T) {
+// PullSpec is now supported — see pull_test.go for the positive
+// end-to-end cases. We keep this small check that Pull + Aggregates
+// is rejected, since the two are mutually exclusive per Datalog
+// convention.
+func TestAdapterRejectsPullPlusAggregates(t *testing.T) {
 	t.Parallel()
 	a, _ := newTestAdapter()
 	_, err := a.Query(context.Background(), factstore.Query{
-		Find: []string{"?e"},
-		Pull: []factstore.PullSpec{{EntityVar: "?e", Pattern: "[:*]"}},
+		Find:       []string{"?e"},
+		Pull:       []factstore.PullSpec{{EntityVar: "?e", Pattern: "[:*]"}},
+		Aggregates: []factstore.Aggregate{{Fn: "count", Over: factstore.Var("e")}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("PullSpec should return unsupported, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("Pull+Aggregates should be rejected, got %v", err)
 	}
 }
