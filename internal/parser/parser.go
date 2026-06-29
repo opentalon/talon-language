@@ -1566,6 +1566,8 @@ func (p *parser) parseAtomCondition() ast.Condition {
 		return p.parseHasCondition()
 	case lexer.TokenEvent:
 		return p.parseEventSequenceCondition()
+	case lexer.TokenRecord:
+		return p.parseRecordSequenceCondition()
 	case lexer.TokenIs:
 		// standalone "is STRING" — no subject
 		p.advance()
@@ -1625,6 +1627,47 @@ func (p *parser) parseEventSequenceCondition() ast.Condition {
 		steps = append(steps, p.expectString())
 	}
 	cond := &ast.EventSequenceCondition{Steps: steps}
+	if p.at(lexer.TokenWithin) {
+		p.advance()
+		n, _ := strconv.Atoi(p.expectNumberStr())
+		unit := p.expectDurationUnit()
+		cond.Window = ast.Duration{Value: n, Unit: unit}
+	}
+	return cond
+}
+
+// parseRecordSequenceCondition reads:
+//
+//	record type "A" followed_by record type "B"
+//	  [followed_by record type "C" ...]
+//	  [on same IDENT]    // grouping attribute (default "item")
+//	  [within N <unit>]
+//
+// Each `record type "X"` is one ordered step. The grouping key names
+// a per-record attribute (`:record/item` for `on same item`) that
+// must match across all steps. `within` bounds the first→last span.
+func (p *parser) parseRecordSequenceCondition() ast.Condition {
+	p.advance() // record
+	p.expect(lexer.TokenTypeKw)
+	first := p.expectString()
+	steps := []string{first}
+	for p.at(lexer.TokenFollowedBy) {
+		p.advance() // followed_by
+		p.expect(lexer.TokenRecord)
+		p.expect(lexer.TokenTypeKw)
+		steps = append(steps, p.expectString())
+	}
+	cond := &ast.RecordSequenceCondition{Steps: steps, On: "item"}
+	if p.at(lexer.TokenOn) {
+		p.advance() // on
+		p.expect(lexer.TokenSame)
+		// Grouping key — any ident (item, person, vehicle, ...).
+		if p.at(lexer.TokenIdent) {
+			cond.On = p.advance().Value
+		} else {
+			p.errorf("expected identifier after 'on same', got %q", p.peek().Value)
+		}
+	}
 	if p.at(lexer.TokenWithin) {
 		p.advance()
 		n, _ := strconv.Atoi(p.expectNumberStr())

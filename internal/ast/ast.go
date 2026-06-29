@@ -341,6 +341,26 @@ type EventSequenceCondition struct {
 	Window Duration // upper bound on total elapsed time across the sequence
 }
 
+// RecordSequenceCondition is the detect-block `when` form for ordered
+// record-of-type sequences across a grouping key. Syntax:
+//
+//	record type "electrical_fault"
+//	  followed_by record type "engine_failure"
+//	  [followed_by record type "C" ...]
+//	  [on same IDENT]   // grouping attribute; defaults to "item"
+//	  [within N <unit>] // upper bound on first→last span; 0 = unbounded
+//
+// Compiles to a RecordSequenceStep that runs per-candidate against the
+// FactStore: for each candidate's grouping value (typically an item
+// id), pull records of each step's type whose `:record/<On>` points at
+// the candidate, walk them by `:record/at`, and look for an ordered
+// match within Window.
+type RecordSequenceCondition struct {
+	Steps  []string // record types, in required order (length ≥ 2)
+	On     string   // grouping attribute key (default "item")
+	Window Duration // 0 = unbounded
+}
+
 type ViolationClause struct {
 	Mode    string // "reject" | "warn" | "quarantine"
 	Message string // optional; empty if not provided
@@ -546,7 +566,8 @@ func (*AnomalyCondition) condNode()      {}
 func (*TemporalCondition) condNode()     {}
 func (*ChangedToCondition) condNode()    {}
 func (*BlockMatchesCondition) condNode() {}
-func (*EventSequenceCondition) condNode() {}
+func (*EventSequenceCondition) condNode()  {}
+func (*RecordSequenceCondition) condNode() {}
 
 // ─── Supporting types ─────────────────────────────────────────────────────────
 

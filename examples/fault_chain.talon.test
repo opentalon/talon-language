@@ -1,0 +1,45 @@
+// Test suite for fault_chain.talon.
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/fault_chain.talon examples/fault_chain.talon.test
+
+test "Electrical fault followed by engine failure within 30 days flags vehicle" {
+  given {
+    record 1 type "vehicle"
+    attr 1 "name" "Truck A"
+
+    // Fault then failure, 5 days apart — inside the 30-day window.
+    record 100 type "electrical_fault" item 1 at 1000
+    record 101 type "engine_failure" item 1 at 432000
+
+    record 2 type "vehicle"
+    attr 2 "name" "Van B"
+
+    // Reverse order — failure first, then fault — should NOT match.
+    record 200 type "engine_failure" item 2 at 1000
+    record 201 type "electrical_fault" item 2 at 2000
+
+    record 3 type "vehicle"
+    attr 3 "name" "Car C"
+
+    // Correct order but 31 days apart — outside the window.
+    record 300 type "electrical_fault" item 3 at 1000
+    record 301 type "engine_failure" item 3 at 2679400
+
+    record 4 type "vehicle"
+    attr 4 "name" "Truck D"
+
+    // Fault only, no failure — should NOT match.
+    record 400 type "electrical_fault" item 4 at 1000
+  }
+
+  when detect "Engine failure chain"
+
+  expect {
+    flagged 1
+    not flagged 2
+    not flagged 3
+    not flagged 4
+  }
+}
