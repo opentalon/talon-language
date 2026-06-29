@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	talondb "github.com/opentalon/talon-db"
 	pb "github.com/opentalon/talon-db/proto/talondbpb"
 
 	"google.golang.org/grpc"
@@ -80,6 +81,43 @@ func (c *Client) Tenant() string {
 		return "default"
 	}
 	return c.tenant
+}
+
+// ClusterQuery asks the server to walk its temporal index for
+// (entityID, itemID) and return non-overlapping clusters of events
+// whose total span is at most `window` and whose size is at least
+// `minSize`. `window=0` means "no upper bound". `types` filters by
+// event type; empty means accept all. Mirrors
+// talondb.IndexedStore.ClusterQuery via the gRPC wire.
+func (c *Client) ClusterQuery(ctx context.Context, itemID string, types []string, window time.Duration, minSize int) ([]talondb.TemporalCluster, error) {
+	resp, err := c.svc.ClusterQuery(ctx, &pb.ClusterQueryRequest{
+		EntityId:    c.Tenant(),
+		ItemId:      itemID,
+		Types:       types,
+		WindowNanos: window.Nanoseconds(),
+		MinSize:     int32(minSize),
+	})
+	if err != nil {
+		return nil, err
+	}
+	clusters := resp.GetClusters()
+	out := make([]talondb.TemporalCluster, 0, len(clusters))
+	for _, c := range clusters {
+		events := make([]talondb.TemporalEvent, 0, len(c.GetEvents()))
+		for _, e := range c.GetEvents() {
+			events = append(events, talondb.TemporalEvent{
+				DocID: e.GetDocId(),
+				Type:  e.GetType(),
+				At:    time.Unix(0, e.GetAtUnixNanos()),
+			})
+		}
+		out = append(out, talondb.TemporalCluster{
+			First:  time.Unix(0, c.GetFirstUnixNanos()),
+			Last:   time.Unix(0, c.GetLastUnixNanos()),
+			Events: events,
+		})
+	}
+	return out, nil
 }
 
 // Health pings the server. Returns an error if the RPC fails or the
