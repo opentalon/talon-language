@@ -213,9 +213,11 @@ func (a *Adapter) Retract(ctx context.Context, p factstore.RetractPattern) error
 // ---------- Query ----------
 
 // Query implements the hybrid index+eval strategy described in the
-// package doc-comment.
+// package doc-comment. When q.Aggregates is non-empty, matched
+// bindings are grouped by q.GroupBy and the aggregates are computed
+// Go-side; otherwise rows are projected to q.Find.
 func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
-	if len(q.Aggregates) > 0 || len(q.Pull) > 0 {
+	if len(q.Pull) > 0 {
 		return nil, errors.ErrUnsupported
 	}
 
@@ -247,10 +249,16 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 		return nil, err
 	}
 	if len(candidates) == 0 {
+		if len(q.Aggregates) > 0 {
+			// An aggregate query with no matches still returns one row
+			// (count=0, sum=0, etc. per Datalog semantics for empty
+			// groups when GroupBy is empty). MemoryStore matches this.
+			return runAggregates(nil, q.GroupBy, q.Aggregates), nil
+		}
 		return nil, nil
 	}
 
-	rows := make([][]any, 0, len(candidates))
+	var matches []map[string]any
 	for _, docID := range candidates {
 		doc, err := a.fetchDoc(ctx, tenant, docID)
 		if err != nil {
@@ -260,6 +268,15 @@ func (a *Adapter) Query(ctx context.Context, q factstore.Query) ([][]any, error)
 		if !matchAllWithRules(q.Where, doc, bindings, resolver) {
 			continue
 		}
+		matches = append(matches, bindings)
+	}
+
+	if len(q.Aggregates) > 0 {
+		return runAggregates(matches, q.GroupBy, q.Aggregates), nil
+	}
+
+	rows := make([][]any, 0, len(matches))
+	for _, bindings := range matches {
 		row := make([]any, len(q.Find))
 		for i, name := range q.Find {
 			row[i] = bindings[name]

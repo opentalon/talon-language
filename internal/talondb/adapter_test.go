@@ -252,14 +252,14 @@ func TestAdapterQueryWithPredicate(t *testing.T) {
 	}
 }
 
-func TestAdapterUnsupportedAggregates(t *testing.T) {
+func TestAdapterUnsupportedPullSpec(t *testing.T) {
 	t.Parallel()
 	a, _ := newTestAdapter()
 	_, err := a.Query(context.Background(), factstore.Query{
-		Find:       []string{"?e"},
-		Aggregates: []factstore.Aggregate{{Fn: "count"}},
+		Find: []string{"?e"},
+		Pull: []factstore.PullSpec{{EntityVar: "?e", Pattern: "[:*]"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("Aggregates should return unsupported, got %v", err)
+		t.Fatalf("PullSpec should return unsupported, got %v", err)
 	}
 }
