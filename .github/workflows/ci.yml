@@ -125,6 +125,42 @@ jobs:
           echo "$output"
           echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
           echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }
+      - name: Seed tenant-a (--tenant flag)
+        run: |
+          output=$(./talon run examples/fleet_maintenance.talon \
+                     --seed test/fleet_maintenance.talon.test \
+                     --store talon-db \
+                     --talondb unix:///tmp/talondb.sock \
+                     --tenant a)
+          echo "$output"
+          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: tenant-a should detect overdues"; exit 1; }
+      - name: Tenant-b must NOT see tenant-a's data (isolation)
+        run: |
+          # tenant-b has no seed. The program will error on the ML
+          # anomaly block once it reaches it (zero samples in the
+          # tenant), which is itself a positive signal — the data path
+          # is truly empty. What matters is that "Service overdue" must
+          # not appear with ANY non-zero count between now and the
+          # error; that would mean facts leaked from tenant-a.
+          set +e
+          output=$(./talon run examples/fleet_maintenance.talon \
+                     --store talon-db \
+                     --talondb unix:///tmp/talondb.sock \
+                     --tenant b 2>&1)
+          set -e
+          echo "$output"
+          if echo "$output" | grep -qE "Service overdue.*[1-9]"; then
+            echo "FAIL: tenant-b saw tenant-a's overdues — isolation broken"
+            exit 1
+          fi
+      - name: Tenant-a still sees its data after the tenant-b query
+        run: |
+          output=$(./talon run examples/fleet_maintenance.talon \
+                     --store talon-db \
+                     --talondb unix:///tmp/talondb.sock \
+                     --tenant a)
+          echo "$output"
+          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: tenant-a lost its data"; exit 1; }
       - name: Stop talondb-server
         if: always()
         run: |
