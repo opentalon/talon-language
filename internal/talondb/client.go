@@ -2,6 +2,7 @@ package talondb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -150,6 +151,43 @@ func (c *Client) SequenceJoin(ctx context.Context, itemIDs, steps []string, wind
 			ItemID: m.GetItemId(),
 			Events: events,
 		})
+	}
+	return out, nil
+}
+
+// Query is the server-side equivalent of Adapter.Query: it translates
+// a factstore.Query into a structured-query proto request, sends it
+// to talondb-server, and decodes the rows back to [][]any in the same
+// shape Adapter.Query already returns.
+//
+// Today Adapter.Query composes client-side; this is the wire that
+// lets it delegate composition to the server in a future change.
+// Supports Pattern, Predicate, Or, Not, FullText. Aggregates / Rules /
+// Pull return errors.ErrUnsupported.
+func (c *Client) Query(ctx context.Context, q QueryInput) ([][]any, error) {
+	if len(q.Aggregates) > 0 || len(q.Pull) > 0 || len(q.Rules) > 0 {
+		return nil, errors.ErrUnsupported
+	}
+	clauses, err := encodeQueryClauses(q.Where)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.svc.Query(ctx, &pb.QueryRequest{
+		EntityId: c.Tenant(),
+		Find:     q.Find,
+		Where:    clauses,
+	})
+	if err != nil {
+		return nil, err
+	}
+	rows := resp.GetRows()
+	out := make([][]any, 0, len(rows))
+	for _, row := range rows {
+		decoded := make([]any, 0, len(row.GetValues()))
+		for _, v := range row.GetValues() {
+			decoded = append(decoded, decodeStructValue(v))
+		}
+		out = append(out, decoded)
 	}
 	return out, nil
 }
