@@ -28,6 +28,7 @@ import (
 // the candidate-set narrowing to the server's indexes.
 type Adapter struct {
 	client *Client
+	events adapterEvents
 }
 
 // New wraps a Client in a FactStore implementation.
