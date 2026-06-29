@@ -182,6 +182,10 @@ func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 			if arr, ok := vars[s.Into].([][]any); ok {
 				rows = arr
 			}
+		case *planner.RecordSequenceStep:
+			if arr, ok := vars[s.Into].([][]any); ok {
+				rows = arr
+			}
 		}
 	}
 	if rows == nil {
@@ -264,6 +268,8 @@ func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map
 		return e.execStateMachine(ctx, s, vars)
 	case *planner.EventSequenceStep:
 		return e.execEventSequence(ctx, s, vars)
+	case *planner.RecordSequenceStep:
+		return e.execRecordSequence(ctx, s, vars)
 	default:
 		return StepResult{}, fmt.Errorf("unknown step type: %T", step)
 	}

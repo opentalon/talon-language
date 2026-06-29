@@ -145,7 +145,8 @@ func (*MLComputation) stepType() string     { return "MLComputation" }
 func (*Filter) stepType() string            { return "Filter" }
 func (*GraphSnapshot) stepType() string     { return "GraphSnapshot" }
 func (*StateMachineStep) stepType() string  { return "StateMachineStep" }
-func (*EventSequenceStep) stepType() string { return "EventSequenceStep" }
+func (*EventSequenceStep) stepType() string  { return "EventSequenceStep" }
+func (*RecordSequenceStep) stepType() string { return "RecordSequenceStep" }
 
 // EventSequenceStep filters Input rows to those whose entity has an
 // event history matching the given ordered Steps within the given
@@ -157,6 +158,22 @@ type EventSequenceStep struct {
 	BlockName     string
 	Input         string
 	Steps         []string
+	WindowSeconds float64
+	Into          string
+}
+
+// RecordSequenceStep keeps Input rows whose entity is the grouping
+// target of an ordered, time-bounded set of records. For each candidate
+// row's entity id E, the executor pulls records whose
+// `:record/<On>` attribute equals E and whose `:record/type` is one of
+// Steps; it then walks them by `:record/at` and looks for an in-order
+// match where (last.at - first.at) ≤ WindowSeconds. A WindowSeconds of
+// 0 means "unbounded".
+type RecordSequenceStep struct {
+	BlockName     string
+	Input         string
+	Steps         []string
+	On            string // grouping attribute key on the linking record (e.g. "item")
 	WindowSeconds float64
 	Into          string
 }
@@ -290,6 +307,27 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 			Input:         last,
 			Steps:         append([]string(nil), es.Steps...),
 			WindowSeconds: durationToSeconds(es.Window),
+			Into:          into,
+		})
+		last = into
+	}
+
+	// Record-sequence conditions run after event-sequence narrowing.
+	// Each condition becomes one RecordSequenceStep; output of step N
+	// is input of step N+1, so multiple sequences AND together by
+	// chaining narrowing operations.
+	for i, rs := range qb.recordSeqConds {
+		into := fmt.Sprintf("recordseq_%d", i)
+		on := rs.On
+		if on == "" {
+			on = "item"
+		}
+		plan.Steps = append(plan.Steps, &RecordSequenceStep{
+			BlockName:     b.Name,
+			Input:         last,
+			Steps:         append([]string(nil), rs.Steps...),
+			On:            on,
+			WindowSeconds: durationToSeconds(rs.Window),
 			Into:          into,
 		})
 		last = into
@@ -1093,6 +1131,7 @@ type queryBuilder struct {
 	anomalyConds   []anomalyBinding
 	thresholdConds []thresholdBinding
 	eventSeqConds  []*ast.EventSequenceCondition
+	recordSeqConds []*ast.RecordSequenceCondition
 	usedVars       map[string]int // base name → count (for dedup)
 }
 
@@ -1193,6 +1232,8 @@ func (b *queryBuilder) addCondition(cond ast.Condition) {
 		b.addAnomalyCondition(c)
 	case *ast.EventSequenceCondition:
 		b.eventSeqConds = append(b.eventSeqConds, c)
+	case *ast.RecordSequenceCondition:
+		b.recordSeqConds = append(b.recordSeqConds, c)
 	default:
 		// TemporalCondition, ChangedToCondition, HasCondition — cannot express
 		// in Datalog, defer to Go.

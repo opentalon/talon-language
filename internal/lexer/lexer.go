@@ -144,6 +144,7 @@ const (
 	TokenMatches
 	TokenOlderThan
 	TokenNewerThan
+	TokenFollowedBy
 
 	// Keywords — priority values
 	TokenLow
@@ -292,6 +293,7 @@ var keywords = map[string]TokenType{
 	"matches":           TokenMatches,
 	"older_than":        TokenOlderThan,
 	"newer_than":        TokenNewerThan,
+	"followed_by":       TokenFollowedBy,
 	"LOW":               TokenLow,
 	"MEDIUM":            TokenMedium,
 	"HIGH":              TokenHigh,

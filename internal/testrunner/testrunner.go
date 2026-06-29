@@ -337,6 +337,15 @@ func runOneTuned(
 				Into: s.Into,
 				Rows: kept,
 			})
+		case *planner.RecordSequenceStep:
+			kept := narrowByRecordSequence(s, flagged, entities)
+			flagged = kept
+			vars[s.Into] = kept
+			trace = append(trace, TraceStep{
+				Type: "RecordSequenceStep",
+				Into: s.Into,
+				Rows: kept,
+			})
 		}
 	}
 
