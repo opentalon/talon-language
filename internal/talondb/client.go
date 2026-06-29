@@ -162,20 +162,26 @@ func (c *Client) SequenceJoin(ctx context.Context, itemIDs, steps []string, wind
 //
 // Today Adapter.Query composes client-side; this is the wire that
 // lets it delegate composition to the server in a future change.
-// Supports Pattern, Predicate, Or, Not, FullText. Aggregates / Rules /
-// Pull return errors.ErrUnsupported.
+// Supports Pattern, Predicate, Or, Not, FullText, plus Aggregates +
+// GroupBy. Rules / Pull return errors.ErrUnsupported.
 func (c *Client) Query(ctx context.Context, q QueryInput) ([][]any, error) {
-	if len(q.Aggregates) > 0 || len(q.Pull) > 0 || len(q.Rules) > 0 {
+	if len(q.Pull) > 0 || len(q.Rules) > 0 {
 		return nil, errors.ErrUnsupported
 	}
 	clauses, err := encodeQueryClauses(q.Where)
 	if err != nil {
 		return nil, err
 	}
+	aggs, err := encodeQueryAggregates(q.Aggregates)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := c.svc.Query(ctx, &pb.QueryRequest{
-		EntityId: c.Tenant(),
-		Find:     q.Find,
-		Where:    clauses,
+		EntityId:   c.Tenant(),
+		Find:       q.Find,
+		Where:      clauses,
+		Aggregates: aggs,
+		GroupBy:    q.GroupBy,
 	})
 	if err != nil {
 		return nil, err

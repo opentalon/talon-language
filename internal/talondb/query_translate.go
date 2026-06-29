@@ -11,8 +11,9 @@ import (
 
 // QueryInput is the subset of factstore.Query shape that Client.Query
 // forwards to the server. Mirrors the FactStore fields the server-side
-// composer actually consumes; Aggregates / Rules / Pull are out of
-// scope and trigger errors.ErrUnsupported on the client side.
+// composer actually consumes; Rules / Pull are out of scope and
+// trigger errors.ErrUnsupported on the client side. Aggregates +
+// GroupBy are forwarded.
 type QueryInput struct {
 	Find       []string
 	Where      []factstore.Clause
@@ -88,6 +89,30 @@ func encodeQueryClause(c factstore.Clause) (*pb.Clause, error) {
 		return nil, fmt.Errorf("talondb: RuleCall clause not supported by server-side Query (use Adapter.Query)")
 	}
 	return nil, fmt.Errorf("talondb: unknown clause type %T", c)
+}
+
+// encodeQueryAggregates translates factstore.Aggregate values into
+// the proto's Aggregate shape. Unknown function names are caught here
+// rather than at the server so the round-trip surfaces typed errors
+// before going over the wire.
+func encodeQueryAggregates(in []factstore.Aggregate) ([]*pb.Aggregate, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make([]*pb.Aggregate, 0, len(in))
+	for _, a := range in {
+		switch a.Fn {
+		case "count", "sum", "total", "avg", "min", "max":
+		default:
+			return nil, fmt.Errorf("talondb: unknown aggregate function %q", a.Fn)
+		}
+		out = append(out, &pb.Aggregate{
+			Fn:   a.Fn,
+			Over: encodeTerm(a.Over),
+			As:   a.As,
+		})
+	}
+	return out, nil
 }
 
 func encodeTerm(t factstore.Term) *pb.Term {
