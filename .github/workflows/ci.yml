@@ -16,7 +16,15 @@ jobs:
         with:
           go-version: "1.25"
       - name: Clone talon-db sibling (for local replace directive)
-        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-master}"
+          # Cross-repo PRs: try the matching branch on talon-db first so
+          # stacked changes (proto on talon-db side, adapter on this side)
+          # see each other in CI. Fall back to master when no matching
+          # branch exists.
+          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
+            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+          fi
       - run: go test ./...
 
   js-runtime:
@@ -38,7 +46,11 @@ jobs:
         with:
           go-version: "1.25"
       - name: Clone talon-db sibling (for local replace directive)
-        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-master}"
+          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
+            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+          fi
       - uses: golangci/golangci-lint-action@v7
         with:
           version: latest
@@ -52,7 +64,11 @@ jobs:
         with:
           go-version: "1.25"
       - name: Clone talon-db sibling (for local replace directive)
-        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-master}"
+          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
+            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+          fi
       - run: go build ./cmd/talon
       - run: ./talon build examples/fleet_maintenance.talon
       - run: ./talon test -v --junit junit-talon.xml examples/fleet_maintenance.talon test/fleet_maintenance.talon.test
@@ -71,7 +87,11 @@ jobs:
         with:
           go-version: "1.25"
       - name: Clone talon-db sibling (for local replace directive)
-        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-master}"
+          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
+            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+          fi
       - name: Install Datalevin
         run: |
           curl -sL https://github.com/datalevin/datalevin/releases/download/0.10.7/dtlv-0.10.7-ubuntu-22.04-amd64.zip -o dtlv.zip
@@ -96,7 +116,11 @@ jobs:
         with:
           go-version: "1.25"
       - name: Clone talon-db sibling repo
-        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-master}"
+          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
+            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+          fi
       - name: Build talondb-server
         run: |
           cd ../talon-db
@@ -187,7 +211,11 @@ jobs:
           sudo bash install-clojure.sh || true
           clojure --version
       - name: Clone talon-db sibling (for local replace directive)
-        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-master}"
+          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
+            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
+          fi
       - run: go build ./cmd/talon
       - name: Start datalevin-server
         run: |
