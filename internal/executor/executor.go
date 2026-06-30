@@ -50,6 +50,23 @@ type StepResult struct {
 	Output any
 }
 
+// VectorSearcher is the slice of a vector-aware backend the executor
+// needs to satisfy `find similar ... using vector scope "X"` steps.
+// Wire backends like the talondb adapter implement this; in-memory
+// stores can leave it unset — the executor reports a clear error
+// instead of crashing.
+type VectorSearcher interface {
+	VectorSearch(ctx context.Context, scope string, query []float32, k int) ([]VectorHit, error)
+}
+
+// VectorHit mirrors the adapter-side hit shape. Kept here so the
+// executor's caller doesn't need to import the talondb package just to
+// see the type.
+type VectorHit struct {
+	ID       string
+	Distance float32
+}
+
 // Executor runs compiled QueryPlans against a FactStore backend.
 type Executor struct {
 	Client      FactStore
@@ -62,6 +79,12 @@ type Executor struct {
 	// building a snapshot from in-scope row variables — useful for tests
 	// where the dataset is seeded directly.
 	GraphProvider GraphSnapshotProvider
+
+	// VectorBackend is the talon-db (or compatible) interface used by
+	// `find similar ... using vector` plan steps. When nil and a plan
+	// step needs it, the executor returns ErrNoVectorBackend instead
+	// of falling through to a misleading empty result.
+	VectorBackend VectorSearcher
 
 	// RandSeed optionally fixes the seed for probabilistic features
 	// (recommend `suggest "X" with probability N`). When zero, the
@@ -186,6 +209,10 @@ func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 			if arr, ok := vars[s.Into].([][]any); ok {
 				rows = arr
 			}
+		case *planner.VectorSimilarStep:
+			if arr, ok := vars[s.Into].([][]any); ok {
+				rows = arr
+			}
 		}
 	}
 	if rows == nil {
@@ -270,6 +297,8 @@ func (e *Executor) execStep(ctx context.Context, step planner.PlanStep, vars map
 		return e.execEventSequence(ctx, s, vars)
 	case *planner.RecordSequenceStep:
 		return e.execRecordSequence(ctx, s, vars)
+	case *planner.VectorSimilarStep:
+		return e.execVectorSimilar(ctx, s, vars)
 	default:
 		return StepResult{}, fmt.Errorf("unknown step type: %T", step)
 	}

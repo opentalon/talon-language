@@ -205,6 +205,15 @@ type SimilarBlock struct {
 	Within   *float64
 	Label    *Template
 	Priority *Priority
+
+	// VectorScope selects the talon-db HNSW scope to query when the
+	// block uses `using vector scope "X"`. Empty means "fall back to
+	// the structured-attribute cosine path" (the original similarity
+	// flow). When set, the planner emits a VectorSimilarStep instead
+	// of an MLComputation; the executor calls the FactStore-backed
+	// VectorSearch RPC. TopK caps the result count (default 10).
+	VectorScope string
+	TopK        *int
 }
 
 // RelatedBlock is `find related "name" { ... }` — Personalized PageRank
