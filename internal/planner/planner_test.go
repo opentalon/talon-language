@@ -728,3 +728,25 @@ detect "Defective" {
 		t.Errorf("call target: got %s/%s", calls[0].Server, calls[0].Tool)
 	}
 }
+
+func TestPlanEnrichStep(t *testing.T) {
+	plan := planBlock(t, `
+enrich "R" {
+  for records where type == "stock_item"
+  stale_after 1 hour
+  mcp "inv" "show" { id attr "id" }
+  update attr "current_stock" from result.current_stock
+}`, "R")
+	var found *GoComputation
+	for _, s := range plan.Steps {
+		if gc, ok := s.(*GoComputation); ok && gc.Function == FuncEnrichMCP {
+			found = gc
+		}
+	}
+	if found == nil {
+		t.Fatalf("no enrich_mcp step; steps: %+v", plan.Steps)
+	}
+	if _, ok := found.Params["call"].(*ast.MCPCall); !ok {
+		t.Errorf("enrich step missing call param: %+v", found.Params)
+	}
+}

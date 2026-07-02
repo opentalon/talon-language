@@ -91,6 +91,9 @@ const (
 	TokenLinear
 	TokenTune
 	TokenRemediate
+	TokenEnrich
+	TokenStaleAfter
+	TokenUpdate
 	TokenAgainst
 	TokenRequires
 	TokenApproval
@@ -248,6 +251,9 @@ var keywords = map[string]TokenType{
 	"linear":            TokenLinear,
 	"tune":              TokenTune,
 	"remediate":         TokenRemediate,
+	"enrich":            TokenEnrich,
+	"stale_after":       TokenStaleAfter,
+	"update":            TokenUpdate,
 	"against":           TokenAgainst,
 	"requires":          TokenRequires,
 	"approval":          TokenApproval,

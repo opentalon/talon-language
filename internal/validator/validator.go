@@ -201,6 +201,18 @@ func (v *validator) checkCompleteness() {
 				v.errAt(bb.Pos, fmt.Sprintf("recommend %q requires a 'suggest' clause", bb.Name), "")
 			}
 			v.checkRemediate(bb.Name, bb.Remediate)
+		case *ast.EnrichBlock:
+			if bb.Call == nil {
+				v.errAt(bb.Pos, fmt.Sprintf("enrich %q requires an 'mcp' call", bb.Name), "")
+			} else if bb.Call.Server == "" || bb.Call.Tool == "" {
+				v.errAt(bb.Pos, fmt.Sprintf("enrich %q: mcp call requires a server and tool name", bb.Name), "")
+			}
+			if len(bb.Updates) == 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("enrich %q requires at least one 'update attr ... from result...' clause", bb.Name), "")
+			}
+			if bb.StaleAfter.Value <= 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("enrich %q requires a positive 'stale_after' duration", bb.Name), "")
+			}
 		case *ast.PredictBlock:
 			if len(bb.Features) == 0 {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause", bb.Name), "")
@@ -745,6 +757,8 @@ func blockPos(b ast.Block) ast.Pos {
 	case *ast.OnBlock:
 		return bb.Pos
 	case *ast.ConstraintBlock:
+		return bb.Pos
+	case *ast.EnrichBlock:
 		return bb.Pos
 	}
 	return ast.Pos{}

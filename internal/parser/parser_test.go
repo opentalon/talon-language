@@ -1142,3 +1142,30 @@ detect "Act" {
 		}
 	}
 }
+
+func TestParseEnrich(t *testing.T) {
+	prog := mustParse(t, `
+enrich "Refresh stock" {
+  for records where type == "stock_item"
+  stale_after 1 hour
+  mcp "inventory" "show-item" { id attr "id" }
+  update attr "current_stock" from result.current_stock
+  update attr "stock_assigned" from result.data.assigned
+}`)
+	b := block[*ast.EnrichBlock](t, prog, 0)
+	if b.Call == nil || b.Call.Server != "inventory" || b.Call.Tool != "show-item" {
+		t.Fatalf("mcp call: %+v", b.Call)
+	}
+	if b.StaleAfter.Value != 1 || b.StaleAfter.Unit != "hour" {
+		t.Errorf("stale_after: %+v", b.StaleAfter)
+	}
+	if len(b.Updates) != 2 {
+		t.Fatalf("expected 2 updates, got %+v", b.Updates)
+	}
+	if b.Updates[0].Attr != "current_stock" || b.Updates[0].ResultPath != "current_stock" {
+		t.Errorf("update 0: %+v", b.Updates[0])
+	}
+	if b.Updates[1].ResultPath != "data.assigned" {
+		t.Errorf("update 1 path: %q", b.Updates[1].ResultPath)
+	}
+}

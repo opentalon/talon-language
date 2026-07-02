@@ -99,6 +99,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseOnBlock()
 	case lexer.TokenConstraint:
 		return p.parseConstraintBlock()
+	case lexer.TokenEnrich:
+		return p.parseEnrich()
 	case lexer.TokenStateMachine:
 		return p.parseStateMachineBlock()
 	case lexer.TokenTest:
@@ -672,6 +674,64 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 	}
 	p.expect(lexer.TokenRBrace)
 	return call
+}
+
+// ─── enrich ─────────────────────────────────────────────────────────────────
+
+func (p *parser) parseEnrich() *ast.EnrichBlock {
+	tok := p.advance() // enrich
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.EnrichBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	if p.at(lexer.TokenFor) {
+		b.Selector = p.parseSelector()
+	} else {
+		p.errorf("enrich %q: expected 'for records where ...' selector", name)
+	}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch p.peek().Type {
+		case lexer.TokenStaleAfter:
+			p.advance()
+			b.StaleAfter = p.parseDuration()
+		case lexer.TokenMcp:
+			b.Call = p.parseMCPCall()
+		case lexer.TokenUpdate:
+			b.Updates = append(b.Updates, p.parseUpdateClause())
+		default:
+			p.errorf("unexpected token %q inside enrich block (expected stale_after / mcp / update)", p.peek().Value)
+			p.advance()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseUpdateClause parses `update attr "x" from result.field[.sub...]`.
+func (p *parser) parseUpdateClause() ast.UpdateClause {
+	p.advance() // update
+	p.expect(lexer.TokenAttr)
+	attr := p.expectString()
+	p.expect(lexer.TokenFrom)
+	var path string
+	if p.at(lexer.TokenIdent) && p.peek().Value == "result" {
+		p.advance()
+		for p.at(lexer.TokenDot) {
+			p.advance()
+			seg := p.expectIdent()
+			if path == "" {
+				path = seg
+			} else {
+				path += "." + seg
+			}
+		}
+	}
+	if path == "" {
+		p.errorf("update attr %q: expected 'result.<field>' after 'from', got %q", attr, p.peek().Value)
+	}
+	return ast.UpdateClause{Attr: attr, ResultPath: path}
 }
 
 // ─── on (reactive) ────────────────────────────────────────────────────────────

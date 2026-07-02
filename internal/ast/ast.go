@@ -402,6 +402,7 @@ func (*RelatedBlock) blockNode()    {}
 func (*OnBlock) blockNode()         {}
 func (*ConstraintBlock) blockNode()    {}
 func (*StateMachineBlock) blockNode() {}
+func (*EnrichBlock) blockNode()        {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -418,6 +419,30 @@ func (b *RelatedBlock) BlockName() string    { return b.Name }
 func (b *OnBlock) BlockName() string         { return b.Name }
 func (b *ConstraintBlock) BlockName() string    { return b.Name }
 func (b *StateMachineBlock) BlockName() string { return b.Name }
+func (b *EnrichBlock) BlockName() string        { return b.Name }
+
+// EnrichBlock refreshes stale facts from an MCP tool. It selects records
+// via Selector, and for each whose target attributes are older than
+// StaleAfter (per the FactStore's Freshness capability), calls Call once
+// and asserts the mapped response fields back via Updates. Host-driven:
+// it runs when the program runs / an agent ticks it, not on fact reads.
+type EnrichBlock struct {
+	Pos        Pos
+	Name       string
+	Selector   Selector
+	StaleAfter Duration
+	Call       *MCPCall
+	Updates    []UpdateClause
+}
+
+// UpdateClause maps an MCP response field back onto a fact: after Call,
+// `update attr "current_stock" from result.current_stock` asserts the
+// record's :attr/current_stock to response["current_stock"]. ResultPath
+// is the dot path into the response ("current_stock", "data.level", ...).
+type UpdateClause struct {
+	Attr       string
+	ResultPath string
+}
 
 // ─── Expressions ──────────────────────────────────────────────────────────────
 
