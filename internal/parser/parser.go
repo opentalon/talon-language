@@ -709,7 +709,8 @@ func (p *parser) parseOnAction() ast.OnAction {
 	if p.atLoggerStatement() {
 		return p.parseLoggerStatement()
 	}
-	// recommend "Name" or detect "Name" — reference to another block by name.
+	// recommend "Name" / detect "Name" / workflow "Name" — reference to
+	// another block by name.
 	switch p.peek().Type {
 	case lexer.TokenRecommend:
 		p.advance()
@@ -717,8 +718,11 @@ func (p *parser) parseOnAction() ast.OnAction {
 	case lexer.TokenDetect:
 		p.advance()
 		return &ast.BlockRefAction{Kind: "detect", Name: p.expectString()}
+	case lexer.TokenWorkflow:
+		p.advance()
+		return &ast.BlockRefAction{Kind: "workflow", Name: p.expectString()}
 	}
-	p.errorf("unexpected token %q inside on block (expected logger / recommend / detect)", p.peek().Value)
+	p.errorf("unexpected token %q inside on block (expected logger / recommend / detect / workflow)", p.peek().Value)
 	return nil
 }
 

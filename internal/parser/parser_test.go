@@ -858,6 +858,22 @@ on retract item {
 	}
 }
 
+func TestParseOnChangeWorkflowAction(t *testing.T) {
+	prog := mustParse(t, `
+on change attr "current_stock" to 0 {
+  logger.warn "stock-out: {item.name}"
+  workflow "Refill stock"
+}`)
+	b := block[*ast.OnBlock](t, prog, 0)
+	if len(b.Actions) != 2 {
+		t.Fatalf("expected 2 actions, got %d", len(b.Actions))
+	}
+	ref, ok := b.Actions[1].(*ast.BlockRefAction)
+	if !ok || ref.Kind != "workflow" || ref.Name != "Refill stock" {
+		t.Errorf("BlockRefAction: got %+v", b.Actions[1])
+	}
+}
+
 // ─── constraint ───────────────────────────────────────────────────────────────
 
 func TestParseConstraint(t *testing.T) {

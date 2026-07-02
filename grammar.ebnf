@@ -195,6 +195,7 @@ OnBody      = [ WhenClause ] { OnAction }
 OnAction    = LoggerStmt
             | "recommend" STRING
             | "detect" STRING
+            | "workflow" STRING
 
 LoggerStmt  = "logger" "." ( "info" | "warn" | "error" ) Template
 

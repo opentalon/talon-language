@@ -454,6 +454,23 @@ func (v *validator) checkReferences() {
 				}
 			}
 		})
+
+		// on-block bodies reference other blocks by name via
+		// `recommend "X"` / `detect "X"` / `workflow "X"`; the target
+		// must be defined.
+		if on, ok := b.(*ast.OnBlock); ok {
+			for _, act := range on.Actions {
+				ref, ok := act.(*ast.BlockRefAction)
+				if !ok {
+					continue
+				}
+				if _, ok := v.blocks[ref.Name]; !ok {
+					v.errAt(pos,
+						fmt.Sprintf("%s references undefined block %q", on.Name, ref.Name),
+						suggest(ref.Name, blockNames))
+				}
+			}
+		}
 	}
 }
 
