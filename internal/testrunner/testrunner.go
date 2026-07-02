@@ -479,10 +479,16 @@ func toEntityID(v any) (int, bool) {
 // (unknown expression shape, missing attr, divide-by-zero) keep the
 // row, so a new clause type can't silently empty a result set —
 // failing open beats failing closed for the testrunner's audit role.
+// nowFunc supplies the evaluation instant for date/temporal conditions
+// (`today`, `older_than`, `approaching`) in the Filter step. Overridable
+// in tests for deterministic date logic.
+var nowFunc = func() time.Time { return time.Now().UTC() }
+
 func applyFilterConditions(conds []ast.Condition, flagged []int, entities map[int]*entity) []int {
 	if len(conds) == 0 {
 		return flagged
 	}
+	now := nowFunc()
 	out := make([]int, 0, len(flagged))
 	for _, id := range flagged {
 		e := entities[id]
@@ -492,7 +498,7 @@ func applyFilterConditions(conds []ast.Condition, flagged []int, entities map[in
 		row := entityAttrsFlattened(e)
 		keep := true
 		for _, c := range conds {
-			ok, err := constraints.EvalCondition(c, row)
+			ok, err := constraints.EvalConditionAt(c, row, now)
 			if err != nil {
 				// Unsupported / unresolvable — fall back to keeping the
 				// row. The block_eval log surfaces the row count so a

@@ -365,9 +365,11 @@ Condition       = NotCondition
                                             and attr "X.expires_at" < today [and C]
      attr "X" approaching within N UNIT  → attr "X" >= today
                                             and attr "X" <= today + N UNIT
-   NOTE: these compile but do NOT filter yet — the goCondition evaluators
-   don't evaluate has/today/date-arithmetic/cross-record (they fail open).
-   The evaluation is a separate follow-up; #62 ships the syntax + desugaring. *)
+   Evaluation status: `approaching` and the `< today` date bound now filter
+   in the testrunner (`talon test`) — the goCondition evaluator handles
+   today / date-arithmetic / older_than. Still NOT evaluated: cross-record
+   existence (the `has record type "X"` part of has_open/has_expired needs a
+   relationship model), and the executor Run/Filter path (pass-through). *)
 SugarCondition  = "has_open" [ "record" ] "type" STRING
                 | "has_expired" [ "record" ] "type" STRING [ "where" Condition ]
                 | Expr "approaching" "within" NUMBER DurationUnit
