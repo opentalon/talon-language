@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newSeeded(t *testing.T) *MemoryStore {
@@ -311,5 +312,111 @@ func TestAggregateTotalAliasedToSum(t *testing.T) {
 	}
 	if !strings.Contains(q.String(), "(sum ?x)") {
 		t.Errorf("expected (sum ?x), got %q", q.String())
+	}
+}
+
+// ─── freshness (LastWritten) ───────────────────────────────────────────────
+
+var _ Freshness = (*MemoryStore)(nil)
+
+func TestLastWrittenStampsOnAssert(t *testing.T) {
+	m := NewMemoryStore()
+	t0 := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	clock := t0
+	m.SetClock(func() time.Time { return clock })
+
+	if err := m.Assert(context.Background(), []Fact{
+		{RecordID: "1", Attribute: ":attr/current_stock", Value: 8},
+	}); err != nil {
+		t.Fatalf("assert: %v", err)
+	}
+	got, ok := m.LastWritten("1", ":attr/current_stock")
+	if !ok || !got.Equal(t0) {
+		t.Fatalf("LastWritten after assert: got %v ok=%v, want %v", got, ok, t0)
+	}
+}
+
+func TestLastWrittenAdvancesOnUnchangedReassert(t *testing.T) {
+	m := NewMemoryStore()
+	clock := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	m.SetClock(func() time.Time { return clock })
+	ctx := context.Background()
+
+	if err := m.Assert(ctx, []Fact{{RecordID: "1", Attribute: ":attr/current_stock", Value: 8}}); err != nil {
+		t.Fatal(err)
+	}
+	// Re-assert the SAME value an hour later: no event fires, but the
+	// refresh time must advance (last-asserted semantics).
+	clock = clock.Add(time.Hour)
+	if err := m.Assert(ctx, []Fact{{RecordID: "1", Attribute: ":attr/current_stock", Value: 8}}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := m.LastWritten("1", ":attr/current_stock")
+	if !ok || !got.Equal(clock) {
+		t.Fatalf("LastWritten after unchanged re-assert: got %v ok=%v, want %v", got, ok, clock)
+	}
+}
+
+func TestLastWrittenAdvancesOnValueChange(t *testing.T) {
+	m := NewMemoryStore()
+	clock := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	m.SetClock(func() time.Time { return clock })
+	ctx := context.Background()
+
+	_ = m.Assert(ctx, []Fact{{RecordID: "1", Attribute: ":attr/current_stock", Value: 8}})
+	clock = clock.Add(30 * time.Minute)
+	_ = m.Assert(ctx, []Fact{{RecordID: "1", Attribute: ":attr/current_stock", Value: 0}})
+	got, ok := m.LastWritten("1", ":attr/current_stock")
+	if !ok || !got.Equal(clock) {
+		t.Fatalf("LastWritten after change: got %v ok=%v, want %v", got, ok, clock)
+	}
+}
+
+func TestLastWrittenUnknown(t *testing.T) {
+	m := NewMemoryStore()
+	_ = m.Assert(context.Background(), []Fact{{RecordID: "1", Attribute: ":attr/name", Value: "x"}})
+	if _, ok := m.LastWritten("1", ":attr/missing"); ok {
+		t.Error("unknown attribute should return ok=false")
+	}
+	if _, ok := m.LastWritten("99", ":attr/name"); ok {
+		t.Error("unknown entity should return ok=false")
+	}
+	if _, ok := m.LastWritten("not-an-int", ":attr/name"); ok {
+		t.Error("non-integer record id should return ok=false")
+	}
+}
+
+func TestLastWrittenClearedOnRetract(t *testing.T) {
+	m := NewMemoryStore()
+	ctx := context.Background()
+	_ = m.Assert(ctx, []Fact{
+		{RecordID: "1", Attribute: ":attr/a", Value: 1},
+		{RecordID: "1", Attribute: ":attr/b", Value: 2},
+	})
+	// Retract one attribute → only that stamp clears.
+	if err := m.Retract(ctx, RetractPattern{RecordID: "1", Attribute: ":attr/a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.LastWritten("1", ":attr/a"); ok {
+		t.Error("retracted attribute stamp should be cleared")
+	}
+	if _, ok := m.LastWritten("1", ":attr/b"); !ok {
+		t.Error("sibling attribute stamp should remain")
+	}
+	// Retract the whole entity → remaining stamp clears too.
+	if err := m.Retract(ctx, RetractPattern{RecordID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.LastWritten("1", ":attr/b"); ok {
+		t.Error("entity retract should clear all stamps")
+	}
+}
+
+func TestResetClearsFreshness(t *testing.T) {
+	m := NewMemoryStore()
+	_ = m.Assert(context.Background(), []Fact{{RecordID: "1", Attribute: ":attr/a", Value: 1}})
+	m.Reset()
+	if _, ok := m.LastWritten("1", ":attr/a"); ok {
+		t.Error("Reset should clear freshness stamps")
 	}
 }
