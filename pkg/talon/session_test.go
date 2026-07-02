@@ -1,9 +1,13 @@
 package talon_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 
+	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/pkg/talon"
 )
 
@@ -242,6 +246,45 @@ on assert item {
 	}
 	if firings[0].Ref != "" || firings[0].RefKind != "" || firings[0].Result != nil {
 		t.Errorf("logger-only firing should have empty ref/result: %+v", firings[0])
+	}
+}
+
+func TestSession_OnBlockLoggerRuns(t *testing.T) {
+	var buf bytes.Buffer
+	orig := talonlog.Default()
+	talonlog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer talonlog.SetDefault(orig)
+
+	src := `
+on change attr "current_stock" to 0 {
+  logger.warn "stock-out for {event.entity}"
+  workflow "Refill"
+}
+workflow "Refill" { step "s" { mcp "inv" "order" {} } }`
+	caller := newCaller()
+	s, err := talon.NewSession(src, talon.WithMCP(caller))
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	if _, err := s.Assert(ctx, []talon.Fact{{RecordID: "5", Attribute: "current_stock", Value: 4}}); err != nil {
+		t.Fatalf("Assert(4): %v", err)
+	}
+	firings, err := s.Assert(ctx, []talon.Fact{{RecordID: "5", Attribute: "current_stock", Value: 0}})
+	if err != nil {
+		t.Fatalf("Assert(0): %v", err)
+	}
+	// The logger action ran (interpolated with the entity)...
+	if out := buf.String(); !strings.Contains(out, "stock-out for 5") {
+		t.Errorf("expected on-block logger output, got: %q", out)
+	}
+	// ...and the workflow ref still fired alongside it.
+	if len(firings) != 1 || firings[0].RefKind != "workflow" {
+		t.Errorf("expected one workflow firing, got %+v", firings)
+	}
+	if len(caller.calls) != 1 {
+		t.Errorf("workflow mcp step should have run once, got %d", len(caller.calls))
 	}
 }
 
