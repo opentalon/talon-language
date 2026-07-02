@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/opentalon/talon-language/actions/workflows/ci.yml/badge.svg)](https://github.com/opentalon/talon-language/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8.svg)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 
 ---
 
@@ -75,7 +75,7 @@ Every release ships with a `SHA256SUMS.txt` file in case you want to verify the 
 
 ### From source
 
-If you already have Go 1.24+ installed:
+If you already have Go 1.25+ installed:
 
 ```bash
 go install github.com/opentalon/talon-language/cmd/talon@latest
@@ -135,9 +135,13 @@ talon run examples/fleet_maintenance.talon \
 
 The adapter (`internal/talondb`) translates the planner's structured
 queries into talon-db's RPC surface (Lookup, LookupNumericRange,
-WindowQuery, Stats, LastSeen, Ancestors, Descendants). It supports
-Pattern, Predicate, Or, Not, and FullText today; Aggregates, PullSpec,
-and RuleCall are tracked as follow-ups (see issues #99–#101).
+WindowQuery, GroupCount, Stats, LastSeen, Ancestors, Descendants, plus
+the composite Query / ClusterQuery / SequenceJoin / Subscribe RPCs).
+Pattern, Predicate, Or, Not, FullText, RuleCall, Aggregates + GroupBy,
+and PullSpec all flow through end-to-end today; numeric predicates
+push down into `LookupNumericRange` automatically. Transport failures
+surface as typed `ErrUnavailable` / `ErrNotFound` / `ErrInvalidArgument`
+sentinels so callers can branch on `errors.Is` instead of string-scraping.
 
 ## Architecture
 
@@ -312,6 +316,28 @@ rule "Certification required for heavy equipment" {
   reason "{person.name}'s safety certification expired"
 }
 ```
+
+### Temporal patterns
+
+Ordered sequences across records (`A followed_by B [on same KEY] within N units`)
+flag entities whose history matches a chain, not just a point-in-time
+shape:
+
+```talon
+detect "Engine failure chain" {
+  for records where type == "vehicle"
+    and record type "electrical_fault"
+        followed_by record type "engine_failure"
+        on same item within 30 days
+  flag matching items
+  label "{item.name}: electrical fault preceded engine failure"
+  priority HIGH
+}
+```
+
+`event_sequence "A" -> "B" -> "C" within N days` is the same idea for
+streams of `:event/...` facts (e.g. cart-abandonment funnels). Both
+compile to in-process matchers — no extra service required.
 
 ### Anomaly detection
 
