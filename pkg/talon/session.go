@@ -105,6 +105,8 @@ func NewSession(src string, opts ...Option) (*Session, error) {
 	exec := executor.NewExecutor(store)
 	exec.MCP = cfg.mcp
 	exec.ConfirmHook = cfg.confirm
+	exec.ApprovalHook = cfg.approval
+	exec.Queue = cfg.queue
 
 	s := &Session{
 		store: store,

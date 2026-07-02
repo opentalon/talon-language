@@ -83,8 +83,18 @@ DetectBody  = Selector
    once per flagged row, with each call's args resolved against that row's
    entity (attr "x" → typed value; string literals interpolate {item.x} /
    {attr.x} templates). Note: bare dotted refs like `item.id` are not
-   expression syntax; use `attr "id"` or the template form "{item.id}". *)
-RemediateClause = "remediate" "{" { MCPCall } "}"
+   expression syntax; use `attr "id"` or the template form "{item.id}".
+
+   An optional mode controls how each call executes: auto (fire directly),
+   propose (default — gate on the host ConfirmationHook), approve (gate on
+   the host ApprovalHook for the named role), queue (defer to the host
+   Queue under a batch name; never contacts MCP). *)
+RemediateClause = "remediate" [ RemediateMode ] "{"
+                    [ "requires" "role" STRING ]
+                    [ "batch" STRING ]
+                    { MCPCall }
+                  "}"
+RemediateMode   = "auto" | "propose" | "approve" | "queue"
 
 (* ScoreAnnotation declares the rule's self-asserted confidence, intended
    for auto-discovered rules ("mined from data with score 0.82").

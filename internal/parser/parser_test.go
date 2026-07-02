@@ -1260,3 +1260,42 @@ collect "Snapshot" {
 		t.Errorf("collect B: %+v", b)
 	}
 }
+
+func TestParseRemediateModes(t *testing.T) {
+	prog := mustParse(t, `
+detect "d" {
+  for records where status == "obsolete"
+  flag matching items
+  remediate approve {
+    requires role "manager"
+    mcp "inventory" "delete-item" { item_id attr "id" }
+  }
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if b.Remediate == nil || b.Remediate.Mode != "approve" || b.Remediate.Role != "manager" {
+		t.Fatalf("remediate approve: %+v", b.Remediate)
+	}
+
+	prog2 := mustParse(t, `
+detect "q" {
+  for records where status == "stale"
+  flag matching items
+  remediate queue { batch "weekly"  mcp "inv" "update" {} }
+}`)
+	q := block[*ast.DetectBlock](t, prog2, 0)
+	if q.Remediate.Mode != "queue" || q.Remediate.Batch != "weekly" {
+		t.Errorf("remediate queue: %+v", q.Remediate)
+	}
+
+	// No mode → propose default.
+	prog3 := mustParse(t, `
+detect "p" {
+  for records where status == "x"
+  flag matching items
+  remediate { mcp "inv" "t" {} }
+}`)
+	p := block[*ast.DetectBlock](t, prog3, 0)
+	if p.Remediate.Mode != "propose" {
+		t.Errorf("default mode: %q", p.Remediate.Mode)
+	}
+}

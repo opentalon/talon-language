@@ -11,3 +11,22 @@ type MCPCaller interface {
 // ConfirmationHook is called before executing a workflow step.
 // Return true to proceed, false to skip the step.
 type ConfirmationHook func(ctx context.Context, step, server, tool string) (bool, error)
+
+// ApprovalHook gates a `remediate approve` MCP call on a role-based
+// decision. The host implements it (e.g. routing to a manager for
+// sign-off). rule is the block name for audit. Return true to proceed.
+type ApprovalHook func(ctx context.Context, role, rule string, args map[string]any) (bool, error)
+
+// QueuedCall is one MCP call deferred by `remediate queue` for the host
+// to dispatch later.
+type QueuedCall struct {
+	Server string
+	Tool   string
+	Args   map[string]any
+}
+
+// Queue receives `remediate queue` calls for later, host-driven dispatch.
+// batch is a free-form group name Talon does not interpret.
+type Queue interface {
+	Enqueue(ctx context.Context, batch string, call QueuedCall) error
+}
