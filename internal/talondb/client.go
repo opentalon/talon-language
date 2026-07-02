@@ -198,6 +198,24 @@ func (c *Client) Query(ctx context.Context, q QueryInput) ([][]any, error) {
 	return out, nil
 }
 
+// LastWritten returns the updated_at time of the document (tenant,
+// docID). ok is false when no such document exists. Doc-level
+// granularity — every attribute of a record shares the document's
+// last-write time.
+func (c *Client) LastWritten(ctx context.Context, docID string) (time.Time, bool, error) {
+	resp, err := c.svc.LastWritten(ctx, &pb.LastWrittenRequest{
+		EntityId: c.Tenant(),
+		DocId:    docID,
+	})
+	if err != nil {
+		return time.Time{}, false, mapStatusError(err)
+	}
+	if !resp.GetFound() {
+		return time.Time{}, false, nil
+	}
+	return time.Unix(0, resp.GetAtUnixNanos()).UTC(), true, nil
+}
+
 // Health pings the server. Returns an error if the RPC fails or the
 // server reports a non-ok status.
 func (c *Client) Health(ctx context.Context) error {
