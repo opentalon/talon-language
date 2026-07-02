@@ -121,6 +121,40 @@ func TestREPLLoadFile(t *testing.T) {
 	}
 }
 
+func TestREPLWatchFiresWorkflow(t *testing.T) {
+	// Loading a program with on-blocks arms the watcher; asserting a
+	// change to 0 fires the workflow, whose mcp step is echoed.
+	out := runScript(t, `:load testdata/watch_example.talon
+attr 1 "current_stock" 8
+attr 1 "current_stock" 0
+:quit
+`)
+	if !strings.Contains(out, "on-block(s) armed") {
+		t.Errorf(":load did not arm the watcher:\n%s", out)
+	}
+	if !strings.Contains(out, `fired workflow "Refill stock"`) {
+		t.Errorf("change to 0 should fire the refill workflow:\n%s", out)
+	}
+	if !strings.Contains(out, "mcp inventory.create-refill-order") {
+		t.Errorf("workflow mcp step should be echoed:\n%s", out)
+	}
+	if !strings.Contains(out, "item_id=1") {
+		t.Errorf("trigger entity should thread into the mcp args:\n%s", out)
+	}
+}
+
+func TestREPLWatchNoFireWithoutCrossing(t *testing.T) {
+	// A single assert establishes the value (no change event), so the
+	// on-change-to-0 block must not fire.
+	out := runScript(t, `:load testdata/watch_example.talon
+attr 1 "current_stock" 5
+:quit
+`)
+	if strings.Contains(out, "fired workflow") {
+		t.Errorf("establishing a value should not fire an on-change block:\n%s", out)
+	}
+}
+
 func TestREPLClearAndClearFacts(t *testing.T) {
 	out := runScript(t, `record 501 type "item"
 detect "All items" {

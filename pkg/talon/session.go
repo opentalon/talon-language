@@ -3,11 +3,13 @@ package talon
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/factstore"
+	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/planner"
 	"github.com/opentalon/talon-language/internal/reactive"
 )
@@ -219,38 +221,64 @@ func (s *Session) handle(ctx context.Context, block *ast.OnBlock, ev factstore.E
 		},
 	}
 
-	var refs []*ast.BlockRefAction
+	// Run the body in order: logger actions write through the log
+	// package; block references run their plan and record a Firing.
+	firedRef := false
 	for _, a := range block.Actions {
-		if ref, ok := a.(*ast.BlockRefAction); ok {
-			refs = append(refs, ref)
+		switch act := a.(type) {
+		case *ast.LoggerAction:
+			logOnAction(ctx, block, ev, act)
+		case *ast.BlockRefAction:
+			firedRef = true
+			f := Firing{OnBlock: block.Name, Ref: act.Name, RefKind: act.Kind, Event: ev}
+			plan, ok := s.plans[act.Name]
+			if !ok {
+				f.Err = fmt.Errorf("referenced block %q not found", act.Name)
+				s.pending = append(s.pending, f)
+				continue
+			}
+			var res *executor.BlockResult
+			var err error
+			if act.Kind == "workflow" {
+				res, err = s.exec.RunWithPresets(ctx, plan, presets)
+			} else {
+				res, err = s.exec.Run(ctx, plan)
+			}
+			if err != nil {
+				f.Err = err
+			} else {
+				f.Result = &Result{Blocks: map[string]*BlockResult{res.BlockName: res}}
+			}
+			s.pending = append(s.pending, f)
 		}
-	}
-	// A logger-only body still records that the block matched.
-	if len(refs) == 0 {
-		s.pending = append(s.pending, Firing{OnBlock: block.Name, Event: ev})
-		return
 	}
 
-	for _, ref := range refs {
-		f := Firing{OnBlock: block.Name, Ref: ref.Name, RefKind: ref.Kind, Event: ev}
-		plan, ok := s.plans[ref.Name]
-		if !ok {
-			f.Err = fmt.Errorf("referenced block %q not found", ref.Name)
-			s.pending = append(s.pending, f)
-			continue
-		}
-		var res *executor.BlockResult
-		var err error
-		if ref.Kind == "workflow" {
-			res, err = s.exec.RunWithPresets(ctx, plan, presets)
-		} else {
-			res, err = s.exec.Run(ctx, plan)
-		}
-		if err != nil {
-			f.Err = err
-		} else {
-			f.Result = &Result{Blocks: map[string]*BlockResult{res.BlockName: res}}
-		}
-		s.pending = append(s.pending, f)
+	// A logger-only body (no block reference) still records that the
+	// block matched, as a Firing with an empty Ref.
+	if !firedRef {
+		s.pending = append(s.pending, Firing{OnBlock: block.Name, Event: ev})
+	}
+}
+
+// logOnAction interpolates an on-block logger action's template against
+// the triggering event and writes it through the log package at the
+// action's level. Recognized placeholders: {event.attr}, {event.value},
+// {event.prev}, {event.entity}.
+func logOnAction(ctx context.Context, block *ast.OnBlock, ev factstore.Event, a *ast.LoggerAction) {
+	msg := strings.NewReplacer(
+		"{event.attr}", ev.Fact.Attribute,
+		"{event.value}", fmt.Sprintf("%v", ev.Fact.Value),
+		"{event.prev}", fmt.Sprintf("%v", ev.Prev.Value),
+		"{event.entity}", ev.Fact.RecordID,
+	).Replace(a.Message.Raw)
+
+	logger := talonlog.Default().With("source", "on_block", "trigger", block.Trigger, "block", block.Name)
+	switch strings.ToLower(a.Level) {
+	case "warn", "warning":
+		logger.WarnContext(ctx, msg)
+	case "error":
+		logger.ErrorContext(ctx, msg)
+	default:
+		logger.InfoContext(ctx, msg)
 	}
 }

@@ -58,7 +58,11 @@ func main() {
 	case "run":
 		runExecute()
 	case "repl":
-		if err := repl.RunWithVersion(os.Stdin, os.Stdout, version); err != nil {
+		preload := ""
+		if len(os.Args) > 2 {
+			preload = os.Args[2]
+		}
+		if err := repl.RunWithVersionFile(os.Stdin, os.Stdout, version, preload); err != nil {
 			fmt.Fprintf(os.Stderr, "talon repl: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}

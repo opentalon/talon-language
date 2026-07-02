@@ -1,0 +1,20 @@
+// Refill watcher agent.
+//
+// Fires when an item's current_stock transitions to 0, and runs a
+// workflow that places a refill order through the "inventory" MCP tool.
+// The trigger's entity is threaded into the workflow via
+// step("trigger").result.entity.
+
+on change attr "current_stock" to 0 {
+  logger.warn "stock-out detected for item {event.entity}"
+  workflow "Refill stock"
+}
+
+workflow "Refill stock" {
+  step "reorder" {
+    mcp "inventory" "create-refill-order" {
+      item_id  step("trigger").result.entity
+      quantity 50
+    }
+  }
+}
