@@ -66,6 +66,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "talon repl: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
+	case "collect":
+		runCollect()
 	case "trace":
 		runTrace()
 	case "explain":

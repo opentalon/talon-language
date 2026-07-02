@@ -96,6 +96,9 @@ const (
 	TokenUpdate
 	TokenOnError
 	TokenMock
+	TokenCollect
+	TokenSchedule
+	TokenStore
 	TokenAgainst
 	TokenRequires
 	TokenApproval
@@ -258,6 +261,9 @@ var keywords = map[string]TokenType{
 	"update":            TokenUpdate,
 	"on_error":          TokenOnError,
 	"mock":              TokenMock,
+	"collect":           TokenCollect,
+	"schedule":          TokenSchedule,
+	"store":             TokenStore,
 	"against":           TokenAgainst,
 	"requires":          TokenRequires,
 	"approval":          TokenApproval,

@@ -101,6 +101,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseConstraintBlock()
 	case lexer.TokenEnrich:
 		return p.parseEnrich()
+	case lexer.TokenCollect:
+		return p.parseCollect()
 	case lexer.TokenStateMachine:
 		return p.parseStateMachineBlock()
 	case lexer.TokenTest:
@@ -774,6 +776,77 @@ func (p *parser) parseUpdateClause() ast.UpdateClause {
 		p.errorf("update attr %q: expected 'result.<field>' after 'from', got %q", attr, p.peek().Value)
 	}
 	return ast.UpdateClause{Attr: attr, ResultPath: path}
+}
+
+// ─── collect ────────────────────────────────────────────────────────────────
+
+func (p *parser) parseCollect() *ast.CollectBlock {
+	tok := p.advance() // collect
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.CollectBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch p.peek().Type {
+		case lexer.TokenSchedule:
+			p.advance()
+			b.Schedule = p.parseScheduleExpr()
+		case lexer.TokenMcp:
+			b.Call = p.parseMCPCall()
+		case lexer.TokenStore:
+			p.parseCollectStore(b)
+		default:
+			p.errorf("unexpected token %q inside collect block (expected schedule / mcp / store)", p.peek().Value)
+			p.advance()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseScheduleExpr reads the schedule metadata: `weekly` | `daily` |
+// `hourly` | `every N hours|days` | `cron "<expr>"`. Talon does not
+// interpret it — it's a string a host scheduler reads.
+func (p *parser) parseScheduleExpr() string {
+	if p.at(lexer.TokenString) {
+		return p.expectString()
+	}
+	if p.at(lexer.TokenEvery) {
+		p.advance()
+		n := p.expectNumberStr()
+		unit := ""
+		if p.at(lexer.TokenIdent) || p.at(lexer.TokenDays) {
+			unit = p.advance().Value // hours / days / minutes / ...
+		}
+		return "every " + n + " " + unit
+	}
+	if p.at(lexer.TokenIdent) {
+		word := p.advance().Value
+		if word == "cron" {
+			return "cron:" + p.expectString()
+		}
+		return word // weekly / daily / hourly
+	}
+	p.errorf("expected schedule (weekly/daily/hourly/every N.../cron \"...\"), got %q", p.peek().Value)
+	return ""
+}
+
+// parseCollectStore parses `store results as <ident> [tag "<string>"]`.
+func (p *parser) parseCollectStore(b *ast.CollectBlock) {
+	p.advance() // store
+	if p.at(lexer.TokenIdent) && p.peek().Value == "results" {
+		p.advance()
+	}
+	if p.at(lexer.TokenIdent) && p.peek().Value == "as" {
+		p.advance()
+	}
+	b.StoreAs = p.expectIdent()
+	if p.at(lexer.TokenIdent) && p.peek().Value == "tag" {
+		p.advance()
+		b.Tag = p.expectString()
+	}
 }
 
 // ─── on (reactive) ────────────────────────────────────────────────────────────

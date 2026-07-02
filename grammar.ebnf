@@ -22,6 +22,24 @@ Block     = DetectBlock
           | OnBlock
           | ConstraintBlock
           | EnrichBlock
+          | CollectBlock
+
+(* ─── collect ────────────────────────────────────────────────────────────────── *)
+
+(* collect declares scheduled, host-driven MCP fact ingestion. Talon runs
+   no scheduler: `schedule` is metadata a host cron reads via
+   `talon collect list`, and the host fires `talon collect run` on time.
+   The `cron "<expr>"` escape hatch replaces the RFC's `@cron` (`@` isn't
+   tokenised). Response items are asserted as records of the store type. *)
+CollectBlock  = "collect" STRING "{"
+                  "schedule" ScheduleExpr
+                  MCPCall
+                  StoreClause
+                "}"
+ScheduleExpr  = "weekly" | "daily" | "hourly"
+              | "every" NUMBER ( "hours" | "days" )
+              | "cron" STRING
+StoreClause   = "store" "results" "as" IDENT [ "tag" STRING ]
 
 (* ─── enrich ─────────────────────────────────────────────────────────────────── *)
 

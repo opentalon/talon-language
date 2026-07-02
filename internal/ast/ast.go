@@ -403,6 +403,7 @@ func (*OnBlock) blockNode()         {}
 func (*ConstraintBlock) blockNode()    {}
 func (*StateMachineBlock) blockNode() {}
 func (*EnrichBlock) blockNode()        {}
+func (*CollectBlock) blockNode()       {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -420,6 +421,21 @@ func (b *OnBlock) BlockName() string         { return b.Name }
 func (b *ConstraintBlock) BlockName() string    { return b.Name }
 func (b *StateMachineBlock) BlockName() string { return b.Name }
 func (b *EnrichBlock) BlockName() string        { return b.Name }
+func (b *CollectBlock) BlockName() string       { return b.Name }
+
+// CollectBlock is scheduled, host-driven MCP fact ingestion: on the
+// declared Schedule, fetch a batch from an MCP tool and assert the
+// results into the FactStore as records of type StoreAs (tagged Tag).
+// Talon does not run the scheduler — Schedule is metadata a host cron
+// reads via `talon collect list`, and the host fires `talon collect run`.
+type CollectBlock struct {
+	Pos      Pos
+	Name     string
+	Schedule string // metadata: "weekly" | "daily" | "hourly" | "every N hours" | "cron:<expr>"
+	Call     *MCPCall
+	StoreAs  string // fact type for ingested records
+	Tag      string // optional tag attribute value
+}
 
 // EnrichBlock refreshes stale facts from an MCP tool. It selects records
 // via Selector, and for each whose target attributes are older than
