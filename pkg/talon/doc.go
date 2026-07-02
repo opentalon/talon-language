@@ -26,4 +26,9 @@
 // types (with the Event* kind constants) let external code build facts
 // and drive a store obtained via [NewMemoryStore] / [NewFactStore]
 // without importing internal packages.
+//
+// For long-lived, event-driven use — a watcher agent that holds a
+// program and reacts as facts arrive — use [NewSession]. Assert facts
+// into the session and its `on` blocks fire their referenced workflows,
+// returning the [Firing] list for each mutation.
 package talon

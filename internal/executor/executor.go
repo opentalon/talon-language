@@ -161,10 +161,25 @@ func (e *Executor) RunAll(ctx context.Context, plans map[string]*planner.QueryPl
 // observability event on completion (success or failure) with the block
 // name, kind, matched row count, and wall-clock duration.
 func (e *Executor) Run(ctx context.Context, plan *planner.QueryPlan) (*BlockResult, error) {
+	return e.RunWithPresets(ctx, plan, nil)
+}
+
+// RunWithPresets executes a single block's query plan like [Executor.Run],
+// but seeds the block's variable scope with presets before the first step
+// runs. This lets a caller inject synthetic step results — e.g. a reactive
+// trigger exposing step("trigger").result.{entity,attr,value,prev,kind}.
+//
+// Keys are copied verbatim into the scope; to make a value resolvable via
+// step("name").result.*, use the key "name_result" (the same convention
+// the executor uses internally for real step results).
+func (e *Executor) RunWithPresets(ctx context.Context, plan *planner.QueryPlan, presets map[string]any) (*BlockResult, error) {
 	start := time.Now()
 	result := &BlockResult{
 		BlockName: plan.BlockName,
 		Vars:      map[string]any{},
+	}
+	for k, v := range presets {
+		result.Vars[k] = v
 	}
 
 	for _, step := range plan.Steps {

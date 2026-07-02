@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/datalevin"
 	"github.com/opentalon/talon-language/internal/executor"
 	"github.com/opentalon/talon-language/internal/factstore"
@@ -207,27 +208,36 @@ func Seed(ctx context.Context, store FactStore, src string, opts ...Option) (int
 // from in-memory source (no on-disk path) should either avoid
 // imports or pass absolute paths in their source.
 func compile(file, src string) (map[string]*planner.QueryPlan, error) {
+	_, plans, err := compileProgram(file, src)
+	return plans, err
+}
+
+// compileProgram is compile plus the resolved *ast.Program, for callers
+// (e.g. [NewSession]) that need the parsed blocks — on-blocks in
+// particular — alongside the compiled plans. The program returned is the
+// post-import-merge AST validated against.
+func compileProgram(file, src string) (*ast.Program, map[string]*planner.QueryPlan, error) {
 	tokens, lexDiags := lexer.Lex(file, src)
 	if lexDiags.HasErrors() {
-		return nil, &CompileError{Stage: "lex", Diags: lexDiags}
+		return nil, nil, &CompileError{Stage: "lex", Diags: lexDiags}
 	}
 	prog, parseDiags := parser.Parse(file, tokens)
 	if parseDiags.HasErrors() {
-		return nil, &CompileError{Stage: "parse", Diags: parseDiags}
+		return nil, nil, &CompileError{Stage: "parse", Diags: parseDiags}
 	}
 	if len(prog.Imports) > 0 {
 		merged, importDiags := imports.Resolve(prog, file)
 		if importDiags.HasErrors() {
-			return nil, &CompileError{Stage: "imports", Diags: importDiags}
+			return nil, nil, &CompileError{Stage: "imports", Diags: importDiags}
 		}
 		prog = merged
 	}
 	if valDiags := validator.Validate(file, prog); valDiags.HasErrors() {
-		return nil, &CompileError{Stage: "validate", Diags: valDiags}
+		return nil, nil, &CompileError{Stage: "validate", Diags: valDiags}
 	}
 	plans, planDiags := planner.Plan(prog)
 	if planDiags.HasErrors() {
-		return nil, &CompileError{Stage: "plan", Diags: planDiags}
+		return nil, nil, &CompileError{Stage: "plan", Diags: planDiags}
 	}
-	return plans, nil
+	return prog, plans, nil
 }
