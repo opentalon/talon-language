@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/factstore"
 	"github.com/opentalon/talon-language/pkg/talon"
@@ -294,5 +295,68 @@ func TestRun_RemediateNoCallerNoDispatch(t *testing.T) {
 	// No WithMCP: remediate must be a no-op, not an error.
 	if _, err := talon.Run(context.Background(), remediateSrc, talon.WithFactStore(store)); err != nil {
 		t.Fatalf("Run without MCP caller should not error: %v", err)
+	}
+}
+
+// ─── enrich (issue #54) ────────────────────────────────────────────────────
+
+const enrichSrc = `
+enrich "Refresh stock" {
+  for records where type == "stock_item"
+  stale_after 1 hour
+  mcp "inventory" "show-item" {
+    id attr "id"
+  }
+  update attr "current_stock" from result.current_stock
+}`
+
+func TestRun_EnrichRefreshesStaleFacts(t *testing.T) {
+	store := talon.NewMemoryStore()
+	ctx := context.Background()
+
+	// Seed current_stock as written 2h ago — stale for a 1h window.
+	store.SetClock(func() time.Time { return time.Now().Add(-2 * time.Hour) })
+	if err := store.Assert(ctx, []talon.Fact{
+		{RecordID: "1", Attribute: ":record/type", Value: "stock_item"},
+		{RecordID: "1", Attribute: ":attr/current_stock", Value: 3.0},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	store.SetClock(time.Now)
+
+	caller := &mockCaller{handler: func(_, _ string, args map[string]any) (any, error) {
+		if args["id"] != 1 {
+			t.Errorf("enrich mcp id arg = %v, want 1", args["id"])
+		}
+		return map[string]any{"current_stock": 42.0}, nil
+	}}
+	if _, err := talon.Run(ctx, enrichSrc, talon.WithFactStore(store), talon.WithMCP(caller)); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(caller.calls) != 1 {
+		t.Fatalf("stale fact should trigger one enrich call, got %d", len(caller.calls))
+	}
+	// The response field was asserted back onto the record.
+	if got := store.Snapshot()[1][":attr/current_stock"]; got != 42.0 {
+		t.Errorf("current_stock after enrich = %v, want 42", got)
+	}
+}
+
+func TestRun_EnrichSkipsFreshFacts(t *testing.T) {
+	store := talon.NewMemoryStore()
+	ctx := context.Background()
+	// Written just now — fresh for a 1h window.
+	if err := store.Assert(ctx, []talon.Fact{
+		{RecordID: "1", Attribute: ":record/type", Value: "stock_item"},
+		{RecordID: "1", Attribute: ":attr/current_stock", Value: 3.0},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	caller := &mockCaller{}
+	if _, err := talon.Run(ctx, enrichSrc, talon.WithFactStore(store), talon.WithMCP(caller)); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(caller.calls) != 0 {
+		t.Fatalf("fresh fact should not trigger enrich, got %d calls", len(caller.calls))
 	}
 }

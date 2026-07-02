@@ -22,6 +22,7 @@ const (
 	FuncPPRTopK              = "ppr_topk"
 	FuncRenderTemplate       = "render_template"
 	FuncRemediateMCP         = "remediate_mcp"
+	FuncEnrichMCP            = "enrich_mcp"
 	FuncOptimizePareto       = "optimize_pareto"
 	FuncOptimizeGA           = "optimize_ga"
 	FuncOptimizeACO          = "optimize_aco"
@@ -295,6 +296,8 @@ func (p *planner) planAll() (map[string]*QueryPlan, diagnostic.List) {
 			plans[bb.Name] = p.planWorkflow(bb)
 		case *ast.StateMachineBlock:
 			plans[bb.Name] = p.planStateMachine(bb)
+		case *ast.EnrichBlock:
+			plans[bb.Name] = p.planEnrich(bb)
 		}
 	}
 	return plans, p.diags
@@ -469,6 +472,33 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 		})
 	}
 
+	return plan
+}
+
+// planEnrich compiles an enrich block: select candidate records, then a
+// single enrich_mcp step that (per stale record) calls the MCP tool and
+// asserts the mapped response fields back. Staleness is evaluated in the
+// executor via the FactStore's Freshness capability.
+func (p *planner) planEnrich(b *ast.EnrichBlock) *QueryPlan {
+	plan := &QueryPlan{BlockName: b.Name}
+	qb := p.newQueryBuilder()
+	qb.addSelector(b.Selector)
+	plan.Steps = append(plan.Steps, &FactQuery{
+		Query:    qb.build(),
+		BindVars: qb.bindVars(),
+		Into:     "candidates",
+	})
+	plan.Steps = append(plan.Steps, &GoComputation{
+		Function: FuncEnrichMCP,
+		Input:    "candidates",
+		Params: map[string]any{
+			"call":        b.Call,
+			"updates":     b.Updates,
+			"stale_after": b.StaleAfter,
+			"block_name":  b.Name,
+		},
+		Into: "enrichments",
+	})
 	return plan
 }
 

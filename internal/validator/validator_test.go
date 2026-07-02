@@ -430,3 +430,22 @@ detect "Act" {
   }
 }`)
 }
+
+func TestValidateEnrichOK(t *testing.T) {
+	mustClean(t, `
+enrich "R" {
+  for records where type == "stock_item"
+  stale_after 1 hour
+  mcp "inv" "show" { id attr "id" }
+  update attr "current_stock" from result.current_stock
+}`)
+}
+
+func TestValidateEnrichRequiresUpdate(t *testing.T) {
+	mustError(t, `
+enrich "R" {
+  for records where type == "stock_item"
+  stale_after 1 hour
+  mcp "inv" "show" { id attr "id" }
+}`, "at least one 'update")
+}

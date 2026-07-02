@@ -21,6 +21,22 @@ Block     = DetectBlock
           | RelatedBlock
           | OnBlock
           | ConstraintBlock
+          | EnrichBlock
+
+(* ─── enrich ─────────────────────────────────────────────────────────────────── *)
+
+(* enrich refreshes stale facts from an MCP tool. For each selected record
+   whose target attributes are older than the stale_after bound (per the
+   FactStore Freshness capability), the runtime calls the MCP tool once and
+   asserts the mapped response fields back. Host-driven — it runs when the
+   program runs / an agent ticks it, not on fact reads. *)
+EnrichBlock  = "enrich" STRING "{"
+                 Selector
+                 "stale_after" Duration
+                 MCPCall
+                 UpdateClause { UpdateClause }
+               "}"
+UpdateClause = "update" "attr" STRING "from" "result" "." IDENT { "." IDENT }
 
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)
 
