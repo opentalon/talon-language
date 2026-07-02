@@ -77,7 +77,9 @@ func printHelp(w io.Writer) {
                             e.g. :find for records where type == "item"
     :count <selector>       like :find but just the count
     :context KEY VALUE      set a context variable (e.g. :context role "manager")
-    :load FILE              load .talon source from a file
+    :load FILE              load .talon source from a file; a program with
+                            'on' blocks becomes a live watcher — assert
+                            facts and matching on-blocks fire their workflows
     :clear                  drop all facts, blocks, and context
     :clear facts            drop facts but keep blocks
     :help                   show this help
@@ -231,6 +233,7 @@ func runLoad(s *Session, tail string, w io.Writer) {
 	// fixtures as facts.
 	added := 0
 	factsAdded := 0
+	onBlocks := 0
 	for _, b := range prog.Blocks {
 		if tb, ok := b.(*ast.TestBlock); ok {
 			for _, d := range tb.Given {
@@ -239,10 +242,23 @@ func runLoad(s *Session, tail string, w io.Writer) {
 			}
 			continue
 		}
+		if _, ok := b.(*ast.OnBlock); ok {
+			onBlocks++
+		}
 		s.AddBlocks([]ast.Block{b})
 		added++
 	}
 	fmt.Fprintf(w, "  loaded %s: %d block(s), %d fact(s)\n", path, added, factsAdded)
+
+	// A program with `on` blocks becomes a live watcher: build a reactive
+	// session from the file source so asserting facts fires the on-blocks.
+	if onBlocks > 0 {
+		if err := s.startWatch(string(src), w); err != nil {
+			fmt.Fprintf(w, "  watch: %v\n", err)
+			return
+		}
+		fmt.Fprintf(w, "  watching: %d on-block(s) armed — assert facts to fire them\n", onBlocks)
+	}
 }
 
 func runEval(s *Session, tail string, w io.Writer) {

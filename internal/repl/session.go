@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/pkg/talon"
 )
 
 // Session holds everything the REPL accumulates across one interactive
@@ -24,6 +25,12 @@ type Session struct {
 	Blocks  []ast.Block
 	Facts   []ast.TestDatum
 	Context map[string]string
+
+	// watch is the reactive runtime, non-nil once a program containing
+	// `on` blocks is loaded (via :load or a preloaded file). Asserting a
+	// fact then fires matching on-blocks and prints the result. See
+	// watch.go.
+	watch *talon.Session
 }
 
 // NewSession returns an empty session.
@@ -79,11 +86,13 @@ func sameAttrName(a, b ast.TestDatum) bool {
 	return false
 }
 
-// ClearAll drops both blocks and facts.
+// ClearAll drops both blocks and facts, and tears down any reactive
+// watch session.
 func (s *Session) ClearAll() {
 	s.Blocks = nil
 	s.Facts = nil
 	s.Context = map[string]string{}
+	s.stopWatch()
 }
 
 // ClearFacts drops facts only — keeps the compiled blocks.

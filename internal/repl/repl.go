@@ -25,8 +25,21 @@ func Run(in io.Reader, out io.Writer) error {
 // passes its build-time version string; tests pass an empty string to
 // suppress the banner for stable golden output.
 func RunWithVersion(in io.Reader, out io.Writer, version string) error {
+	return RunWithVersionFile(in, out, version, "")
+}
+
+// RunWithVersionFile is RunWithVersion with an optional program to
+// preload before the interactive loop starts. A preloaded program whose
+// source contains `on` blocks enables reactive firing: asserting a fact
+// then runs matching on-blocks (see :load).
+func RunWithVersionFile(in io.Reader, out io.Writer, version, preload string) error {
 	if version != "" {
 		fmt.Fprintf(out, "talon %s — type :help for commands, :quit to exit\n", version)
+	}
+
+	s := NewSession()
+	if preload != "" {
+		runLoad(s, preload, out)
 	}
 
 	scanner := bufio.NewScanner(in)
@@ -34,7 +47,6 @@ func RunWithVersion(in io.Reader, out io.Writer, version string) error {
 	// large block definitions. 1 MiB is plenty without being abusive.
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	s := NewSession()
 	var buf strings.Builder
 	prompt(out, false)
 
@@ -103,6 +115,7 @@ func handleInput(s *Session, input string, w io.Writer) {
 		}
 		s.AddFact(datum)
 		fmt.Fprintf(w, "  OK: record %d\n", datum.ID)
+		s.fireWatch(datum, w)
 	case inputFactAttr:
 		datum, err := parseAttrAssertion(strings.TrimSpace(input))
 		if err != nil {
@@ -111,6 +124,7 @@ func handleInput(s *Session, input string, w io.Writer) {
 		}
 		s.AddFact(datum)
 		fmt.Fprintf(w, "  OK: attr %d\n", datum.ID)
+		s.fireWatch(datum, w)
 	case inputBlock:
 		handleBlockInput(s, input, w)
 	}
