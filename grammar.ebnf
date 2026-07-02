@@ -356,6 +356,21 @@ Condition       = NotCondition
                 | AnomalyCondition
                 | TemporalCondition
                 | ChangedToCondition
+                | SugarCondition
+
+(* SugarConditions desugar at parse time to the forms above (no new AST):
+     has_open record type "X"           → has record type "X"
+                                            and attr "X.status" != "closed"
+     has_expired record type "X" [where C] → has record type "X"
+                                            and attr "X.expires_at" < today [and C]
+     attr "X" approaching within N UNIT  → attr "X" >= today
+                                            and attr "X" <= today + N UNIT
+   NOTE: these compile but do NOT filter yet — the goCondition evaluators
+   don't evaluate has/today/date-arithmetic/cross-record (they fail open).
+   The evaluation is a separate follow-up; #62 ships the syntax + desugaring. *)
+SugarCondition  = "has_open" [ "record" ] "type" STRING
+                | "has_expired" [ "record" ] "type" STRING [ "where" Condition ]
+                | Expr "approaching" "within" NUMBER DurationUnit
 
 NotCondition        = "not" Condition
 
