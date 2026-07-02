@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
 // MemoryStore is an in-process FactStore. It holds facts in a map indexed
@@ -18,13 +19,54 @@ import (
 type MemoryStore struct {
 	mu       sync.RWMutex
 	entities map[int]map[string]any
-	events   EventEmitter
+	// updatedAt[id][attr] is the time that (entity, attribute) was last
+	// asserted — updated on every Assert regardless of value change, and
+	// cleared on Retract. Backs the [Freshness] capability.
+	updatedAt map[int]map[string]time.Time
+	now       func() time.Time
+	events    EventEmitter
 }
 
 // NewMemoryStore returns an empty store.
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{entities: map[int]map[string]any{}}
+	return &MemoryStore{
+		entities:  map[int]map[string]any{},
+		updatedAt: map[int]map[string]time.Time{},
+		now:       time.Now,
+	}
 }
+
+// SetClock overrides the clock used to stamp fact write-times. Intended
+// for tests that need deterministic freshness; production leaves the
+// default time.Now.
+func (m *MemoryStore) SetClock(fn func() time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if fn == nil {
+		fn = time.Now
+	}
+	m.now = fn
+}
+
+// LastWritten reports when the (recordID, attribute) fact was last
+// asserted. ok is false when the record ID isn't an integer, the entity
+// or attribute is unknown, or it was retracted. Implements [Freshness].
+func (m *MemoryStore) LastWritten(recordID, attribute string) (time.Time, bool) {
+	id, err := parseRecordID(recordID)
+	if err != nil {
+		return time.Time{}, false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	attrs, ok := m.updatedAt[id]
+	if !ok {
+		return time.Time{}, false
+	}
+	t, ok := attrs[attribute]
+	return t, ok
+}
+
+var _ Freshness = (*MemoryStore)(nil)
 
 // Assert merges facts into the store. A fact's RecordID parses as an
 // integer entity ID; non-integer record IDs are rejected so the store
@@ -64,6 +106,13 @@ func (m *MemoryStore) Assert(ctx context.Context, facts []Fact) error {
 		if f.Attribute == "" {
 			continue
 		}
+		// Stamp the write-time on every assert — even an unchanged
+		// re-assert counts as a refresh for freshness purposes — before
+		// the idempotent short-circuit below.
+		if m.updatedAt[id] == nil {
+			m.updatedAt[id] = map[string]time.Time{}
+		}
+		m.updatedAt[id][f.Attribute] = m.now()
 		if prev, had := ent[f.Attribute]; had {
 			if equalValues(prev, f.Value) {
 				continue // idempotent — no event
@@ -121,6 +170,7 @@ func (m *MemoryStore) Snapshot() map[int]map[string]any {
 func (m *MemoryStore) Reset() {
 	m.mu.Lock()
 	m.entities = map[int]map[string]any{}
+	m.updatedAt = map[int]map[string]time.Time{}
 	m.mu.Unlock()
 }
 
@@ -188,6 +238,17 @@ func (m *MemoryStore) Retract(ctx context.Context, pattern RetractPattern) error
 			if len(ent) == 0 {
 				delete(m.entities, id)
 			}
+		}
+	}
+
+	// Clear write-time stamps for every removed cell (removed lists one
+	// Fact per dropped cell in all three cases).
+	if stamps := m.updatedAt[id]; stamps != nil {
+		for _, f := range removed {
+			delete(stamps, f.Attribute)
+		}
+		if len(stamps) == 0 {
+			delete(m.updatedAt, id)
 		}
 	}
 	m.mu.Unlock()
