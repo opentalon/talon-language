@@ -262,9 +262,10 @@ type LoggerAction struct {
 }
 
 // BlockRefAction is a named reference to another top-level block, e.g.
-// `recommend "Order stock"` or `detect "Defective item without ticket"`.
+// `recommend "Order stock"`, `detect "Defective item without ticket"`,
+// or `workflow "Refill stock"`.
 type BlockRefAction struct {
-	Kind string // "recommend", "detect"
+	Kind string // "recommend", "detect", "workflow"
 	Name string
 }
 

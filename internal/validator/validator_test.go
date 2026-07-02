@@ -206,6 +206,25 @@ recommend "Order" {
 }`, "undefined block reference")
 }
 
+func TestValidateOnBlockWorkflowRef(t *testing.T) {
+	mustClean(t, `
+on change attr "current_stock" to 0 {
+  workflow "Refill stock"
+}
+workflow "Refill stock" {
+  step "order" {
+    mcp "timly" "create-order" { quantity 50 }
+  }
+}`)
+}
+
+func TestValidateOnBlockUndefinedWorkflowRef(t *testing.T) {
+	mustError(t, `
+on change attr "current_stock" to 0 {
+  workflow "Refill stock"
+}`, `references undefined block "Refill stock"`)
+}
+
 // ─── Duplicate names ───────────────────────────────────────────────────────────
 
 func TestValidateDuplicateBlockNames(t *testing.T) {
