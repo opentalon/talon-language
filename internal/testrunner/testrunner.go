@@ -356,6 +356,15 @@ func runOneTuned(
 		}
 	}
 
+	// MCP mocking: when a test stubs or asserts MCP calls, run the block
+	// through the real executor (with a recording caller seeded from the
+	// mocks) so remediate / enrich / workflow mcp steps actually fire,
+	// then verify the mcp_called assertions. This is additive — tests
+	// without mock/mcp_called clauses are unaffected.
+	if len(tb.Mocks) > 0 || len(tb.MCPCalls) > 0 {
+		result.Errors = append(result.Errors, runMCPAssertions(tb, plan, entities)...)
+	}
+
 	result.Passed = len(result.Errors) == 0
 	result.Duration = time.Since(start)
 	talonlog.BlockEval(context.Background(), tb.WhenBlock, tb.WhenKind, len(flagged), result.Duration)

@@ -980,6 +980,38 @@ type TestBlock struct {
 	WhenKind  string // "detect", "rule", "forecast", etc.
 	WhenBlock string // block name
 	Expect    []TestAssertion
+	Mocks     []MockClause         // `mock mcp ...` stubs installed before `when`
+	MCPCalls  []MCPCalledAssertion // `mcp_called ...` assertions inside `expect`
+}
+
+// MockClause stubs one MCP tool for a test: `mock mcp "server" "tool" {
+// returns { k v ... } | fails "msg" | fails after N }`. Returns holds the
+// canned response; Fails makes the call error (after FailAfter successes,
+// if set).
+type MockClause struct {
+	Server    string
+	Tool      string
+	Returns   map[string]any
+	Fails     bool
+	FailMsg   string
+	FailAfter int
+}
+
+// MCPCalledAssertion checks that the block called an MCP tool, optionally
+// constraining the arguments: `mcp_called "server" "tool" [with { name OP
+// value ... }]`.
+type MCPCalledAssertion struct {
+	Server string
+	Tool   string
+	Args   []ArgPredicate
+}
+
+// ArgPredicate is one `name OP value` check inside `mcp_called ... with`.
+// Op is one of "==", "!=", "contains".
+type ArgPredicate struct {
+	Name  string
+	Op    string
+	Value any
 }
 
 func (*TestBlock) blockNode()          {}

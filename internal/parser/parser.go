@@ -2282,10 +2282,18 @@ func (p *parser) parseTestBlock() *ast.TestBlock {
 				b.WhenKind += " " + p.advance().Value
 			}
 			b.WhenBlock = p.expectString()
+		case lexer.TokenMock:
+			b.Mocks = append(b.Mocks, p.parseMockClause())
 		case lexer.TokenExpect:
 			p.advance() // expect
 			p.expect(lexer.TokenLBrace)
 			for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+				// mcp_called needs richer structure than TestAssertion,
+				// so it lands in its own list.
+				if p.at(lexer.TokenIdent) && p.peek().Value == "mcp_called" {
+					b.MCPCalls = append(b.MCPCalls, p.parseMCPCalledAssertion())
+					continue
+				}
 				b.Expect = append(b.Expect, p.parseTestAssertion())
 			}
 			p.expect(lexer.TokenRBrace)
@@ -2296,6 +2304,98 @@ func (p *parser) parseTestBlock() *ast.TestBlock {
 	}
 	p.expect(lexer.TokenRBrace)
 	return b
+}
+
+// parseMockClause parses `mock mcp "server" "tool" { returns { k v ... } |
+// fails "msg" | fails after N }`.
+func (p *parser) parseMockClause() ast.MockClause {
+	p.advance() // mock
+	p.expect(lexer.TokenMcp)
+	m := ast.MockClause{Server: p.expectString(), Tool: p.expectString()}
+	if !p.expect(lexer.TokenLBrace) {
+		return m
+	}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		word := p.advance().Value
+		switch word {
+		case "returns":
+			p.expect(lexer.TokenLBrace)
+			m.Returns = map[string]any{}
+			for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+				if p.at(lexer.TokenComma) {
+					p.advance()
+					continue
+				}
+				key := p.advance().Value
+				if key == "" {
+					break
+				}
+				m.Returns[key] = p.parseLiteralValue()
+			}
+			p.expect(lexer.TokenRBrace)
+		case "fails":
+			m.Fails = true
+			if p.at(lexer.TokenIdent) && p.peek().Value == "after" {
+				p.advance()
+				m.FailAfter, _ = strconv.Atoi(p.expectNumberStr())
+			} else if p.at(lexer.TokenString) {
+				m.FailMsg = p.expectString()
+			}
+		default:
+			p.errorf("unexpected token %q inside mock body (expected returns / fails)", word)
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return m
+}
+
+// parseMCPCalledAssertion parses `mcp_called "server" "tool" [with { name
+// OP value ... }]`.
+func (p *parser) parseMCPCalledAssertion() ast.MCPCalledAssertion {
+	p.advance() // mcp_called
+	a := ast.MCPCalledAssertion{Server: p.expectString(), Tool: p.expectString()}
+	if p.at(lexer.TokenIdent) && p.peek().Value == "with" {
+		p.advance() // with
+		p.expect(lexer.TokenLBrace)
+		for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+			if p.at(lexer.TokenComma) {
+				p.advance()
+				continue
+			}
+			name := p.advance().Value
+			op := p.advance().Value
+			a.Args = append(a.Args, ast.ArgPredicate{Name: name, Op: op, Value: p.parseLiteralValue()})
+		}
+		p.expect(lexer.TokenRBrace)
+	}
+	return a
+}
+
+// parseLiteralValue reads a single literal (string / number / bool) as a
+// Go value, for mock returns and mcp_called arg predicates.
+func (p *parser) parseLiteralValue() any {
+	switch p.peek().Type {
+	case lexer.TokenString:
+		return p.expectString()
+	case lexer.TokenIdent:
+		v := p.advance().Value
+		switch v {
+		case "true":
+			return true
+		case "false":
+			return false
+		}
+		return v
+	default:
+		s := p.expectNumberStr()
+		if n, err := strconv.Atoi(s); err == nil {
+			return n
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
+		}
+		return s
+	}
 }
 
 func (p *parser) parseTestDatum() ast.TestDatum {

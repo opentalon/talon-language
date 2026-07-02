@@ -1199,3 +1199,39 @@ workflow "W" {
 		t.Errorf("action 2 not skip: %+v", oe.Actions[2])
 	}
 }
+
+func TestParseTestMockAndMCPCalled(t *testing.T) {
+	prog := mustParse(t, `
+test "t" {
+  given { record 1 type "item" status "defective" }
+  mock mcp "inventory" "create-ticket" { returns { id 801  status "open" } }
+  when detect "D"
+  expect {
+    flagged 1
+    mcp_called "inventory" "create-ticket" with {
+      item_id == 501
+      title contains "Drill"
+    }
+  }
+}`)
+	tb := block[*ast.TestBlock](t, prog, 0)
+	if len(tb.Mocks) != 1 {
+		t.Fatalf("mocks: %+v", tb.Mocks)
+	}
+	if tb.Mocks[0].Server != "inventory" || tb.Mocks[0].Returns["id"] != 801 || tb.Mocks[0].Returns["status"] != "open" {
+		t.Errorf("mock: %+v", tb.Mocks[0])
+	}
+	if len(tb.MCPCalls) != 1 || len(tb.MCPCalls[0].Args) != 2 {
+		t.Fatalf("mcp_called: %+v", tb.MCPCalls)
+	}
+	if tb.MCPCalls[0].Args[0].Name != "item_id" || tb.MCPCalls[0].Args[0].Op != "==" || tb.MCPCalls[0].Args[0].Value != 501 {
+		t.Errorf("arg 0: %+v", tb.MCPCalls[0].Args[0])
+	}
+	if tb.MCPCalls[0].Args[1].Op != "contains" {
+		t.Errorf("arg 1 op: %+v", tb.MCPCalls[0].Args[1])
+	}
+	// flagged assertion still lands in Expect.
+	if len(tb.Expect) != 1 || tb.Expect[0].Kind != "flagged" {
+		t.Errorf("expect: %+v", tb.Expect)
+	}
+}
