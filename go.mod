@@ -21,7 +21,7 @@ require (
 require (
 	github.com/RoaringBitmap/roaring/v2 v2.18.2 // indirect
 	github.com/bits-and-blooms/bitset v1.24.2 // indirect
-	github.com/coder/hnsw v0.6.1 // indirect
+	github.com/coder/hnsw v0.6.2-0.20260622133054-36cab6028fed // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
