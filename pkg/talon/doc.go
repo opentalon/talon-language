@@ -19,4 +19,11 @@
 //	for name, block := range result.Blocks {
 //	    fmt.Println(name, "→", len(block.Steps), "steps")
 //	}
+//
+// For validating source without executing it — e.g. checking
+// machine-generated agent source and reporting diagnostics back for
+// correction — use [Check]. The [Fact], [Event], and [RetractPattern]
+// types (with the Event* kind constants) let external code build facts
+// and drive a store obtained via [NewMemoryStore] / [NewFactStore]
+// without importing internal packages.
 package talon
