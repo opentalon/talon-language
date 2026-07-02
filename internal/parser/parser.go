@@ -658,6 +658,11 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 	p.expect(lexer.TokenLBrace)
 	call := &ast.MCPCall{Server: server, Tool: tool, Args: map[string]ast.Expr{}}
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		// `on_error { ... }` is a resilience policy, not an arg.
+		if p.at(lexer.TokenOnError) {
+			call.OnError = p.parseOnErrorClause()
+			continue
+		}
 		// Arg names are free-form and may collide with Talon keywords
 		// (e.g. `priority`, `status`, `type`). Consume one token as the
 		// key unconditionally — this both accepts keyword-named args and
@@ -674,6 +679,43 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 	}
 	p.expect(lexer.TokenRBrace)
 	return call
+}
+
+// parseOnErrorClause parses `on_error { [then] retry N times | log "msg" |
+// skip | fail ... }`. `then` is optional sugar; actions run left-to-right.
+func (p *parser) parseOnErrorClause() *ast.OnErrorClause {
+	p.advance() // on_error
+	oe := &ast.OnErrorClause{}
+	if !p.expect(lexer.TokenLBrace) {
+		return oe
+	}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if p.at(lexer.TokenIdent) && p.peek().Value == "then" {
+			p.advance() // optional connector
+		}
+		if p.at(lexer.TokenRBrace) || p.at(lexer.TokenEOF) {
+			break
+		}
+		word := p.advance().Value
+		switch word {
+		case "retry":
+			n, _ := strconv.Atoi(p.expectNumberStr())
+			if p.at(lexer.TokenIdent) && p.peek().Value == "times" {
+				p.advance()
+			}
+			oe.Actions = append(oe.Actions, &ast.RetryAction{Times: n})
+		case "log":
+			oe.Actions = append(oe.Actions, &ast.LogErrorAction{Message: ast.ParseTemplate(p.expectString())})
+		case "skip":
+			oe.Actions = append(oe.Actions, &ast.SkipAction{})
+		case "fail":
+			oe.Actions = append(oe.Actions, &ast.FailAction{})
+		default:
+			p.errorf("unexpected token %q inside on_error (expected retry / log / skip / fail)", word)
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return oe
 }
 
 // ─── enrich ─────────────────────────────────────────────────────────────────

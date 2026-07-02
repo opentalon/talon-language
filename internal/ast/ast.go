@@ -932,10 +932,43 @@ type WorkflowStep struct {
 }
 
 type MCPCall struct {
-	Server string
-	Tool   string
-	Args   map[string]Expr
+	Server  string
+	Tool    string
+	Args    map[string]Expr
+	OnError *OnErrorClause // optional resilience policy; nil = fail on error
 }
+
+// OnErrorClause is the `on_error { ... }` resilience policy on an MCP
+// call. Actions run in declared order: a RetryAction sets how many extra
+// attempts to make before falling through; LogErrorAction / SkipAction /
+// FailAction then decide the outcome. With no Skip/Fail, the error
+// propagates (fail is the implicit default).
+type OnErrorClause struct {
+	Actions []ErrorAction
+}
+
+// ErrorAction is one clause inside on_error.
+type ErrorAction interface{ errorActionNode() }
+
+// RetryAction retries the call up to Times additional attempts before
+// falling through to the remaining actions.
+type RetryAction struct{ Times int }
+
+// LogErrorAction writes a structured log line; Message may reference
+// {error} plus the row context ({item.name}, {attr.x}).
+type LogErrorAction struct{ Message Template }
+
+// SkipAction swallows the failure and continues (the call is a no-op).
+type SkipAction struct{}
+
+// FailAction propagates the error (the implicit default, accepted
+// explicitly for symmetry).
+type FailAction struct{}
+
+func (*RetryAction) errorActionNode()    {}
+func (*LogErrorAction) errorActionNode() {}
+func (*SkipAction) errorActionNode()     {}
+func (*FailAction) errorActionNode()     {}
 
 // ─── Test types ──────────────────────────────────────────────────────────────
 

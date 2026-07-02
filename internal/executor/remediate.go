@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/factstore"
@@ -75,15 +74,12 @@ func (e *Executor) execRemediate(ctx context.Context, gc *planner.GoComputation,
 					continue
 				}
 			}
-			start := time.Now()
-			_, err := e.MCP.Call(ctx, call.Server, call.Tool, args)
-			status := "ok"
+			_, skipped, err := e.dispatchMCP(ctx, call.Server, call.Tool, args, call.OnError, row)
 			if err != nil {
-				status = "error"
+				break // on_error chose fail (or default) — stop this row's calls
 			}
-			talonlog.MCPCall(ctx, call.Server, call.Tool, status, time.Since(start), err)
-			if err != nil {
-				break // skip the rest of this row's calls
+			if skipped {
+				continue // on_error swallowed the failure
 			}
 			fired++
 		}

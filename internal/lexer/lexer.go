@@ -94,6 +94,7 @@ const (
 	TokenEnrich
 	TokenStaleAfter
 	TokenUpdate
+	TokenOnError
 	TokenAgainst
 	TokenRequires
 	TokenApproval
@@ -254,6 +255,7 @@ var keywords = map[string]TokenType{
 	"enrich":            TokenEnrich,
 	"stale_after":       TokenStaleAfter,
 	"update":            TokenUpdate,
+	"on_error":          TokenOnError,
 	"against":           TokenAgainst,
 	"requires":          TokenRequires,
 	"approval":          TokenApproval,
