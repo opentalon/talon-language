@@ -90,6 +90,7 @@ const (
 	TokenSolver
 	TokenLinear
 	TokenTune
+	TokenRemediate
 	TokenAgainst
 	TokenRequires
 	TokenApproval
@@ -246,6 +247,7 @@ var keywords = map[string]TokenType{
 	"solver":            TokenSolver,
 	"linear":            TokenLinear,
 	"tune":              TokenTune,
+	"remediate":         TokenRemediate,
 	"against":           TokenAgainst,
 	"requires":          TokenRequires,
 	"approval":          TokenApproval,

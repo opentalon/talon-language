@@ -224,3 +224,75 @@ var (
 	_ = talon.NewFactStore
 	_ = talon.ErrRequiresFactStore
 )
+
+// ─── remediate (issue #53) ─────────────────────────────────────────────────
+
+const remediateSrc = `
+detect "Defective without ticket" {
+  for records where status == "defective"
+  flag matching items
+  remediate {
+    mcp "inventory" "create-ticket" {
+      title "Auto: {item.name} is defective"
+      item_id attr "id"
+      priority "high"
+    }
+  }
+}`
+
+func seedDefectiveItems(t *testing.T) *factstore.MemoryStore {
+	t.Helper()
+	store := talon.NewMemoryStore()
+	facts := []talon.Fact{
+		{RecordID: "1", Attribute: ":record/status", Value: "defective"},
+		{RecordID: "1", Attribute: ":attr/name", Value: "Broken Drill"},
+		{RecordID: "2", Attribute: ":record/status", Value: "defective"},
+		{RecordID: "2", Attribute: ":attr/name", Value: "Cracked Saw"},
+		{RecordID: "3", Attribute: ":record/status", Value: "ok"},
+		{RecordID: "3", Attribute: ":attr/name", Value: "Good Hammer"},
+	}
+	if err := store.Assert(context.Background(), facts); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	return store
+}
+
+func TestRun_RemediateFiresPerFlaggedRow(t *testing.T) {
+	store := seedDefectiveItems(t)
+	caller := &mockCaller{}
+	_, err := talon.Run(context.Background(), remediateSrc,
+		talon.WithFactStore(store), talon.WithMCP(caller))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// Two defective items flagged → one create-ticket call each; the "ok"
+	// item is not flagged and triggers nothing.
+	if len(caller.calls) != 2 {
+		t.Fatalf("expected 2 remediate calls, got %d: %+v", len(caller.calls), caller.calls)
+	}
+	titleByItem := map[int]any{}
+	for _, c := range caller.calls {
+		if c.Server != "inventory" || c.Tool != "create-ticket" {
+			t.Errorf("unexpected call target %s/%s", c.Server, c.Tool)
+		}
+		if c.Args["priority"] != "high" {
+			t.Errorf("priority arg: got %v", c.Args["priority"])
+		}
+		id, _ := c.Args["item_id"].(int)
+		titleByItem[id] = c.Args["title"]
+	}
+	if titleByItem[1] != "Auto: Broken Drill is defective" {
+		t.Errorf("row 1 title: got %v", titleByItem[1])
+	}
+	if titleByItem[2] != "Auto: Cracked Saw is defective" {
+		t.Errorf("row 2 title: got %v", titleByItem[2])
+	}
+}
+
+func TestRun_RemediateNoCallerNoDispatch(t *testing.T) {
+	store := seedDefectiveItems(t)
+	// No WithMCP: remediate must be a no-op, not an error.
+	if _, err := talon.Run(context.Background(), remediateSrc, talon.WithFactStore(store)); err != nil {
+		t.Fatalf("Run without MCP caller should not error: %v", err)
+	}
+}

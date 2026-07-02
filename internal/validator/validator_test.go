@@ -409,3 +409,24 @@ detect "Good score" {
 }`)
 }
 
+
+func TestValidateRemediateEmpty(t *testing.T) {
+	mustError(t, `
+detect "Act" {
+  for records where status == "defective"
+  flag matching items
+  remediate {
+  }
+}`, "requires at least one mcp call")
+}
+
+func TestValidateDetectRemediateOK(t *testing.T) {
+	mustClean(t, `
+detect "Act" {
+  for records where status == "defective"
+  flag matching items
+  remediate {
+    mcp "inventory" "create-ticket" { title "x" }
+  }
+}`)
+}

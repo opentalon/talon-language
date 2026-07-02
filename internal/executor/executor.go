@@ -410,6 +410,12 @@ func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputatio
 			return StepResult{}, err
 		}
 		vars[gc.Into] = result
+	case planner.FuncRemediateMCP:
+		result, err := e.execRemediate(ctx, gc, vars)
+		if err != nil {
+			return StepResult{}, err
+		}
+		vars[gc.Into] = result
 	case planner.FuncOptimizePareto:
 		result, err := e.execOptimizePareto(ctx, gc, vars)
 		if err != nil {

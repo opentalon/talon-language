@@ -54,7 +54,8 @@ type DetectBlock struct {
 	Related    *RelatedClause
 	Recommend  *RecommendBlock
 	Tune       *TuneClause
-	Loggers    []*LoggerAction // logger statements fired per matched row
+	Remediate  *RemediateClause // mcp side-effects fired per flagged row
+	Loggers    []*LoggerAction  // logger statements fired per matched row
 }
 
 // TuneClause names a labeled test fixture the executor uses to auto-tune
@@ -106,7 +107,17 @@ type RecommendBlock struct {
 	// shifts it. See docs/design/0005-mdp-feedback.md.
 	FeedbackWindowDays int
 	Priority           *Priority
-	Loggers            []*LoggerAction // logger statements fired per matched row
+	Remediate          *RemediateClause // mcp side-effects fired per matched row
+	Loggers            []*LoggerAction  // logger statements fired per matched row
+}
+
+// RemediateClause holds the MCP calls a detect/recommend block fires as
+// side effects when it matches — once per flagged row, with each call's
+// args resolved against that row's entity. Calls run in order; if one
+// fails, the remaining calls for that row are skipped.
+type RemediateClause struct {
+	Pos   Pos
+	Calls []*MCPCall
 }
 
 type CombineBlock struct {

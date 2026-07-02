@@ -1071,3 +1071,74 @@ detect "Bad" {
 		t.Errorf("expected logger-level diagnostic, got %v", pd)
 	}
 }
+
+func TestParseDetectRemediate(t *testing.T) {
+	prog := mustParse(t, `
+detect "Defective without ticket" {
+  for records where status == "defective"
+  flag matching items
+  remediate {
+    mcp "inventory" "create-ticket" {
+      title "Auto: {item.name}"
+      item_id attr "id"
+    }
+    mcp "slack" "notify" { text "defective item" }
+  }
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if b.Remediate == nil {
+		t.Fatal("Remediate clause not parsed")
+	}
+	if len(b.Remediate.Calls) != 2 {
+		t.Fatalf("expected 2 mcp calls, got %d", len(b.Remediate.Calls))
+	}
+	first := b.Remediate.Calls[0]
+	if first.Server != "inventory" || first.Tool != "create-ticket" {
+		t.Errorf("first call target: got %s/%s", first.Server, first.Tool)
+	}
+	if _, ok := first.Args["title"]; !ok {
+		t.Errorf("first call missing title arg: %+v", first.Args)
+	}
+}
+
+func TestParseRecommendRemediate(t *testing.T) {
+	prog := mustParse(t, `
+recommend "Order more" {
+  when detect "Low stock" matches
+  suggest "Order now"
+  remediate {
+    mcp "inventory" "create-order" { quantity 50 }
+  }
+}`)
+	b := block[*ast.RecommendBlock](t, prog, 0)
+	if b.Remediate == nil || len(b.Remediate.Calls) != 1 {
+		t.Fatalf("recommend remediate not parsed: %+v", b.Remediate)
+	}
+}
+
+// Regression: an MCP arg whose name collides with a Talon keyword (e.g.
+// `priority`) must parse, not spin the arg loop forever.
+func TestParseMCPCallKeywordArgKey(t *testing.T) {
+	prog := mustParse(t, `
+detect "Act" {
+  for records where status == "defective"
+  flag matching items
+  remediate {
+    mcp "inventory" "create-ticket" {
+      priority "high"
+      status "open"
+      title "x"
+    }
+  }
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if b.Remediate == nil || len(b.Remediate.Calls) != 1 {
+		t.Fatalf("remediate not parsed: %+v", b.Remediate)
+	}
+	args := b.Remediate.Calls[0].Args
+	for _, k := range []string{"priority", "status", "title"} {
+		if _, ok := args[k]; !ok {
+			t.Errorf("missing arg %q; got keys %v", k, args)
+		}
+	}
+}

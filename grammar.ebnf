@@ -42,7 +42,15 @@ DetectBody  = Selector
               [ ClusterClause ]
               [ SimilarClause ]
               [ RelatedClause ]
+              [ RemediateClause ]
               [ RecommendBlock ]
+
+(* RemediateClause fires MCP calls as side effects when the block matches,
+   once per flagged row, with each call's args resolved against that row's
+   entity (attr "x" → typed value; string literals interpolate {item.x} /
+   {attr.x} templates). Note: bare dotted refs like `item.id` are not
+   expression syntax; use `attr "id"` or the template form "{item.id}". *)
+RemediateClause = "remediate" "{" { MCPCall } "}"
 
 (* ScoreAnnotation declares the rule's self-asserted confidence, intended
    for auto-discovered rules ("mined from data with score 0.82").
@@ -81,6 +89,7 @@ RecommendBlock = "recommend" STRING "{" RecommendBody "}"
 RecommendBody  = WhenClause
                  { CalculateClause }
                  SuggestClause
+                 [ RemediateClause ]
                  [ PriorityClause ]
                  { LoggerStmt }
 
