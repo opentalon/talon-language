@@ -213,6 +213,18 @@ func (v *validator) checkCompleteness() {
 			if bb.StaleAfter.Value <= 0 {
 				v.errAt(bb.Pos, fmt.Sprintf("enrich %q requires a positive 'stale_after' duration", bb.Name), "")
 			}
+		case *ast.CollectBlock:
+			if bb.Schedule == "" {
+				v.errAt(bb.Pos, fmt.Sprintf("collect %q requires a 'schedule'", bb.Name), "")
+			}
+			if bb.Call == nil {
+				v.errAt(bb.Pos, fmt.Sprintf("collect %q requires an 'mcp' call", bb.Name), "")
+			} else if bb.Call.Server == "" || bb.Call.Tool == "" {
+				v.errAt(bb.Pos, fmt.Sprintf("collect %q: mcp call requires a server and tool name", bb.Name), "")
+			}
+			if bb.StoreAs == "" {
+				v.errAt(bb.Pos, fmt.Sprintf("collect %q requires a 'store results as <type>' clause", bb.Name), "")
+			}
 		case *ast.PredictBlock:
 			if len(bb.Features) == 0 {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause", bb.Name), "")
@@ -759,6 +771,8 @@ func blockPos(b ast.Block) ast.Pos {
 	case *ast.ConstraintBlock:
 		return bb.Pos
 	case *ast.EnrichBlock:
+		return bb.Pos
+	case *ast.CollectBlock:
 		return bb.Pos
 	}
 	return ast.Pos{}

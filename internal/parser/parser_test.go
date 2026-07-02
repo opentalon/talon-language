@@ -1235,3 +1235,28 @@ test "t" {
 		t.Errorf("expect: %+v", tb.Expect)
 	}
 }
+
+func TestParseCollect(t *testing.T) {
+	prog := mustParse(t, `
+collect "Failure training data" {
+  schedule weekly
+  mcp "inventory" "list-items" { query "status:defective"  per_page 100 }
+  store results as training_facts tag "failure_training"
+}
+collect "Snapshot" {
+  schedule every 6 hours
+  mcp "inventory" "list" {}
+  store results as snap
+}`)
+	a := block[*ast.CollectBlock](t, prog, 0)
+	if a.Schedule != "weekly" || a.StoreAs != "training_facts" || a.Tag != "failure_training" {
+		t.Errorf("collect A: %+v", a)
+	}
+	if a.Call == nil || a.Call.Server != "inventory" || a.Call.Tool != "list-items" {
+		t.Errorf("collect A mcp: %+v", a.Call)
+	}
+	b := block[*ast.CollectBlock](t, prog, 1)
+	if b.Schedule != "every 6 hours" || b.StoreAs != "snap" || b.Tag != "" {
+		t.Errorf("collect B: %+v", b)
+	}
+}
