@@ -147,6 +147,7 @@ func (*GraphSnapshot) stepType() string     { return "GraphSnapshot" }
 func (*StateMachineStep) stepType() string  { return "StateMachineStep" }
 func (*EventSequenceStep) stepType() string  { return "EventSequenceStep" }
 func (*RecordSequenceStep) stepType() string { return "RecordSequenceStep" }
+func (*VectorSimilarStep) stepType() string  { return "VectorSimilarStep" }
 
 // EventSequenceStep filters Input rows to those whose entity has an
 // event history matching the given ordered Steps within the given
@@ -160,6 +161,23 @@ type EventSequenceStep struct {
 	Steps         []string
 	WindowSeconds float64
 	Into          string
+}
+
+// VectorSimilarStep narrows Input to the top-K nearest neighbours of
+// the entity referenced by To, querying the talon-db HNSW index under
+// Scope. To is the entity-id expression from `to record(123)` in the
+// detect-style syntax; the executor reads the entity's seed vector
+// from the FactStore (`:vector/<scope>` attribute) and forwards it to
+// VectorSearch. Within, when non-nil, post-filters hits whose
+// metric-distance exceeds the threshold.
+type VectorSimilarStep struct {
+	BlockName string
+	Input     string
+	Scope     string
+	To        ast.Expr
+	TopK      int
+	Within    *float64
+	Into      string
 }
 
 // RecordSequenceStep keeps Input rows whose entity is the grouping
@@ -628,6 +646,26 @@ func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
+	if b.VectorScope != "" {
+		// HNSW-backed path: the executor asks the talon-db backend for
+		// the top-K nearest neighbours of b.To inside the named scope.
+		// Default K matches the existing cosine path's "no limit"
+		// implicit behaviour by going high; explicit `top N` overrides.
+		k := 10
+		if b.TopK != nil {
+			k = *b.TopK
+		}
+		plan.Steps = append(plan.Steps, &VectorSimilarStep{
+			BlockName: b.Name,
+			Input:     "candidates",
+			Scope:     b.VectorScope,
+			To:        b.To,
+			TopK:      k,
+			Within:    b.Within,
+			Into:      "similar_records",
+		})
+		return plan
+	}
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncSimilarityCosine,
 		Input:    "candidates",

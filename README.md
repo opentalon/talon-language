@@ -135,13 +135,16 @@ talon run examples/fleet_maintenance.talon \
 
 The adapter (`internal/talondb`) translates the planner's structured
 queries into talon-db's RPC surface (Lookup, LookupNumericRange,
-WindowQuery, GroupCount, Stats, LastSeen, Ancestors, Descendants, plus
-the composite Query / ClusterQuery / SequenceJoin / Subscribe RPCs).
-Pattern, Predicate, Or, Not, FullText, RuleCall, Aggregates + GroupBy,
-and PullSpec all flow through end-to-end today; numeric predicates
-push down into `LookupNumericRange` automatically. Transport failures
+WindowQuery, GroupCount, Stats, LastSeen, Ancestors, Descendants,
+plus the composite Query / ClusterQuery / SequenceJoin / Subscribe
+RPCs and the per-scope HNSW vector index — VectorInsert / VectorSearch
+/ VectorDelete / VectorDropScope / VectorListScopes). Pattern,
+Predicate, Or, Not, FullText, RuleCall, Aggregates + GroupBy, and
+PullSpec all flow through end-to-end today; numeric predicates push
+down into `LookupNumericRange` automatically. Transport failures
 surface as typed `ErrUnavailable` / `ErrNotFound` / `ErrInvalidArgument`
-sentinels so callers can branch on `errors.Is` instead of string-scraping.
+sentinels so callers can branch on `errors.Is` instead of
+string-scraping.
 
 ## Architecture
 
@@ -240,7 +243,7 @@ Talon has built-in ML keywords. Not heavyweight neural nets — lightweight stat
 | `predict` | Likelihood of an outcome | Decision tree (interpretable) |
 | `classify` | Categorize text | kNN over embeddings |
 | `forecast` | When will a value hit a threshold? | Exponential smoothing |
-| `find similar` | Records resembling a given one | Cosine similarity |
+| `find similar` | Records resembling a given one | Cosine similarity, or HNSW vector index via talon-db |
 
 Every prediction is explainable. A decision tree says "this item is at risk because operating_hours > 2000 AND repair_count > 3." The user can read the reasoning.
 
@@ -351,6 +354,30 @@ detect "Unusual consumption" {
   priority HIGH
 }
 ```
+
+### Vector similarity (HNSW)
+
+`find similar` can route through talon-db's per-scope HNSW index when
+the rule names a vector scope. Each tenant can hold multiple embedding
+models side-by-side — dimension is locked on first insert into a scope
+so a 384-dim model never collides with a 1536-dim one:
+
+```talon
+find similar "Find related vehicles" {
+  for records where type == "vehicle"
+  to 1
+  using vector scope "embed3"
+  top 5
+  within 0.3
+}
+```
+
+The executor reads the seed's `:vector/<scope>` fact, asks the
+adapter for `top+1` neighbours, drops the seed, applies `within` as
+a metric-distance threshold, and narrows the candidate set to the
+surviving ids. SIFT-5K runs at `recall@10 = 0.998` on the production
+HNSW params; see [opentalon/talon-db](https://github.com/opentalon/talon-db#vector-index)
+for tuning details.
 
 ### Failure prediction
 

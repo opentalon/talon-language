@@ -1053,10 +1053,32 @@ func (p *parser) parseSimilarBlock() *ast.SimilarBlock {
 				p.advance()
 				n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
 				b.Within = &n
+			} else if p.peek().Value == "top" {
+				// `top N` — caps the vector-similar result count.
+				p.advance()
+				k, _ := strconv.Atoi(p.expectNumberStr())
+				b.TopK = &k
 			} else {
 				p.errorf("unexpected %q inside find similar block", p.peek().Value)
 				p.synchronizeInBlock()
 			}
+		case lexer.TokenUsing:
+			// `using vector scope "X"` — route through the HNSW vector
+			// index rather than the structured-attribute cosine path.
+			p.advance()
+			if !p.at(lexer.TokenIdent) || p.peek().Value != "vector" {
+				p.errorf("expected 'vector' after 'using', got %q", p.peek().Value)
+				p.synchronizeInBlock()
+				continue
+			}
+			p.advance()
+			if !p.at(lexer.TokenIdent) || p.peek().Value != "scope" {
+				p.errorf("expected 'scope' after 'using vector', got %q", p.peek().Value)
+				p.synchronizeInBlock()
+				continue
+			}
+			p.advance()
+			b.VectorScope = p.expectString()
 		case lexer.TokenWithin:
 			p.advance()
 			n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
