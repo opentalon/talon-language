@@ -21,6 +21,7 @@ const (
 	FuncClassifyKNN          = "classify_knn"
 	FuncPPRTopK              = "ppr_topk"
 	FuncRenderTemplate       = "render_template"
+	FuncRemediateMCP         = "remediate_mcp"
 	FuncOptimizePareto       = "optimize_pareto"
 	FuncOptimizeGA           = "optimize_ga"
 	FuncOptimizeACO          = "optimize_aco"
@@ -454,6 +455,20 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 		})
 	}
 
+	// remediate: fire MCP side effects once per flagged row. Runs on the
+	// narrowed candidate set (entity ids), independent of labeling.
+	if b.Remediate != nil {
+		plan.Steps = append(plan.Steps, &GoComputation{
+			Function: FuncRemediateMCP,
+			Input:    last,
+			Params: map[string]any{
+				"calls":      b.Remediate.Calls,
+				"block_name": b.Name,
+			},
+			Into: "remediations",
+		})
+	}
+
 	return plan
 }
 
@@ -525,6 +540,19 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 			Input:    "matches",
 			Params:   params,
 			Into:     "suggestions",
+		})
+	}
+
+	// remediate: fire MCP side effects once per matched row.
+	if b.Remediate != nil {
+		plan.Steps = append(plan.Steps, &GoComputation{
+			Function: FuncRemediateMCP,
+			Input:    "matches",
+			Params: map[string]any{
+				"calls":      b.Remediate.Calls,
+				"block_name": b.Name,
+			},
+			Into: "remediations",
 		})
 	}
 	return plan

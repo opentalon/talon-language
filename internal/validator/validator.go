@@ -190,6 +190,7 @@ func (v *validator) checkCompleteness() {
 			if bb.Recommend != nil && bb.Recommend.Suggest == nil {
 				v.errAt(bb.Recommend.Pos, fmt.Sprintf("nested recommend %q requires a 'suggest' clause", bb.Recommend.Name), "")
 			}
+			v.checkRemediate(bb.Name, bb.Remediate)
 			v.checkDetectTune(bb)
 		case *ast.RuleBlock:
 			if bb.Block == nil && bb.Requires == nil && bb.Allow == nil {
@@ -199,6 +200,7 @@ func (v *validator) checkCompleteness() {
 			if bb.Suggest == nil {
 				v.errAt(bb.Pos, fmt.Sprintf("recommend %q requires a 'suggest' clause", bb.Name), "")
 			}
+			v.checkRemediate(bb.Name, bb.Remediate)
 		case *ast.PredictBlock:
 			if len(bb.Features) == 0 {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause", bb.Name), "")
@@ -303,6 +305,24 @@ func (v *validator) checkCombine(bb *ast.CombineBlock) {
 // checkDetectTune validates `tune against test "..."` clauses on detect blocks.
 // The referenced test must exist; the block must contain a tunable ML
 // primitive (today: anomaly only — extensible).
+// checkRemediate validates a remediate clause's structural well-formedness:
+// at least one call, each with a non-empty server and tool. (There is no
+// MCP-server registry to check names against — same as workflow steps.)
+func (v *validator) checkRemediate(blockName string, r *ast.RemediateClause) {
+	if r == nil {
+		return
+	}
+	if len(r.Calls) == 0 {
+		v.errAt(r.Pos, fmt.Sprintf("%q: remediate block requires at least one mcp call", blockName), "")
+		return
+	}
+	for _, c := range r.Calls {
+		if c.Server == "" || c.Tool == "" {
+			v.errAt(r.Pos, fmt.Sprintf("%q: remediate mcp call requires a server and tool name", blockName), "")
+		}
+	}
+}
+
 func (v *validator) checkDetectTune(bb *ast.DetectBlock) {
 	if bb.Tune == nil {
 		return

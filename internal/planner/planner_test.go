@@ -700,3 +700,31 @@ combine "Reorder picks" {
 		t.Errorf("attr_indices missing urgency: %v", attrIdx)
 	}
 }
+
+func TestPlanDetectRemediateStep(t *testing.T) {
+	plan := planBlock(t, `
+detect "Defective" {
+  for records where status == "defective"
+  flag matching items
+  remediate {
+    mcp "inventory" "create-ticket" { title "x" }
+  }
+}`, "Defective")
+
+	var found *GoComputation
+	for _, s := range plan.Steps {
+		if gc, ok := s.(*GoComputation); ok && gc.Function == FuncRemediateMCP {
+			found = gc
+		}
+	}
+	if found == nil {
+		t.Fatalf("no remediate_mcp step emitted; steps: %+v", plan.Steps)
+	}
+	calls, ok := found.Params["calls"].([]*ast.MCPCall)
+	if !ok || len(calls) != 1 {
+		t.Fatalf("remediate step should carry 1 call, got %+v", found.Params["calls"])
+	}
+	if calls[0].Server != "inventory" || calls[0].Tool != "create-ticket" {
+		t.Errorf("call target: got %s/%s", calls[0].Server, calls[0].Tool)
+	}
+}

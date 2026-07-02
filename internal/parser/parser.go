@@ -179,6 +179,8 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 		b.Pattern = p.parsePatternExpr()
 	case lexer.TokenTune:
 		b.Tune = p.parseTuneClause()
+	case lexer.TokenRemediate:
+		b.Remediate = p.parseRemediateClause()
 	default:
 		if p.atLoggerStatement() {
 			if s := p.parseLoggerStatement(); s != nil {
@@ -190,6 +192,28 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 		return false
 	}
 	return true
+}
+
+// parseRemediateClause parses `remediate { mcp "s" "t" { ... } ... }` —
+// a brace block of zero or more MCP calls, reusing parseMCPCall.
+func (p *parser) parseRemediateClause() *ast.RemediateClause {
+	tok := p.advance() // remediate
+	rc := &ast.RemediateClause{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	if !p.expect(lexer.TokenLBrace) {
+		return rc
+	}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !p.at(lexer.TokenMcp) {
+			p.errorf("unexpected token %q inside remediate block (expected mcp)", p.peek().Value)
+			p.advance()
+			continue
+		}
+		if call := p.parseMCPCall(); call != nil {
+			rc.Calls = append(rc.Calls, call)
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return rc
 }
 
 // atLoggerStatement reports whether the parser is positioned at a
@@ -412,6 +436,8 @@ func (p *parser) parseRecommend() *ast.RecommendBlock {
 		case lexer.TokenPriority:
 			pr := p.parsePriority()
 			b.Priority = &pr
+		case lexer.TokenRemediate:
+			b.Remediate = p.parseRemediateClause()
 		default:
 			if p.atLoggerStatement() {
 				if s := p.parseLoggerStatement(); s != nil {
@@ -630,7 +656,17 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 	p.expect(lexer.TokenLBrace)
 	call := &ast.MCPCall{Server: server, Tool: tool, Args: map[string]ast.Expr{}}
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
-		key := p.expectIdent()
+		// Arg names are free-form and may collide with Talon keywords
+		// (e.g. `priority`, `status`, `type`). Consume one token as the
+		// key unconditionally — this both accepts keyword-named args and
+		// guarantees forward progress so a stray token can never spin the
+		// loop.
+		keyTok := p.advance()
+		key := keyTok.Value
+		if key == "" {
+			p.errorf("expected mcp argument name, got %q", keyTok.Value)
+			continue
+		}
 		val := p.parseExpr()
 		call.Args[key] = val
 	}
