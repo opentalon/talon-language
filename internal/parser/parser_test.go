@@ -1169,3 +1169,33 @@ enrich "Refresh stock" {
 		t.Errorf("update 1 path: %q", b.Updates[1].ResultPath)
 	}
 }
+
+func TestParseMCPOnError(t *testing.T) {
+	prog := mustParse(t, `
+workflow "W" {
+  step "s" {
+    mcp "inv" "create" {
+      title "x"
+      on_error {
+        retry 3 times
+        then log "failed: {error}"
+        then skip
+      }
+    }
+  }
+}`)
+	wf := block[*ast.WorkflowBlock](t, prog, 0)
+	oe := wf.Steps[0].MCPCall.OnError
+	if oe == nil || len(oe.Actions) != 3 {
+		t.Fatalf("on_error actions: %+v", oe)
+	}
+	if r, ok := oe.Actions[0].(*ast.RetryAction); !ok || r.Times != 3 {
+		t.Errorf("action 0 not retry 3: %+v", oe.Actions[0])
+	}
+	if _, ok := oe.Actions[1].(*ast.LogErrorAction); !ok {
+		t.Errorf("action 1 not log: %+v", oe.Actions[1])
+	}
+	if _, ok := oe.Actions[2].(*ast.SkipAction); !ok {
+		t.Errorf("action 2 not skip: %+v", oe.Actions[2])
+	}
+}

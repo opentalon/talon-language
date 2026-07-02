@@ -500,13 +500,16 @@ func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, v
 
 	mcpStart := time.Now()
 	if !collectAll {
-		res, err := e.MCP.Call(ctx, mcpCall.Server, mcpCall.Tool, args)
-		status := "ok"
+		// Single call goes through the shared on_error policy path
+		// (retry / log / skip / fail); dispatchMCP handles logging.
+		res, skipped, err := e.dispatchMCP(ctx, mcpCall.Server, mcpCall.Tool, args, mcpCall.OnError, nil)
 		if err != nil {
-			status = "error"
+			return nil, err
 		}
-		talonlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, status, time.Since(mcpStart), err)
-		return res, err
+		if skipped {
+			return map[string]any{"status": "skipped", "reason": "on_error"}, nil
+		}
+		return res, nil
 	}
 
 	// Auto-paginate: call repeatedly until has_more is false

@@ -139,9 +139,17 @@ WorkflowStep  = "step" STRING
 
 StepBody      = MCPCall { Condition }
 
-MCPCall       = "mcp" STRING STRING "{" { MCPArg } "}"
+MCPCall       = "mcp" STRING STRING "{" { MCPArg | OnErrorClause } "}"
 
 MCPArg        = IDENT Expr
+
+(* on_error is a per-call resilience policy. Actions run left-to-right:
+   `retry N times` makes N extra attempts (fixed-interval, no backoff in
+   v1); `log "msg"` writes a structured line ({error} + row context);
+   `skip` swallows the failure and continues; `fail` propagates it (the
+   implicit default when no skip/fail is present). `then` is optional. *)
+OnErrorClause = "on_error" "{" { ErrorAction } "}"
+ErrorAction   = [ "then" ] ( "retry" NUMBER [ "times" ] | "log" STRING | "skip" | "fail" )
 
 (* ─── top-level ML blocks ────────────────────────────────────────────────────── *)
 

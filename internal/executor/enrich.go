@@ -8,7 +8,6 @@ import (
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/factstore"
-	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/planner"
 	"github.com/opentalon/talon-language/internal/template"
 )
@@ -73,14 +72,8 @@ func (e *Executor) execEnrich(ctx context.Context, gc *planner.GoComputation, va
 		for k, expr := range call.Args {
 			args[k] = resolveRemediateArg(expr, row, rctx)
 		}
-		start := time.Now()
-		resp, err := e.MCP.Call(ctx, call.Server, call.Tool, args)
-		status := "ok"
-		if err != nil {
-			status = "error"
-		}
-		talonlog.MCPCall(ctx, call.Server, call.Tool, status, time.Since(start), err)
-		if err != nil {
+		resp, skipped, err := e.dispatchMCP(ctx, call.Server, call.Tool, args, call.OnError, row)
+		if err != nil || skipped {
 			continue
 		}
 
