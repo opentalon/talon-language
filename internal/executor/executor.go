@@ -74,6 +74,12 @@ type Executor struct {
 	MCP         MCPCaller
 	ConfirmHook ConfirmationHook
 
+	// ApprovalHook gates `remediate approve` calls; Queue receives
+	// `remediate queue` calls. Both are optional and host-supplied;
+	// when nil, those modes skip the call (no approver / no queue).
+	ApprovalHook ApprovalHook
+	Queue        Queue
+
 	// GraphProvider optionally supplies a *factstore.GraphSnapshot for
 	// `find related` (PPR) steps. When nil, the executor falls back to
 	// building a snapshot from in-scope row variables — useful for tests

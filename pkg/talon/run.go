@@ -149,6 +149,8 @@ func Run(ctx context.Context, src string, opts ...Option) (*Result, error) {
 	exec := executor.NewExecutor(cfg.factStore)
 	exec.MCP = cfg.mcp
 	exec.ConfirmHook = cfg.confirm
+	exec.ApprovalHook = cfg.approval
+	exec.Queue = cfg.queue
 
 	blocks, err := exec.RunAll(ctx, plans)
 	if err != nil {

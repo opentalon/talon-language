@@ -117,6 +117,9 @@ type RecommendBlock struct {
 // fails, the remaining calls for that row are skipped.
 type RemediateClause struct {
 	Pos   Pos
+	Mode  string // "auto" | "propose" (default) | "approve" | "queue"
+	Role  string // required approver role, for Mode == "approve"
+	Batch string // queue name, for Mode == "queue"
 	Calls []*MCPCall
 }
 

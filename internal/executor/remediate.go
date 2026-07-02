@@ -24,6 +24,13 @@ import (
 func (e *Executor) execRemediate(ctx context.Context, gc *planner.GoComputation, vars map[string]any) (any, error) {
 	calls, _ := gc.Params["calls"].([]*ast.MCPCall)
 	rows, _ := vars[gc.Input].([][]any)
+	mode, _ := gc.Params["mode"].(string)
+	if mode == "" {
+		mode = "propose"
+	}
+	role, _ := gc.Params["role"].(string)
+	batch, _ := gc.Params["batch"].(string)
+	blockName, _ := gc.Params["block_name"].(string)
 	summary := map[string]any{"fired": 0, "rows": len(rows)}
 	if len(calls) == 0 || len(rows) == 0 {
 		return summary, nil
@@ -61,19 +68,54 @@ func (e *Executor) execRemediate(ctx context.Context, gc *planner.GoComputation,
 			for k, expr := range call.Args {
 				args[k] = resolveRemediateArg(expr, row, rctx)
 			}
+
+			// queue mode never contacts MCP — it defers the call.
+			if mode == "queue" {
+				if e.Queue != nil {
+					if err := e.Queue.Enqueue(ctx, batch, QueuedCall{Server: call.Server, Tool: call.Tool, Args: args}); err != nil {
+						return summary, fmt.Errorf("remediate queue %s/%s: %w", call.Server, call.Tool, err)
+					}
+					talonlog.MCPCall(ctx, call.Server, call.Tool, "queued", 0, nil)
+					fired++
+				}
+				continue
+			}
+
 			if e.MCP == nil {
 				continue // no caller: stub, like workflow mcp steps
 			}
-			if e.ConfirmHook != nil {
-				proceed, err := e.ConfirmHook(ctx, call.Tool, call.Server, call.Tool)
-				if err != nil {
-					return summary, fmt.Errorf("remediate confirm %s/%s: %w", call.Server, call.Tool, err)
+
+			// Gate the call according to the mode.
+			switch mode {
+			case "auto":
+				talonlog.MCPCall(ctx, call.Server, call.Tool, "auto", 0, nil)
+			case "approve":
+				if e.ApprovalHook == nil {
+					talonlog.MCPCall(ctx, call.Server, call.Tool, "unapproved", 0, nil)
+					continue // no approver wired → cannot approve
 				}
-				if !proceed {
-					talonlog.MCPCall(ctx, call.Server, call.Tool, "skipped", 0, nil)
+				ok, err := e.ApprovalHook(ctx, role, blockName, args)
+				if err != nil {
+					return summary, fmt.Errorf("remediate approve %s/%s: %w", call.Server, call.Tool, err)
+				}
+				if !ok {
+					talonlog.MCPCall(ctx, call.Server, call.Tool, "denied", 0, nil)
 					continue
 				}
+				talonlog.MCPCall(ctx, call.Server, call.Tool, "approved", 0, nil)
+			default: // propose
+				if e.ConfirmHook != nil {
+					proceed, err := e.ConfirmHook(ctx, call.Tool, call.Server, call.Tool)
+					if err != nil {
+						return summary, fmt.Errorf("remediate confirm %s/%s: %w", call.Server, call.Tool, err)
+					}
+					if !proceed {
+						talonlog.MCPCall(ctx, call.Server, call.Tool, "proposed", 0, nil)
+						continue
+					}
+				}
 			}
+
 			_, skipped, err := e.dispatchMCP(ctx, call.Server, call.Tool, args, call.OnError, row)
 			if err != nil {
 				break // on_error chose fail (or default) — stop this row's calls

@@ -467,6 +467,9 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 			Params: map[string]any{
 				"calls":      b.Remediate.Calls,
 				"block_name": b.Name,
+				"mode":       b.Remediate.Mode,
+				"role":       b.Remediate.Role,
+				"batch":      b.Remediate.Batch,
 			},
 			Into: "remediations",
 		})
@@ -581,6 +584,9 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 			Params: map[string]any{
 				"calls":      b.Remediate.Calls,
 				"block_name": b.Name,
+				"mode":       b.Remediate.Mode,
+				"role":       b.Remediate.Role,
+				"batch":      b.Remediate.Batch,
 			},
 			Into: "remediations",
 		})

@@ -198,22 +198,43 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 	return true
 }
 
-// parseRemediateClause parses `remediate { mcp "s" "t" { ... } ... }` —
-// a brace block of zero or more MCP calls, reusing parseMCPCall.
+// parseRemediateClause parses `remediate [mode] { [requires role "R"]
+// [batch "B"] mcp "s" "t" { ... } ... }`. Mode is auto | propose (default)
+// | approve | queue.
 func (p *parser) parseRemediateClause() *ast.RemediateClause {
 	tok := p.advance() // remediate
-	rc := &ast.RemediateClause{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	rc := &ast.RemediateClause{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}, Mode: "propose"}
+	if p.at(lexer.TokenIdent) {
+		switch p.peek().Value {
+		case "auto", "propose", "approve", "queue":
+			rc.Mode = p.advance().Value
+		default:
+			p.errorf("unknown remediate mode %q (want auto / propose / approve / queue)", p.peek().Value)
+		}
+	}
 	if !p.expect(lexer.TokenLBrace) {
 		return rc
 	}
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
-		if !p.at(lexer.TokenMcp) {
-			p.errorf("unexpected token %q inside remediate block (expected mcp)", p.peek().Value)
+		switch {
+		case p.at(lexer.TokenMcp):
+			if call := p.parseMCPCall(); call != nil {
+				rc.Calls = append(rc.Calls, call)
+			}
+		case p.at(lexer.TokenRequires):
+			// `requires role "manager"` — approver role for approve mode.
 			p.advance()
-			continue
-		}
-		if call := p.parseMCPCall(); call != nil {
-			rc.Calls = append(rc.Calls, call)
+			if p.at(lexer.TokenRole) {
+				p.advance()
+			}
+			rc.Role = p.expectString()
+		case p.at(lexer.TokenIdent) && p.peek().Value == "batch":
+			// `batch "weekly-cleanup"` — queue name for queue mode.
+			p.advance()
+			rc.Batch = p.expectString()
+		default:
+			p.errorf("unexpected token %q inside remediate block (expected mcp / requires role / batch)", p.peek().Value)
+			p.advance()
 		}
 	}
 	p.expect(lexer.TokenRBrace)

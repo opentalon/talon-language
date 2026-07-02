@@ -24,6 +24,15 @@ type MCPCaller = executor.MCPCaller
 // {"status":"skipped","reason":"confirmation_denied"}.
 type ConfirmationHook = executor.ConfirmationHook
 
+// ApprovalHook gates `remediate approve` MCP calls on a role-based
+// decision. Install it with [WithApprovalHook].
+type ApprovalHook = executor.ApprovalHook
+
+// Queue receives `remediate queue` calls for later host-driven dispatch.
+// Install it with [WithQueue]. QueuedCall carries one deferred call.
+type Queue = executor.Queue
+type QueuedCall = executor.QueuedCall
+
 // BlockResult is the per-block execution outcome. Aliased here so
 // consumers don't have to import internal/executor.
 type BlockResult = executor.BlockResult
@@ -91,6 +100,8 @@ type runConfig struct {
 	file      string
 	mcp       MCPCaller
 	confirm   ConfirmationHook
+	approval  ApprovalHook
+	queue     Queue
 	factStore FactStore
 }
 
@@ -105,6 +116,18 @@ func WithMCP(c MCPCaller) Option {
 // hook fires before each MCP call; returning false skips the call.
 func WithConfirmHook(h ConfirmationHook) Option {
 	return func(cfg *runConfig) { cfg.confirm = h }
+}
+
+// WithApprovalHook installs the gate for `remediate approve` calls. When
+// absent, approve-mode calls are skipped (no approver).
+func WithApprovalHook(h ApprovalHook) Option {
+	return func(cfg *runConfig) { cfg.approval = h }
+}
+
+// WithQueue installs the sink for `remediate queue` calls. When absent,
+// queue-mode calls are dropped (no queue).
+func WithQueue(q Queue) Option {
+	return func(cfg *runConfig) { cfg.queue = q }
 }
 
 // WithFilename labels diagnostics with this filename. Defaults to
@@ -165,8 +188,10 @@ func RunWorkflow(ctx context.Context, src string, opts ...Option) (*Result, erro
 	}
 
 	exec := &executor.Executor{
-		MCP:         cfg.mcp,
-		ConfirmHook: cfg.confirm,
+		MCP:          cfg.mcp,
+		ConfirmHook:  cfg.confirm,
+		ApprovalHook: cfg.approval,
+		Queue:        cfg.queue,
 	}
 	blocks, err := exec.RunAll(ctx, plans)
 	if err != nil {
