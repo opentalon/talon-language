@@ -356,6 +356,23 @@ Condition       = NotCondition
                 | AnomalyCondition
                 | TemporalCondition
                 | ChangedToCondition
+                | SugarCondition
+
+(* SugarConditions desugar at parse time to the forms above (no new AST):
+     has_open record type "X"           → has record type "X"
+                                            and attr "X.status" != "closed"
+     has_expired record type "X" [where C] → has record type "X"
+                                            and attr "X.expires_at" < today [and C]
+     attr "X" approaching within N UNIT  → attr "X" >= today
+                                            and attr "X" <= today + N UNIT
+   Evaluation status: `approaching` and the `< today` date bound now filter
+   in the testrunner (`talon test`) — the goCondition evaluator handles
+   today / date-arithmetic / older_than. Still NOT evaluated: cross-record
+   existence (the `has record type "X"` part of has_open/has_expired needs a
+   relationship model), and the executor Run/Filter path (pass-through). *)
+SugarCondition  = "has_open" [ "record" ] "type" STRING
+                | "has_expired" [ "record" ] "type" STRING [ "where" Condition ]
+                | Expr "approaching" "within" NUMBER DurationUnit
 
 NotCondition        = "not" Condition
 

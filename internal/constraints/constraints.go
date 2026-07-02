@@ -15,6 +15,7 @@ package constraints
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 )
@@ -37,7 +38,7 @@ func Check(record map[string]any, blocks []*ast.ConstraintBlock) Verdict {
 		if err != nil || !applies {
 			continue
 		}
-		ok, err := evalCondition(c.Require, record)
+		ok, err := evalConditionAt(c.Require, record, time.Now().UTC())
 		if err != nil {
 			// Treat evaluation errors as accept with a warning — refusing to
 			// store a fact because we couldn't decide is worse than logging.
@@ -89,7 +90,7 @@ func matchSelector(sel ast.Selector, record map[string]any) (bool, error) {
 		return true, nil
 	}
 	for _, c := range sel.Conditions {
-		ok, err := evalCondition(c, record)
+		ok, err := evalConditionAt(c, record, time.Now().UTC())
 		if err != nil {
 			return false, err
 		}
@@ -103,16 +104,16 @@ func matchSelector(sel ast.Selector, record map[string]any) (bool, error) {
 // evalCondition is a minimal per-record evaluator. It handles the conditions
 // that make sense for a single-record integrity check; expressions that need
 // a fact-graph traversal return an error so the verdict downgrades to warn.
-func evalCondition(c ast.Condition, record map[string]any) (bool, error) {
+func evalConditionAt(c ast.Condition, record map[string]any, now time.Time) (bool, error) {
 	switch cc := c.(type) {
 	case nil:
 		return true, nil
 	case *ast.LogicalCondition:
-		left, err := evalCondition(cc.Left, record)
+		left, err := evalConditionAt(cc.Left, record, now)
 		if err != nil {
 			return false, err
 		}
-		right, err := evalCondition(cc.Right, record)
+		right, err := evalConditionAt(cc.Right, record, now)
 		if err != nil {
 			return false, err
 		}
@@ -124,28 +125,28 @@ func evalCondition(c ast.Condition, record map[string]any) (bool, error) {
 		}
 		return false, fmt.Errorf("unknown logical operator %q", cc.Op)
 	case *ast.NotCondition:
-		ok, err := evalCondition(cc.Inner, record)
+		ok, err := evalConditionAt(cc.Inner, record, now)
 		if err != nil {
 			return false, err
 		}
 		return !ok, nil
 	case *ast.CompareCondition:
-		l, err := evalExpr(cc.Left, record)
+		l, err := evalExpr(cc.Left, record, now)
 		if err != nil {
 			return false, err
 		}
-		r, err := evalExpr(cc.Right, record)
+		r, err := evalExpr(cc.Right, record, now)
 		if err != nil {
 			return false, err
 		}
 		return compare(l, cc.Op, r)
 	case *ast.MembershipCondition:
-		v, err := evalExpr(cc.Expr, record)
+		v, err := evalExpr(cc.Expr, record, now)
 		if err != nil {
 			return false, err
 		}
 		for _, m := range cc.Members {
-			mv, err := evalExpr(m, record)
+			mv, err := evalExpr(m, record, now)
 			if err != nil {
 				return false, err
 			}
@@ -156,7 +157,7 @@ func evalCondition(c ast.Condition, record map[string]any) (bool, error) {
 		return cc.Negated, nil
 	case *ast.StringMatchCondition:
 		// contains/starts_with/ends_with against a string attribute.
-		v, err := evalExpr(cc.Subject, record)
+		v, err := evalExpr(cc.Subject, record, now)
 		if err != nil {
 			return false, err
 		}
@@ -165,6 +166,26 @@ func evalCondition(c ast.Condition, record map[string]any) (bool, error) {
 			return false, fmt.Errorf("string match: subject is %T, not string", v)
 		}
 		return stringMatch(s, cc.Op, cc.Value), nil
+	case *ast.TemporalCondition:
+		// `attr "x" older_than/newer_than N units` against a date-valued
+		// attribute: older_than = date is before now-window; newer_than =
+		// date is after now-window.
+		v, err := evalExpr(cc.Subject, record, now)
+		if err != nil {
+			return false, err
+		}
+		d, ok := coerceTime(v)
+		if !ok {
+			return false, fmt.Errorf("temporal: %v is not a date", v)
+		}
+		cutoff := now.Add(-durationDelta(cc.Value))
+		switch cc.Op {
+		case "older_than":
+			return d.Before(cutoff), nil
+		case "newer_than":
+			return d.After(cutoff), nil
+		}
+		return false, fmt.Errorf("unknown temporal op %q", cc.Op)
 	}
 	return false, fmt.Errorf("constraint evaluator cannot handle condition type %T", c)
 }
@@ -172,14 +193,25 @@ func evalCondition(c ast.Condition, record map[string]any) (bool, error) {
 // EvalCondition is the exported per-row condition evaluator. The
 // testrunner's Filter step uses it to enforce `goConditions` the
 // planner couldn't push into the FactStore query (arithmetic,
-// cross-attribute comparison, etc.). Returns true when the condition
-// holds; errors surface for unresolvable expressions.
+// cross-attribute comparison, temporal/date bounds). Returns true when
+// the condition holds; errors surface for unresolvable expressions.
 func EvalCondition(c ast.Condition, record map[string]any) (bool, error) {
-	return evalCondition(c, record)
+	return evalConditionAt(c, record, time.Now().UTC())
 }
 
-func evalExpr(e ast.Expr, record map[string]any) (any, error) {
+// EvalConditionAt is EvalCondition with an explicit clock, so `today` /
+// `older_than` / `approaching` evaluate deterministically (tests, and
+// hosts that want a fixed evaluation instant).
+func EvalConditionAt(c ast.Condition, record map[string]any, now time.Time) (bool, error) {
+	return evalConditionAt(c, record, now)
+}
+
+func evalExpr(e ast.Expr, record map[string]any, now time.Time) (any, error) {
 	switch ee := e.(type) {
+	case *ast.TodayExpr:
+		// Truncate to the day in UTC so date-only attribute values compare
+		// cleanly against "today".
+		return dateOnly(now), nil
 	case *ast.AttrExpr:
 		return record[ee.Name], nil
 	case *ast.IdentExpr:
@@ -192,7 +224,7 @@ func evalExpr(e ast.Expr, record map[string]any) (any, error) {
 	case *ast.UnaryExpr:
 		// Only unary minus is meaningful for constraint values; the parser
 		// emits `-10` as UnaryExpr("-", LiteralExpr(10)).
-		v, err := evalExpr(ee.Operand, record)
+		v, err := evalExpr(ee.Operand, record, now)
 		if err != nil {
 			return nil, err
 		}
@@ -203,18 +235,27 @@ func evalExpr(e ast.Expr, record map[string]any) (any, error) {
 		}
 		return nil, fmt.Errorf("unary %s applied to %T", ee.Op, v)
 	case *ast.BinaryExpr:
-		// Arithmetic over attribute references — enables expressions
-		// like `attr "km" > attr "last_service_km" + 20000`. Both sides
-		// must resolve to numerics; non-numeric ops return an error so
-		// callers see a clear diagnostic.
-		left, err := evalExpr(ee.Left, record)
+		left, err := evalExpr(ee.Left, record, now)
 		if err != nil {
 			return nil, err
 		}
-		right, err := evalExpr(ee.Right, record)
+		right, err := evalExpr(ee.Right, record, now)
 		if err != nil {
 			return nil, err
 		}
+		// Date arithmetic: `today + N units` (the `approaching` upper
+		// bound desugars to BinaryExpr{TodayExpr, "+", Duration}).
+		if lt, ok := left.(time.Time); ok {
+			if dur, ok := right.(ast.Duration); ok && (ee.Op == "+" || ee.Op == "-") {
+				delta := durationDelta(dur)
+				if ee.Op == "-" {
+					delta = -delta
+				}
+				return lt.Add(delta), nil
+			}
+		}
+		// Numeric arithmetic over attribute references — e.g.
+		// `attr "km" > attr "last_service_km" + 20000`.
 		lf, lok := toFloat(left)
 		rf, rok := toFloat(right)
 		if !lok || !rok {
@@ -263,6 +304,25 @@ func compare(l any, op string, r any) (bool, error) {
 			}
 		}
 	}
+	// Chronological compare when either side is a date (a time.Time, or a
+	// date-formatted string) and the other coerces to a date too. Powers
+	// `attr "d" >= today`, `attr "d" <= today + 7 days`, etc.
+	if lt, rt, ok := bothDates(l, r); ok {
+		switch op {
+		case "==":
+			return lt.Equal(rt), nil
+		case "!=":
+			return !lt.Equal(rt), nil
+		case "<":
+			return lt.Before(rt), nil
+		case "<=":
+			return !lt.After(rt), nil
+		case ">":
+			return lt.After(rt), nil
+		case ">=":
+			return !lt.Before(rt), nil
+		}
+	}
 	switch op {
 	case "==":
 		return equal(l, r), nil
@@ -270,6 +330,63 @@ func compare(l any, op string, r any) (bool, error) {
 		return !equal(l, r), nil
 	}
 	return false, fmt.Errorf("cannot compare %T %s %T", l, op, r)
+}
+
+// bothDates coerces l and r to dates when at least one is already a
+// time.Time (so a plain string-vs-string comparison isn't hijacked as a
+// date compare). Returns ok=false otherwise.
+func bothDates(l, r any) (time.Time, time.Time, bool) {
+	_, lIsTime := l.(time.Time)
+	_, rIsTime := r.(time.Time)
+	if !lIsTime && !rIsTime {
+		return time.Time{}, time.Time{}, false
+	}
+	lt, lok := coerceTime(l)
+	rt, rok := coerceTime(r)
+	if !lok || !rok {
+		return time.Time{}, time.Time{}, false
+	}
+	return lt, rt, true
+}
+
+// coerceTime turns a time.Time or a date-formatted string into a
+// day-truncated UTC time.
+func coerceTime(v any) (time.Time, bool) {
+	switch x := v.(type) {
+	case time.Time:
+		return dateOnly(x), true
+	case string:
+		for _, layout := range []string{time.RFC3339, "2006-01-02", "2006-01-02T15:04:05Z"} {
+			if t, err := time.Parse(layout, x); err == nil {
+				return dateOnly(t), true
+			}
+		}
+	}
+	return time.Time{}, false
+}
+
+// dateOnly truncates to midnight UTC so date-only values compare cleanly.
+func dateOnly(t time.Time) time.Time {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// durationDelta converts an ast.Duration into a time.Duration (calendar
+// months/years approximated as 30 / 365 days — fine for these bounds).
+func durationDelta(d ast.Duration) time.Duration {
+	day := 24 * time.Hour
+	switch d.Unit {
+	case "hours", "hour":
+		return time.Duration(d.Value) * time.Hour
+	case "weeks", "week":
+		return time.Duration(d.Value) * 7 * day
+	case "months", "month":
+		return time.Duration(d.Value) * 30 * day
+	case "years", "year":
+		return time.Duration(d.Value) * 365 * day
+	default: // days
+		return time.Duration(d.Value) * day
+	}
 }
 
 func toFloat(v any) (float64, bool) {

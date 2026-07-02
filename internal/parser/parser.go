@@ -1822,6 +1822,18 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	switch p.peek().Type {
 	case lexer.TokenHas:
 		return p.parseHasCondition()
+	case lexer.TokenHasOpen:
+		p.advance()
+		return desugarHasOpen(p.parseRecordTypeTail())
+	case lexer.TokenHasExpired:
+		p.advance()
+		name := p.parseRecordTypeTail()
+		var where ast.Condition
+		if p.at(lexer.TokenWhere) {
+			p.advance()
+			where = p.parseOrCondition()
+		}
+		return desugarHasExpired(name, where)
 	case lexer.TokenEvent:
 		return p.parseEventSequenceCondition()
 	case lexer.TokenRecord:
@@ -1937,16 +1949,55 @@ func (p *parser) parseRecordSequenceCondition() ast.Condition {
 
 func (p *parser) parseHasCondition() ast.Condition {
 	p.advance() // has
-	// optional "open", "record", etc. — consume idents until "type"
-	for (p.at(lexer.TokenIdent) || p.at(lexer.TokenRecords)) && !p.atEOF() {
-		if p.peek().Value == "type" {
-			break
+	return &ast.HasCondition{Type: p.parseRecordTypeTail()}
+}
+
+// parseRecordTypeTail consumes an optional `record` (or other lead-in
+// idents) up to `type "X"` and returns X. Shared by `has`, `has_open`,
+// and `has_expired`.
+func (p *parser) parseRecordTypeTail() string {
+	for !p.atEOF() && !p.at(lexer.TokenTypeKw) && p.peek().Value != "type" {
+		if p.at(lexer.TokenRecord) || p.at(lexer.TokenRecords) || p.at(lexer.TokenIdent) {
+			p.advance()
+			continue
 		}
-		p.advance()
+		break
 	}
 	p.advance() // type
-	name := p.expectString()
-	return &ast.HasCondition{Type: name}
+	return p.expectString()
+}
+
+// desugarHasOpen expands `has_open record type "X"` into the existing
+// form `has record type "X" and attr "X.status" != "closed"`. The
+// "closed" status convention is hard-coded (see #62 scope notes).
+func desugarHasOpen(recType string) ast.Condition {
+	return &ast.LogicalCondition{
+		Op:   "and",
+		Left: &ast.HasCondition{Type: recType},
+		Right: &ast.CompareCondition{
+			Left:  &ast.AttrExpr{Name: recType + ".status"},
+			Op:    "!=",
+			Right: &ast.LiteralExpr{Value: "closed"},
+		},
+	}
+}
+
+// desugarHasExpired expands `has_expired record type "X" [where COND]`
+// into `has record type "X" and attr "X.expires_at" < today [and COND]`.
+func desugarHasExpired(recType string, where ast.Condition) ast.Condition {
+	c := ast.Condition(&ast.LogicalCondition{
+		Op:   "and",
+		Left: &ast.HasCondition{Type: recType},
+		Right: &ast.CompareCondition{
+			Left:  &ast.AttrExpr{Name: recType + ".expires_at"},
+			Op:    "<",
+			Right: &ast.TodayExpr{},
+		},
+	})
+	if where != nil {
+		c = &ast.LogicalCondition{Op: "and", Left: c, Right: where}
+	}
+	return c
 }
 
 func (p *parser) parseExprCondition() ast.Condition {
@@ -1956,6 +2007,20 @@ func (p *parser) parseExprCondition() ast.Condition {
 		op := p.advance().Value
 		right := p.parseExpr()
 		return &ast.CompareCondition{Left: expr, Op: op, Right: right}
+
+	case lexer.TokenApproaching:
+		// `attr "X" approaching within N units` desugars to
+		// `attr "X" >= today and attr "X" <= today + N units`.
+		p.advance() // approaching
+		p.expect(lexer.TokenWithin)
+		n, _ := strconv.Atoi(p.expectNumberStr())
+		unit := p.expectDurationUnit()
+		upper := &ast.BinaryExpr{Left: &ast.TodayExpr{}, Op: "+", Right: &ast.LiteralExpr{Value: ast.Duration{Value: n, Unit: unit}}}
+		return &ast.LogicalCondition{
+			Op:    "and",
+			Left:  &ast.CompareCondition{Left: expr, Op: ">=", Right: &ast.TodayExpr{}},
+			Right: &ast.CompareCondition{Left: expr, Op: "<=", Right: upper},
+		}
 
 	case lexer.TokenIn:
 		p.advance()

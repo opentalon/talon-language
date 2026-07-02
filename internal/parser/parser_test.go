@@ -2,6 +2,7 @@ package parser
 
 import (
 	"strings"
+	"reflect"
 	"testing"
 
 	"github.com/opentalon/talon-language/internal/ast"
@@ -1297,5 +1298,66 @@ detect "p" {
 	p := block[*ast.DetectBlock](t, prog3, 0)
 	if p.Remediate.Mode != "propose" {
 		t.Errorf("default mode: %q", p.Remediate.Mode)
+	}
+}
+
+// ─── #62 sugar: has_open / has_expired / approaching ──────────────────────────
+
+func TestDesugarHasOpen(t *testing.T) {
+	got := desugarHasOpen("maintenance_ticket")
+	want := &ast.LogicalCondition{
+		Op:   "and",
+		Left: &ast.HasCondition{Type: "maintenance_ticket"},
+		Right: &ast.CompareCondition{
+			Left:  &ast.AttrExpr{Name: "maintenance_ticket.status"},
+			Op:    "!=",
+			Right: &ast.LiteralExpr{Value: "closed"},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("has_open desugar mismatch:\n got  %#v\n want %#v", got, want)
+	}
+}
+
+func TestDesugarHasExpired(t *testing.T) {
+	where := &ast.CompareCondition{
+		Left: &ast.AttrExpr{Name: "certification_type"}, Op: "==", Right: &ast.LiteralExpr{Value: "safety"},
+	}
+	inner := &ast.LogicalCondition{
+		Op:   "and",
+		Left: &ast.HasCondition{Type: "certification"},
+		Right: &ast.CompareCondition{
+			Left: &ast.AttrExpr{Name: "certification.expires_at"}, Op: "<", Right: &ast.TodayExpr{},
+		},
+	}
+	if got := desugarHasExpired("certification", nil); !reflect.DeepEqual(got, inner) {
+		t.Errorf("has_expired (no where):\n got  %#v\n want %#v", got, inner)
+	}
+	want := &ast.LogicalCondition{Op: "and", Left: inner, Right: where}
+	if got := desugarHasExpired("certification", where); !reflect.DeepEqual(got, want) {
+		t.Errorf("has_expired (with where):\n got  %#v\n want %#v", got, want)
+	}
+}
+
+func TestParseApproachingDesugars(t *testing.T) {
+	prog := mustParse(t, `
+detect "Service soon" {
+  for records where attr "next_service_date" approaching within 7 days
+  flag matching items
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if len(b.Selector.Conditions) != 1 {
+		t.Fatalf("expected 1 selector condition, got %d: %#v", len(b.Selector.Conditions), b.Selector.Conditions)
+	}
+	want := &ast.LogicalCondition{
+		Op:   "and",
+		Left: &ast.CompareCondition{Left: &ast.AttrExpr{Name: "next_service_date"}, Op: ">=", Right: &ast.TodayExpr{}},
+		Right: &ast.CompareCondition{
+			Left: &ast.AttrExpr{Name: "next_service_date"}, Op: "<=",
+			Right: &ast.BinaryExpr{Left: &ast.TodayExpr{}, Op: "+", Right: &ast.LiteralExpr{Value: ast.Duration{Value: 7, Unit: "days"}}},
+		},
+	}
+	if !reflect.DeepEqual(b.Selector.Conditions[0], want) {
+		t.Errorf("approaching desugar:\n got  %#v\n want %#v", b.Selector.Conditions[0], want)
 	}
 }

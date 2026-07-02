@@ -99,6 +99,9 @@ const (
 	TokenCollect
 	TokenSchedule
 	TokenStore
+	TokenHasOpen
+	TokenHasExpired
+	TokenApproaching
 	TokenAgainst
 	TokenRequires
 	TokenApproval
@@ -264,6 +267,9 @@ var keywords = map[string]TokenType{
 	"collect":           TokenCollect,
 	"schedule":          TokenSchedule,
 	"store":             TokenStore,
+	"has_open":          TokenHasOpen,
+	"has_expired":       TokenHasExpired,
+	"approaching":       TokenApproaching,
 	"against":           TokenAgainst,
 	"requires":          TokenRequires,
 	"approval":          TokenApproval,
