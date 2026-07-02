@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/constraints"
@@ -174,6 +175,23 @@ func stripNamespace(k string) string {
 	}
 	return k
 }
+
+// LastWritten implements factstore.Freshness against talon-db. talon-db
+// tracks updated_at per document, so the attribute is ignored — every
+// attribute of a record shares the document's last-write time. ok is
+// false on error or when the record has never been written, matching the
+// "freshness unknown" contract.
+func (a *Adapter) LastWritten(recordID, attribute string) (time.Time, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	t, ok, err := a.client.LastWritten(ctx, recordID)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, ok
+}
+
+var _ factstore.Freshness = (*Adapter)(nil)
 
 // fetchDoc returns the JSON-decoded body for (tenant, recordID), or
 // an empty map if the doc does not yet exist.

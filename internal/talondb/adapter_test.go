@@ -23,13 +23,27 @@ type fakeService struct {
 	docs                    map[string]map[string][]byte
 	// terms[entity][term] -> sorted []docID
 	terms map[string]map[string][]string
+	// written[entity][docID] -> pseudo unix-nanos, advanced on each Put
+	// (monotonic counter) so LastWritten is deterministic in tests.
+	written map[string]map[string]int64
+	clock   int64
 }
 
 func newFakeService() *fakeService {
 	return &fakeService{
-		docs:  map[string]map[string][]byte{},
-		terms: map[string]map[string][]string{},
+		docs:    map[string]map[string][]byte{},
+		terms:   map[string]map[string][]string{},
+		written: map[string]map[string]int64{},
 	}
+}
+
+func (f *fakeService) LastWritten(_ context.Context, req *pb.LastWrittenRequest, _ ...grpc.CallOption) (*pb.LastWrittenResponse, error) {
+	if e, ok := f.written[req.GetEntityId()]; ok {
+		if at, ok := e[req.GetDocId()]; ok {
+			return &pb.LastWrittenResponse{AtUnixNanos: at, Found: true}, nil
+		}
+	}
+	return &pb.LastWrittenResponse{Found: false}, nil
 }
 
 func (f *fakeService) Put(ctx context.Context, req *pb.PutRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -43,6 +57,12 @@ func (f *fakeService) Put(ctx context.Context, req *pb.PutRequest, _ ...grpc.Cal
 		removeFromTerms(f.terms[req.GetEntityId()], req.GetDocId(), old)
 	}
 	e[req.GetDocId()] = append([]byte(nil), req.GetDoc()...)
+	// Stamp a monotonic write-time so LastWritten advances per Put.
+	f.clock++
+	if f.written[req.GetEntityId()] == nil {
+		f.written[req.GetEntityId()] = map[string]int64{}
+	}
+	f.written[req.GetEntityId()][req.GetDocId()] = f.clock
 	// Index every (key:value) composite term, matching the
 	// extractor's `last_segment:value` rule. JSON top-level scalar
 	// fields only — sufficient for the planner queries this adapter
@@ -323,5 +343,42 @@ func TestAdapterRejectsPullPlusAggregates(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("Pull+Aggregates should be rejected, got %v", err)
+	}
+}
+
+func TestAdapterLastWritten(t *testing.T) {
+	t.Parallel()
+	a, _ := newTestAdapter()
+	ctx := context.Background()
+
+	// Unknown record → freshness unknown.
+	if _, ok := a.LastWritten("501", ":attr/current_stock"); ok {
+		t.Fatal("LastWritten for unwritten record should be ok=false")
+	}
+
+	if err := a.Assert(ctx, []factstore.Fact{
+		{RecordID: "501", Attribute: ":attr/current_stock", Value: 8.0},
+	}); err != nil {
+		t.Fatalf("Assert: %v", err)
+	}
+
+	// Doc-level: any attribute of the record shares the doc's write time.
+	t1, ok := a.LastWritten("501", ":attr/current_stock")
+	if !ok || t1.IsZero() {
+		t.Fatalf("LastWritten after assert: ok=%v t=%v", ok, t1)
+	}
+	if t2, ok := a.LastWritten("501", ":attr/anything"); !ok || !t2.Equal(t1) {
+		t.Errorf("attribute-agnostic: got ok=%v t=%v, want %v", ok, t2, t1)
+	}
+
+	// A later assert (re-Put) advances the doc's write time.
+	if err := a.Assert(ctx, []factstore.Fact{
+		{RecordID: "501", Attribute: ":attr/current_stock", Value: 0.0},
+	}); err != nil {
+		t.Fatalf("Assert 2: %v", err)
+	}
+	t3, _ := a.LastWritten("501", ":attr/current_stock")
+	if !t3.After(t1) {
+		t.Errorf("LastWritten should advance after re-assert: t1=%v t3=%v", t1, t3)
 	}
 }
