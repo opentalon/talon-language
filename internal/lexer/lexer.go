@@ -95,6 +95,7 @@ const (
 	TokenStaleAfter
 	TokenUpdate
 	TokenOnError
+	TokenMock
 	TokenAgainst
 	TokenRequires
 	TokenApproval
@@ -256,6 +257,7 @@ var keywords = map[string]TokenType{
 	"stale_after":       TokenStaleAfter,
 	"update":            TokenUpdate,
 	"on_error":          TokenOnError,
+	"mock":              TokenMock,
 	"against":           TokenAgainst,
 	"requires":          TokenRequires,
 	"approval":          TokenApproval,
