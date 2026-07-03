@@ -19,6 +19,8 @@
   `on retract` blocks that fire when facts mutate.
 - **[Integrity constraints](./constraints.md)** — `constraint` blocks
   with `require` / `on_violation reject|warn|quarantine`.
+- **[Time-travel queries](./time_travel.md)** — `was ( … ) N <unit> ago`
+  detect conditions over a backend's write history (`TimeTraveler`).
 
 ## Design notes
 
