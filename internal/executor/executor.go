@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/constraints"
 	"github.com/opentalon/talon-language/internal/factstore"
 	talonlog "github.com/opentalon/talon-language/internal/log"
 	"github.com/opentalon/talon-language/internal/mlruntime"
@@ -98,6 +99,19 @@ type Executor struct {
 	// from the block name — same Run reproduces, different Runs
 	// explore. Tests set this explicitly to assert exact outcomes.
 	RandSeed int64
+
+	// Now overrides the clock used to anchor time-travel reads
+	// (`was <cond> N <unit> ago` resolves to now−Delta). When nil the
+	// executor uses time.Now().UTC(). Tests set it for determinism.
+	Now func() time.Time
+}
+
+// now returns the executor's clock, defaulting to UTC wall-clock.
+func (e *Executor) now() time.Time {
+	if e.Now != nil {
+		return e.Now()
+	}
+	return time.Now().UTC()
 }
 
 // probabilisticGate samples each row in `input` with probability
@@ -215,8 +229,18 @@ func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.FactQuery:
-			if arr, ok := vars[s.Into].([][]any); ok {
-				rows = arr
+			// As-of FactQueries feed the intersect step, not the candidate
+			// stream — skip them so Flagged tracks the narrowed set.
+			if s.AsOfDelta == nil {
+				if arr, ok := vars[s.Into].([][]any); ok {
+					rows = arr
+				}
+			}
+		case *planner.GoComputation:
+			if s.Function == planner.FuncAsOfIntersect {
+				if arr, ok := vars[s.Into].([][]any); ok {
+					rows = arr
+				}
 			}
 		case *planner.Filter:
 			if arr, ok := vars[s.Into].([][]any); ok {
@@ -353,7 +377,22 @@ func (e *Executor) execQuery(ctx context.Context, dq *planner.FactQuery, vars ma
 		vars[dq.Into] = [][]any{}
 		return StepResult{Type: "FactQuery", Name: dq.Into, Output: [][]any{}}, nil
 	}
-	rows, err := e.Client.Query(ctx, dq.Query)
+	var (
+		rows [][]any
+		err  error
+	)
+	if dq.AsOfDelta != nil {
+		// Time-travel read: evaluate against the store's past state. The
+		// backend must implement TimeTraveler; otherwise the block can't run.
+		tt, ok := e.Client.(factstore.TimeTraveler)
+		if !ok {
+			return StepResult{}, fmt.Errorf("query into %q: %w", dq.Into, factstore.ErrNoTimeTravel)
+		}
+		asOf := e.now().Add(-constraints.DurationDelta(*dq.AsOfDelta))
+		rows, err = tt.QueryAsOf(ctx, dq.Query, asOf)
+	} else {
+		rows, err = e.Client.Query(ctx, dq.Query)
+	}
 	if err != nil {
 		return StepResult{}, fmt.Errorf("query into %q: %w", dq.Into, err)
 	}
@@ -363,6 +402,44 @@ func (e *Executor) execQuery(ctx context.Context, dq *planner.FactQuery, vars ma
 		Name:   dq.Into,
 		Output: rows,
 	}, nil
+}
+
+// intersectRowsByEntity keeps rows of base whose entity id (column 0)
+// appears in other. Backs FuncAsOfIntersect: narrow present-day candidates
+// to those that also matched a time-travel query.
+func intersectRowsByEntity(base, other [][]any) [][]any {
+	keep := make(map[string]bool, len(other))
+	for _, r := range other {
+		if len(r) > 0 {
+			keep[rowEntityKey(r[0])] = true
+		}
+	}
+	out := make([][]any, 0, len(base))
+	for _, r := range base {
+		if len(r) > 0 && keep[rowEntityKey(r[0])] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// rowEntityKey normalizes an entity-id cell to a stable string key across
+// the numeric types different backends emit (float64 from MemoryStore /
+// structpb, ints elsewhere).
+func rowEntityKey(v any) string {
+	switch n := v.(type) {
+	case float64:
+		return strconv.FormatFloat(n, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(n), 'f', -1, 64)
+	case int:
+		return strconv.Itoa(n)
+	case int64:
+		return strconv.FormatInt(n, 10)
+	case int32:
+		return strconv.Itoa(int(n))
+	}
+	return fmt.Sprint(v)
 }
 
 func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputation, vars map[string]any) (StepResult, error) {
@@ -452,6 +529,11 @@ func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputatio
 			return StepResult{}, err
 		}
 		vars[gc.Into] = result
+	case planner.FuncAsOfIntersect:
+		base, _ := input.([][]any)
+		withVar, _ := gc.Params["with"].(string)
+		other, _ := vars[withVar].([][]any)
+		vars[gc.Into] = intersectRowsByEntity(base, other)
 	default:
 		vars[gc.Into] = map[string]any{
 			"function": gc.Function,

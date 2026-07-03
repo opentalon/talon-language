@@ -191,6 +191,15 @@ func (a *Adapter) LastWritten(recordID, attribute string) (time.Time, bool) {
 	return t, ok
 }
 
+// QueryAsOf implements factstore.TimeTraveler against talon-db. Time-travel
+// requires the server's version history, so — unlike Query, which composes
+// client-side — it delegates to the QueryAsOf RPC. Backs `was ... ago`.
+func (a *Adapter) QueryAsOf(ctx context.Context, q factstore.Query, asOf time.Time) ([][]any, error) {
+	return a.client.QueryAsOf(ctx, QueryFromFactstore(q), asOf)
+}
+
+var _ factstore.TimeTraveler = (*Adapter)(nil)
+
 var _ factstore.Freshness = (*Adapter)(nil)
 
 // fetchDoc returns the JSON-decoded body for (tenant, recordID), or

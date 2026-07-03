@@ -750,3 +750,54 @@ enrich "R" {
 		t.Errorf("enrich step missing call param: %+v", found.Params)
 	}
 }
+
+// ─── was ... ago time-travel split ──────────────────────────────────────────
+
+func TestPlanWasAgoSplit(t *testing.T) {
+	p := planBlock(t, `
+detect "Regressed" {
+  for records where type == "machine"
+    and was (attr "status" == "certified") 90 days ago
+  flag matching items
+}`, "Regressed")
+
+	var (
+		candidates *FactQuery
+		asof       *FactQuery
+		intersect  *GoComputation
+	)
+	for _, step := range p.Steps {
+		switch s := step.(type) {
+		case *FactQuery:
+			if s.Into == "candidates" {
+				candidates = s
+			}
+			if s.AsOfDelta != nil {
+				asof = s
+			}
+		case *GoComputation:
+			if s.Function == FuncAsOfIntersect {
+				intersect = s
+			}
+		}
+	}
+
+	if candidates == nil {
+		t.Fatal("no present-day candidates FactQuery")
+	}
+	if asof == nil {
+		t.Fatal("no as-of FactQuery (AsOfDelta unset)")
+	}
+	if asof.AsOfDelta.Value != 90 || asof.AsOfDelta.Unit != "days" {
+		t.Errorf("as-of delta = %+v, want {90 days}", *asof.AsOfDelta)
+	}
+	if !strings.Contains(asof.Query.String(), "certified") {
+		t.Errorf("as-of query should carry the inner condition, got %q", asof.Query.String())
+	}
+	if intersect == nil {
+		t.Fatal("no asof_intersect GoComputation")
+	}
+	if intersect.Params["with"] != asof.Into {
+		t.Errorf("intersect with = %v, want %q", intersect.Params["with"], asof.Into)
+	}
+}

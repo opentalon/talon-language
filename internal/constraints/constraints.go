@@ -178,7 +178,7 @@ func evalConditionAt(c ast.Condition, record map[string]any, now time.Time) (boo
 		if !ok {
 			return false, fmt.Errorf("temporal: %v is not a date", v)
 		}
-		cutoff := now.Add(-durationDelta(cc.Value))
+		cutoff := now.Add(-DurationDelta(cc.Value))
 		switch cc.Op {
 		case "older_than":
 			return d.Before(cutoff), nil
@@ -186,6 +186,11 @@ func evalConditionAt(c ast.Condition, record map[string]any, now time.Time) (boo
 			return d.After(cutoff), nil
 		}
 		return false, fmt.Errorf("unknown temporal op %q", cc.Op)
+	case *ast.AsOfCondition:
+		// `was (...) N units ago` is a time-travel condition. The planner
+		// lowers it into a QueryAsOf step + intersect; it is never a
+		// per-row predicate, so reaching here is a planner bug.
+		return false, fmt.Errorf("was...ago must be planned into a time-travel query, not evaluated per-row")
 	}
 	return false, fmt.Errorf("constraint evaluator cannot handle condition type %T", c)
 }
@@ -247,7 +252,7 @@ func evalExpr(e ast.Expr, record map[string]any, now time.Time) (any, error) {
 		// bound desugars to BinaryExpr{TodayExpr, "+", Duration}).
 		if lt, ok := left.(time.Time); ok {
 			if dur, ok := right.(ast.Duration); ok && (ee.Op == "+" || ee.Op == "-") {
-				delta := durationDelta(dur)
+				delta := DurationDelta(dur)
 				if ee.Op == "-" {
 					delta = -delta
 				}
@@ -371,9 +376,9 @@ func dateOnly(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// durationDelta converts an ast.Duration into a time.Duration (calendar
+// DurationDelta converts an ast.Duration into a time.Duration (calendar
 // months/years approximated as 30 / 365 days — fine for these bounds).
-func durationDelta(d ast.Duration) time.Duration {
+func DurationDelta(d ast.Duration) time.Duration {
 	day := 24 * time.Hour
 	switch d.Unit {
 	case "hours", "hour":

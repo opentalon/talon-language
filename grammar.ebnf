@@ -356,6 +356,7 @@ Condition       = NotCondition
                 | AnomalyCondition
                 | TemporalCondition
                 | ChangedToCondition
+                | AsOfCondition
                 | SugarCondition
 
 (* SugarConditions desugar at parse time to the forms above (no new AST):
@@ -393,6 +394,24 @@ AnomalyCondition    = "attr" STRING "is" "anomaly" "compared_to" "last" NUMBER D
 TemporalCondition   = "attr" STRING ( "older_than" | "newer_than" ) NUMBER DurationUnit
 
 ChangedToCondition  = "status" "changed_to" STRING
+
+(* AsOfCondition is a time-travel test: the inner condition held about the
+   record N units before now. The planner splits the enclosing detect into
+   a present-day candidate query, a QueryAsOf(now − N UNIT) for the inner
+   condition, and an intersection on entity ID — so a record matches only
+   if it is a candidate now AND satisfied Inner then.
+
+   Runs on any FactStore that implements the TimeTraveler capability:
+   MemoryStore (per-cell history) and talon-db (per-doc history + QueryAsOf
+   RPC). Datalevin 0.10.7 has no point-in-time query primitive, so a
+   Datalevin-backed store raises ErrNoTimeTravel at run time (app-level
+   version history on Datalevin is a follow-up).
+
+   v1 restrictions (enforced by the validator): must be a top-level `and`
+   conjunct of a detect/rule selector (not nested in or/not), and Inner
+   must be Datalog-expressible (plain attribute/type/status comparisons —
+   no nested temporal, date-arithmetic, or was...ago conditions). *)
+AsOfCondition       = "was" "(" Condition ")" NUMBER DurationUnit "ago"
 
 CategoryTreeExpr    = "category_tree" "(" STRING ")"
 

@@ -186,6 +186,40 @@ func (c *Client) Query(ctx context.Context, q QueryInput) ([][]any, error) {
 	if err != nil {
 		return nil, mapStatusError(err)
 	}
+	return decodeQueryResponse(resp), nil
+}
+
+// QueryAsOf is Query against the server's state at asOf, using talon-db's
+// history-backed QueryAsOf RPC. Backs the FactStore TimeTraveler capability
+// (`was ... ago`). Rules / Pull are unsupported, as with Query.
+func (c *Client) QueryAsOf(ctx context.Context, q QueryInput, asOf time.Time) ([][]any, error) {
+	if len(q.Pull) > 0 || len(q.Rules) > 0 {
+		return nil, errors.ErrUnsupported
+	}
+	clauses, err := encodeQueryClauses(q.Where)
+	if err != nil {
+		return nil, err
+	}
+	aggs, err := encodeQueryAggregates(q.Aggregates)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.svc.QueryAsOf(ctx, &pb.QueryAsOfRequest{
+		EntityId:    c.Tenant(),
+		Find:        q.Find,
+		Where:       clauses,
+		Aggregates:  aggs,
+		GroupBy:     q.GroupBy,
+		AtUnixNanos: asOf.UnixNano(),
+	})
+	if err != nil {
+		return nil, mapStatusError(err)
+	}
+	return decodeQueryResponse(resp), nil
+}
+
+// decodeQueryResponse decodes structured-query rows to [][]any.
+func decodeQueryResponse(resp *pb.QueryResponse) [][]any {
 	rows := resp.GetRows()
 	out := make([][]any, 0, len(rows))
 	for _, row := range rows {
@@ -195,7 +229,7 @@ func (c *Client) Query(ctx context.Context, q QueryInput) ([][]any, error) {
 		}
 		out = append(out, decoded)
 	}
-	return out, nil
+	return out
 }
 
 // LastWritten returns the updated_at time of the document (tenant,

@@ -614,6 +614,16 @@ type ChangedToCondition struct {
 	Value     Expr
 }
 
+// AsOfCondition is `was ( <inner> ) N <unit> ago` — the inner condition
+// held about the record N units before now. The planner evaluates Inner
+// against a time-travel snapshot at now−Delta and intersects with the
+// present-day candidates. Inner must be Datalog-expressible (no nested
+// go-side conditions) and appear as a top-level AND conjunct.
+type AsOfCondition struct {
+	Inner Condition
+	Delta Duration
+}
+
 // BlockMatchesCondition is `detect "name" matches` inside a recommend `when`.
 type BlockMatchesCondition struct {
 	Kind string // "detect", "predict", "forecast", etc.
@@ -630,6 +640,7 @@ func (*StringMatchCondition) condNode()  {}
 func (*AnomalyCondition) condNode()      {}
 func (*TemporalCondition) condNode()     {}
 func (*ChangedToCondition) condNode()    {}
+func (*AsOfCondition) condNode()         {}
 func (*BlockMatchesCondition) condNode() {}
 func (*EventSequenceCondition) condNode()  {}
 func (*RecordSequenceCondition) condNode() {}

@@ -449,3 +449,23 @@ enrich "R" {
   mcp "inv" "show" { id attr "id" }
 }`, "at least one 'update")
 }
+
+// ─── was ... ago restrictions ───────────────────────────────────────────────
+
+func TestValidateWasAgoTopLevelOK(t *testing.T) {
+	mustClean(t, `
+detect "Regressed" {
+  for records where type == "machine"
+    and was (attr "status" == "certified") 90 days ago
+  flag matching items
+}`)
+}
+
+func TestValidateWasAgoNestedInOrRejected(t *testing.T) {
+	mustError(t, `
+detect "Bad" {
+  for records where type == "machine"
+    or was (attr "status" == "certified") 90 days ago
+  flag matching items
+}`, "top-level `and`")
+}

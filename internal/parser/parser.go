@@ -1834,6 +1834,16 @@ func (p *parser) parseAtomCondition() ast.Condition {
 			where = p.parseOrCondition()
 		}
 		return desugarHasExpired(name, where)
+	case lexer.TokenWas:
+		// `was ( <inner> ) N <unit> ago` — the inner condition held about
+		// the record N units before now (time-travel).
+		p.advance() // was
+		p.expect(lexer.TokenLParen)
+		inner := p.parseOrCondition()
+		p.expect(lexer.TokenRParen)
+		delta := p.parseDuration()
+		p.expect(lexer.TokenAgo)
+		return &ast.AsOfCondition{Inner: inner, Delta: delta}
 	case lexer.TokenEvent:
 		return p.parseEventSequenceCondition()
 	case lexer.TokenRecord:

@@ -101,6 +101,8 @@ func TestKeywords(t *testing.T) {
 		{"ends_with", TokenEndsWith},
 		{"older_than", TokenOlderThan},
 		{"newer_than", TokenNewerThan},
+		{"was", TokenWas},
+		{"ago", TokenAgo},
 		{"LOW", TokenLow},
 		{"MEDIUM", TokenMedium},
 		{"HIGH", TokenHigh},

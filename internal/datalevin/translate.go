@@ -22,6 +22,13 @@ func (c *Client) Query(ctx context.Context, q factstore.Query) ([][]any, error) 
 	return c.RawQueryFull(ctx, q.String(), rules, args)
 }
 
+// NOTE: Datalevin does not implement factstore.TimeTraveler. Datalevin
+// 0.10.7 has no point-in-time query primitive (no datalevin.core/as-of or
+// /history; only backup snapshots + a raw tx-log), so `was ... ago` on a
+// Datalevin-backed store surfaces factstore.ErrNoTimeTravel at run time.
+// Time-travel would require an application-level version-history model on
+// top of Datalevin — tracked as a follow-up.
+
 // Retract satisfies factstore.FactStore. It translates the
 // RetractPattern into Datalevin tx-data using the
 // `[:db/retract eid attr value]` (specific cell) or
