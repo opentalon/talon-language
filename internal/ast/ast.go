@@ -601,6 +601,20 @@ type AnomalyCondition struct {
 	Window  Duration
 }
 
+// CorrelationCondition is
+// `attr "X" correlates_with attr "Y" over last N <unit> OP <threshold>`.
+// It computes the Pearson correlation r between the two attributes across
+// the matched record population and gates the set on `r OP Threshold`.
+// Method is "pearson" (the only variant today).
+type CorrelationCondition struct {
+	Left      Expr
+	Right     Expr
+	Method    string // "pearson"
+	Window    Duration
+	Op        string // ">", "<", ">=", "<=", "==", "!="
+	Threshold float64
+}
+
 // TemporalCondition is `attr X older_than 90 days`.
 type TemporalCondition struct {
 	Subject Expr
@@ -638,6 +652,7 @@ func (*IsCondition) condNode()           {}
 func (*HasCondition) condNode()          {}
 func (*StringMatchCondition) condNode()  {}
 func (*AnomalyCondition) condNode()      {}
+func (*CorrelationCondition) condNode()  {}
 func (*TemporalCondition) condNode()     {}
 func (*ChangedToCondition) condNode()    {}
 func (*AsOfCondition) condNode()         {}

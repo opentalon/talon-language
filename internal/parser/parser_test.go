@@ -1386,3 +1386,32 @@ detect "Regressed machines" {
 		t.Errorf("was...ago parse:\n got  %#v\n want %#v", b.Selector.Conditions[0], want)
 	}
 }
+
+// ─── correlates_with ────────────────────────────────────────────────────────
+
+func TestParseCorrelatesWith(t *testing.T) {
+	prog := mustParse(t, `
+detect "Corr" {
+  for records where attr "km" correlates_with attr "failure_count" over last 90 days > 0.7
+  flag matching items
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if len(b.Selector.Conditions) != 1 {
+		t.Fatalf("want 1 condition, got %d", len(b.Selector.Conditions))
+	}
+	cc, ok := b.Selector.Conditions[0].(*ast.CorrelationCondition)
+	if !ok {
+		t.Fatalf("want *ast.CorrelationCondition, got %T", b.Selector.Conditions[0])
+	}
+	if cc.Method != "pearson" || cc.Op != ">" || cc.Threshold != 0.7 {
+		t.Errorf("got Method=%q Op=%q Threshold=%v", cc.Method, cc.Op, cc.Threshold)
+	}
+	if cc.Window.Value != 90 || cc.Window.Unit != "days" {
+		t.Errorf("window = %+v, want {90 days}", cc.Window)
+	}
+	lx, _ := cc.Left.(*ast.AttrExpr)
+	ly, _ := cc.Right.(*ast.AttrExpr)
+	if lx == nil || lx.Name != "km" || ly == nil || ly.Name != "failure_count" {
+		t.Errorf("attrs: left=%#v right=%#v", cc.Left, cc.Right)
+	}
+}

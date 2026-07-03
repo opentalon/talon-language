@@ -1,0 +1,15 @@
+// Pearson correlation — `attr X correlates_with attr Y over last N <unit> OP r`.
+//
+// Computes the correlation coefficient r between two attributes across the
+// matched record population and gates the whole set on `r OP threshold`.
+// It is a population statistic: if the fleet-wide correlation clears the
+// bar, every matching vehicle is flagged; otherwise none are. The r value
+// (and sample size) ride in the Decision evidence, so `talon explain`
+// renders "r = 0.74 over 47 records" — no model, no opaqueness.
+detect "Mileage drives failures" {
+  for records where type == "vehicle"
+    and attr "km" correlates_with attr "failure_count" over last 90 days > 0.7
+  flag matching items
+  label "fleet mileage↔failure correlation is high — review maintenance policy"
+  priority MEDIUM
+}

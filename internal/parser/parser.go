@@ -2018,6 +2018,25 @@ func (p *parser) parseExprCondition() ast.Condition {
 		right := p.parseExpr()
 		return &ast.CompareCondition{Left: expr, Op: op, Right: right}
 
+	case lexer.TokenCorrelatesWith:
+		// `attr "X" correlates_with attr "Y" over last N <unit> OP <threshold>`
+		p.advance() // correlates_with
+		right := p.parseExpr()
+		p.expect(lexer.TokenOver)
+		p.expect(lexer.TokenLast)
+		n, _ := strconv.Atoi(p.expectNumberStr())
+		unit := p.expectDurationUnit()
+		op := p.expectComparisonOp()
+		thr, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+		return &ast.CorrelationCondition{
+			Left:      expr,
+			Right:     right,
+			Method:    "pearson",
+			Window:    ast.Duration{Value: n, Unit: unit},
+			Op:        op,
+			Threshold: thr,
+		}
+
 	case lexer.TokenApproaching:
 		// `attr "X" approaching within N units` desugars to
 		// `attr "X" >= today and attr "X" <= today + N units`.
@@ -2345,6 +2364,17 @@ func (p *parser) expectNumberStr() string {
 	}
 	p.errorf("expected number, got %q", p.peek().Value)
 	return "0"
+}
+
+// expectComparisonOp consumes a comparison operator token and returns its
+// textual form (">", "<=", "==", …).
+func (p *parser) expectComparisonOp() string {
+	switch p.peek().Type {
+	case lexer.TokenGt, lexer.TokenGte, lexer.TokenLt, lexer.TokenLte, lexer.TokenEq, lexer.TokenNeq:
+		return p.advance().Value
+	}
+	p.errorf("expected comparison operator, got %q", p.peek().Value)
+	return ">"
 }
 
 func (p *parser) expectIdent() string {

@@ -354,6 +354,7 @@ Condition       = NotCondition
                 | HasCondition
                 | StringMatchCondition
                 | AnomalyCondition
+                | CorrelationCondition
                 | TemporalCondition
                 | ChangedToCondition
                 | AsOfCondition
@@ -390,6 +391,14 @@ StringMatchCondition = Expr ( "contains" | "starts_with" | "ends_with"
                             | "matches" [ "phrase" ] ) STRING
 
 AnomalyCondition    = "attr" STRING "is" "anomaly" "compared_to" "last" NUMBER DurationUnit
+
+(* CorrelationCondition computes the Pearson correlation r between two
+   attributes across the matched record population and gates the whole set
+   on `r OP threshold` — every candidate passes or none do (r describes the
+   set, not the row). The coefficient rides in the Decision evidence
+   (r, n, method), keeping explainability at Tier 1. Threshold must be in
+   [-1, 1] (validator-enforced). Method is "pearson" today. *)
+CorrelationCondition = Expr "correlates_with" Expr "over" "last" NUMBER DurationUnit ComparisonOp NUMBER
 
 TemporalCondition   = "attr" STRING ( "older_than" | "newer_than" ) NUMBER DurationUnit
 

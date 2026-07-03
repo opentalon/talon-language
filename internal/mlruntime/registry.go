@@ -19,6 +19,7 @@ func NewRegistry() *Registry {
 	r.Register(NewCosineSimilarity())
 	r.Register(NewDBSCANCluster())
 	r.Register(NewExpSmoothingForecast())
+	r.Register(NewPearsonCorrelation())
 	return r
 }
 
