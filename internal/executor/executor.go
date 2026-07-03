@@ -910,6 +910,12 @@ func schemaFromParams(params map[string]any) map[string]int {
 	if idx, ok := intParam(params, "value_index"); ok && idx >= 0 {
 		schema["value"] = idx
 	}
+	if idx, ok := intParam(params, "value_index_x"); ok && idx >= 0 {
+		schema["value_x"] = idx
+	}
+	if idx, ok := intParam(params, "value_index_y"); ok && idx >= 0 {
+		schema["value_y"] = idx
+	}
 	if idx, ok := intParam(params, "entity_id_index"); ok && idx >= 0 {
 		schema["entity_id"] = idx
 	}

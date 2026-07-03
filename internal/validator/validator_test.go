@@ -469,3 +469,21 @@ detect "Bad" {
   flag matching items
 }`, "top-level `and`")
 }
+
+func TestValidateCorrelationThresholdInRange(t *testing.T) {
+	mustClean(t, `
+detect "Corr OK" {
+  for records where type == "vehicle"
+    and attr "km" correlates_with attr "failure_count" over last 90 days > 0.7
+  flag matching items
+}`)
+}
+
+func TestValidateCorrelationThresholdOutOfRange(t *testing.T) {
+	mustError(t, `
+detect "Corr bad" {
+  for records where type == "vehicle"
+    and attr "km" correlates_with attr "failure_count" over last 90 days > 1.5
+  flag matching items
+}`, "outside [-1, 1]")
+}

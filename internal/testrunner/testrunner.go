@@ -832,6 +832,12 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 	attr, _ := s.Params["attr"].(string)
 	attrKey := ":attr/" + attr
 
+	// Correlation is the two-attribute case: build [id, value_x, value_y]
+	// rows so the primitive receives both parallel series.
+	attrX, hasX := s.Params["attr_x"].(string)
+	attrY, hasY := s.Params["attr_y"].(string)
+	corr := hasX && hasY
+
 	rows := make([][]any, 0, len(flagged))
 	entitiesByID := make(map[int]map[string]any, len(flagged))
 	for _, id := range flagged {
@@ -839,20 +845,32 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 		if e == nil {
 			continue
 		}
-		if attr != "" {
+		switch {
+		case corr:
+			vx, okx := e.fields[":attr/"+attrX]
+			vy, oky := e.fields[":attr/"+attrY]
+			if okx && oky {
+				rows = append(rows, []any{id, vx, vy})
+			}
+		case attr != "":
 			if val, ok := e.fields[attrKey]; ok {
 				rows = append(rows, []any{id, val})
 			}
-		} else {
+		default:
 			rows = append(rows, []any{id})
 		}
 		entitiesByID[id] = entityAttrsFlattened(e)
 	}
 
+	schema := map[string]int{"entity_id": 0, "value": 1}
+	if corr {
+		schema = map[string]int{"entity_id": 0, "value_x": 1, "value_y": 2}
+	}
+
 	prim, _ := reg.Get(s.Function)
 	results, err := prim.Compute(context.Background(), mlruntime.Input{
 		Rows:     rows,
-		Schema:   map[string]int{"entity_id": 0, "value": 1},
+		Schema:   schema,
 		Params:   s.Params,
 		Entities: entitiesByID,
 	})

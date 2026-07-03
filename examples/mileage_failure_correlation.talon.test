@@ -1,0 +1,65 @@
+// Correlation example test suite.
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/mileage_failure_correlation.talon examples/mileage_failure_correlation.talon.test
+
+test "high fleet correlation flags every vehicle" {
+  // failure_count tracks km exactly (failure = km / 10) → Pearson r = 1.0,
+  // which clears the > 0.7 bar, so the whole fleet is flagged.
+  given {
+    record 1 type "vehicle"
+    attr 1 "km" 10
+    attr 1 "failure_count" 1
+    record 2 type "vehicle"
+    attr 2 "km" 20
+    attr 2 "failure_count" 2
+    record 3 type "vehicle"
+    attr 3 "km" 30
+    attr 3 "failure_count" 3
+    record 4 type "vehicle"
+    attr 4 "km" 40
+    attr 4 "failure_count" 4
+    record 5 type "vehicle"
+    attr 5 "km" 50
+    attr 5 "failure_count" 5
+  }
+  when detect "Mileage drives failures"
+  expect {
+    flagged 1
+    flagged 2
+    flagged 3
+    flagged 4
+    flagged 5
+  }
+}
+
+test "weak fleet correlation flags nothing" {
+  // km and failure_count are unrelated → r well below 0.7, so the
+  // population gate closes and no vehicle is flagged.
+  given {
+    record 1 type "vehicle"
+    attr 1 "km" 10
+    attr 1 "failure_count" 5
+    record 2 type "vehicle"
+    attr 2 "km" 20
+    attr 2 "failure_count" 1
+    record 3 type "vehicle"
+    attr 3 "km" 30
+    attr 3 "failure_count" 9
+    record 4 type "vehicle"
+    attr 4 "km" 40
+    attr 4 "failure_count" 2
+    record 5 type "vehicle"
+    attr 5 "km" 50
+    attr 5 "failure_count" 6
+  }
+  when detect "Mileage drives failures"
+  expect {
+    not flagged 1
+    not flagged 2
+    not flagged 3
+    not flagged 4
+    not flagged 5
+  }
+}

@@ -14,6 +14,7 @@ const (
 	FuncAnomalyZscore        = "anomaly_zscore"
 	FuncAnomalyGrubbs        = "anomaly_grubbs"
 	FuncLearnedThreshold     = "learned_threshold"
+	FuncCorrelationPearson   = "correlation_pearson"
 	FuncPredictDecisionTree  = "predict_decision_tree"
 	FuncForecastExpSmoothing = "forecast_exponential_smoothing"
 	FuncClusterDBSCAN        = "cluster_dbscan"
@@ -225,6 +226,7 @@ func IsMLFunction(fn string) bool {
 	case FuncAnomalyZscore,
 		FuncAnomalyGrubbs,
 		FuncLearnedThreshold,
+		FuncCorrelationPearson,
 		FuncPredictDecisionTree,
 		FuncForecastExpSmoothing,
 		FuncClusterDBSCAN,
@@ -402,6 +404,25 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 				"op":          tb.Op,
 				"window":      tb.Window,
 				"value_index": indexOf(qb.findVars, tb.ValueVar),
+			},
+			Into: into,
+		})
+		last = into
+	}
+
+	for i, cb := range qb.correlationConds {
+		into := fmt.Sprintf("correlation_%d", i)
+		plan.Steps = append(plan.Steps, &MLComputation{
+			Function: FuncCorrelationPearson,
+			Input:    last,
+			Params: map[string]any{
+				"attr_x":        cb.AttrNameX,
+				"attr_y":        cb.AttrNameY,
+				"op":            cb.Op,
+				"threshold":     cb.Threshold,
+				"window":        cb.Window,
+				"value_index_x": indexOf(qb.findVars, cb.ValueVarX),
+				"value_index_y": indexOf(qb.findVars, cb.ValueVarY),
 			},
 			Into: into,
 		})
@@ -1243,6 +1264,7 @@ type queryBuilder struct {
 	goConditions   []ast.Condition
 	anomalyConds   []anomalyBinding
 	thresholdConds []thresholdBinding
+	correlationConds []correlationBinding
 	eventSeqConds  []*ast.EventSequenceCondition
 	recordSeqConds []*ast.RecordSequenceCondition
 	asOfConds      []*ast.AsOfCondition
@@ -1294,6 +1316,20 @@ type thresholdBinding struct {
 	Method   string       // "p95"
 	Op       string       // ">", "<", ">=", "<="
 	Window   ast.Duration // recorded for explanation/audit; not enforced in phase 2
+}
+
+// correlationBinding records an `attr X correlates_with attr Y ...` clause
+// lifted into an MLComputation. Unlike anomaly / threshold it binds TWO
+// value vars into the :find clause so the primitive receives both series.
+type correlationBinding struct {
+	AttrNameX string
+	ValueVarX string
+	AttrNameY string
+	ValueVarY string
+	Method    string // "pearson"
+	Op        string
+	Threshold float64
+	Window    ast.Duration
 }
 
 // appendAsOfSteps emits, per as-of condition, a time-travel FactQuery for
@@ -1374,6 +1410,8 @@ func (b *queryBuilder) addCondition(cond ast.Condition) {
 		b.addStringMatch(c)
 	case *ast.AnomalyCondition:
 		b.addAnomalyCondition(c)
+	case *ast.CorrelationCondition:
+		b.addCorrelationCondition(c)
 	case *ast.EventSequenceCondition:
 		b.eventSeqConds = append(b.eventSeqConds, c)
 	case *ast.RecordSequenceCondition:
@@ -1629,6 +1667,36 @@ func (b *queryBuilder) addAnomalyCondition(c *ast.AnomalyCondition) {
 		ValueVar: v,
 		Method:   c.Method,
 		Window:   c.Window,
+	})
+}
+
+// addCorrelationCondition lifts `attr X correlates_with attr Y ...` out of
+// the selector, binding BOTH value vars into the :find clause so the
+// primitive receives the two parallel series, and records a binding the
+// planner turns into an MLComputation step.
+func (b *queryBuilder) addCorrelationCondition(c *ast.CorrelationCondition) {
+	pathX, okX := exprToFieldPath(c.Left)
+	pathY, okY := exprToFieldPath(c.Right)
+	if !okX || !okY {
+		b.goConditions = append(b.goConditions, c)
+		return
+	}
+	nameX := attrVarName(c.Left)
+	nameY := attrVarName(c.Right)
+	vX := b.varFor(nameX)
+	vY := b.varFor(nameY)
+	b.addPattern(pathX, factstore.Var(vX))
+	b.addPattern(pathY, factstore.Var(vY))
+	b.findVars = appendUniq(b.findVars, vX, vY)
+	b.correlationConds = append(b.correlationConds, correlationBinding{
+		AttrNameX: nameX,
+		ValueVarX: vX,
+		AttrNameY: nameY,
+		ValueVarY: vY,
+		Method:    c.Method,
+		Op:        c.Op,
+		Threshold: c.Threshold,
+		Window:    c.Window,
 	})
 }
 

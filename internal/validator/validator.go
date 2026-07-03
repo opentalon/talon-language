@@ -36,6 +36,7 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkCycles()
 	v.checkWorkflows()
 	v.checkAsOf()
+	v.checkCorrelation()
 	return v.diags
 }
 
@@ -404,6 +405,25 @@ func detectHasTunablePrimitive(bb *ast.DetectBlock) bool {
 		}
 	}
 	return false
+}
+
+// checkCorrelation validates `correlates_with` conditions: the Pearson
+// coefficient r is always in [-1, 1], so a threshold outside that range can
+// never be satisfied (or is always satisfied) — almost certainly a mistake.
+func (v *validator) checkCorrelation() {
+	for _, b := range v.prog.Blocks {
+		walkBlockConditions(b, func(c ast.Condition) {
+			cc, ok := c.(*ast.CorrelationCondition)
+			if !ok {
+				return
+			}
+			if cc.Threshold < -1 || cc.Threshold > 1 {
+				v.errAt(blockPos(b),
+					fmt.Sprintf("correlates_with threshold %g is outside [-1, 1]; a Pearson correlation can never satisfy it", cc.Threshold),
+					"use a threshold between -1 and 1")
+			}
+		})
+	}
 }
 
 // hasTunableCondition walks the selector tree looking for primitive-tunable
