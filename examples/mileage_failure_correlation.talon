@@ -6,6 +6,10 @@
 // bar, every matching vehicle is flagged; otherwise none are. The r value
 // (and sample size) ride in the Decision evidence, so `talon explain`
 // renders "r = 0.74 over 47 records" — no model, no opaqueness.
+//
+// Run the companion suite:
+//   go build ./cmd/talon
+//   ./talon test examples/mileage_failure_correlation.talon examples/mileage_failure_correlation.talon.test
 detect "Mileage drives failures" {
   for records where type == "vehicle"
     and attr "km" correlates_with attr "failure_count" over last 90 days > 0.7
