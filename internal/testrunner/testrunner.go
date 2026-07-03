@@ -172,7 +172,13 @@ func runOneTuned(
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.FactQuery:
-			ids := evalQueryInMemory(s.Query, entities)
+			var ids []int
+			if s.AsOfDelta != nil {
+				asOf := nowFunc().Add(-constraints.DurationDelta(*s.AsOfDelta))
+				ids = evalQueryAsOfInMemory(s.Query, entities, asOf)
+			} else {
+				ids = evalQueryInMemory(s.Query, entities)
+			}
 			vars[s.Into] = ids
 			if !flaggedSet {
 				flagged = ids
@@ -286,6 +292,22 @@ func runOneTuned(
 					flagged = out.flagged
 				}
 				vars[s.Into] = out.result
+				trace = append(trace, TraceStep{
+					Type:     "GoComputation",
+					Into:     s.Into,
+					Function: s.Function,
+					Params:   s.Params,
+					Rows:     flagged,
+				})
+				break
+			}
+			if s.Function == planner.FuncAsOfIntersect {
+				// Narrow the running candidate set to those also matched by
+				// the paired time-travel query (its ids live in vars[with]).
+				withVar, _ := s.Params["with"].(string)
+				past, _ := vars[withVar].([]int)
+				flagged = intersectIntSets(flagged, past)
+				vars[s.Into] = flagged
 				trace = append(trace, TraceStep{
 					Type:     "GoComputation",
 					Into:     s.Into,
@@ -440,6 +462,12 @@ func evalQueryInMemory(q factstore.Query, entities map[int]*entity) []int {
 // usable for both Query and (in REPL contexts) further mutation.
 func storeFromEntities(entities map[int]*entity) *factstore.MemoryStore {
 	s := factstore.NewMemoryStore()
+	_ = s.Assert(context.Background(), factsFromEntities(entities))
+	return s
+}
+
+// factsFromEntities flattens the entity map into FactStore facts.
+func factsFromEntities(entities map[int]*entity) []factstore.Fact {
 	var facts []factstore.Fact
 	for id, ent := range entities {
 		idStr := strconv.Itoa(id)
@@ -451,8 +479,49 @@ func storeFromEntities(entities map[int]*entity) *factstore.MemoryStore {
 			})
 		}
 	}
-	_ = s.Assert(context.Background(), facts)
-	return s
+	return facts
+}
+
+// evalQueryAsOfInMemory runs a time-travel query against the fixture
+// entities. Test fixtures describe a single current state with no history,
+// so facts are asserted at the epoch — before any realistic as-of instant
+// — making the fixture state visible to the query. This exercises the plan
+// split + intersect wiring; true value-divergence across time is covered by
+// executor-level Go tests against a history-backed store.
+func evalQueryAsOfInMemory(q factstore.Query, entities map[int]*entity, asOf time.Time) []int {
+	s := factstore.NewMemoryStore()
+	s.SetClock(func() time.Time { return time.Unix(0, 0).UTC() })
+	_ = s.Assert(context.Background(), factsFromEntities(entities))
+	rows, err := s.QueryAsOf(context.Background(), q, asOf)
+	if err != nil {
+		return nil
+	}
+	out := make([]int, 0, len(rows))
+	for _, row := range rows {
+		if len(row) == 0 {
+			continue
+		}
+		if id, ok := toEntityID(row[0]); ok {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// intersectIntSets returns the entity IDs present in both a and b,
+// preserving a's order. Backs the as-of intersect step.
+func intersectIntSets(a, b []int) []int {
+	set := make(map[int]bool, len(b))
+	for _, x := range b {
+		set[x] = true
+	}
+	out := make([]int, 0, len(a))
+	for _, x := range a {
+		if set[x] {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 func toEntityID(v any) (int, bool) {

@@ -35,6 +35,7 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkTypes()
 	v.checkCycles()
 	v.checkWorkflows()
+	v.checkAsOf()
 	return v.diags
 }
 
@@ -660,6 +661,51 @@ func (v *validator) checkWorkflows() {
 				dfs(step.Name, nil)
 			}
 		}
+	}
+}
+
+// checkAsOf enforces the v1 restrictions on `was ( <cond> ) N <unit> ago`:
+// it must be a top-level `and` conjunct of a detect or rule selector.
+// Nested inside `or`/`not` — or used in a block that doesn't run selector
+// candidates — the planner would silently drop it, so those are rejected.
+func (v *validator) checkAsOf() {
+	for _, b := range v.prog.Blocks {
+		allowed := map[*ast.AsOfCondition]bool{}
+		switch bb := b.(type) {
+		case *ast.DetectBlock:
+			markTopLevelAsOf(bb.Selector.Conditions, allowed)
+		case *ast.RuleBlock:
+			if bb.Selector != nil {
+				markTopLevelAsOf(bb.Selector.Conditions, allowed)
+			}
+		}
+		walkBlockConditions(b, func(c ast.Condition) {
+			if ao, ok := c.(*ast.AsOfCondition); ok && !allowed[ao] {
+				v.errAt(blockPos(b),
+					"`was ... ago` must be a top-level `and` condition of a detect or rule selector",
+					"move it out of any or/not grouping and join it with `and`")
+			}
+		})
+	}
+}
+
+// markTopLevelAsOf records every AsOfCondition reachable from the given
+// selector conditions through only `and` nodes.
+func markTopLevelAsOf(conds []ast.Condition, allowed map[*ast.AsOfCondition]bool) {
+	var flatten func(ast.Condition)
+	flatten = func(c ast.Condition) {
+		switch cc := c.(type) {
+		case *ast.LogicalCondition:
+			if cc.Op == "and" {
+				flatten(cc.Left)
+				flatten(cc.Right)
+			}
+		case *ast.AsOfCondition:
+			allowed[cc] = true
+		}
+	}
+	for _, c := range conds {
+		flatten(c)
 	}
 }
 

@@ -23,8 +23,21 @@ type MemoryStore struct {
 	// asserted — updated on every Assert regardless of value change, and
 	// cleared on Retract. Backs the [Freshness] capability.
 	updatedAt map[int]map[string]time.Time
-	now       func() time.Time
-	events    EventEmitter
+	// history[id][attr] is the append-only version chain for a cell: one
+	// entry per value change (Assert) or retraction (a deleted tombstone),
+	// stamped with the write-time. Backs the [TimeTraveler] capability;
+	// entities live and current state stay in [entities].
+	history map[int]map[string][]cellVersion
+	now     func() time.Time
+	events  EventEmitter
+}
+
+// cellVersion is one entry in a cell's history chain. A deleted version
+// marks the cell as absent from `at` onward (until a later re-assert).
+type cellVersion struct {
+	value   any
+	at      time.Time
+	deleted bool
 }
 
 // NewMemoryStore returns an empty store.
@@ -32,6 +45,7 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		entities:  map[int]map[string]any{},
 		updatedAt: map[int]map[string]time.Time{},
+		history:   map[int]map[string][]cellVersion{},
 		now:       time.Now,
 	}
 }
@@ -112,10 +126,11 @@ func (m *MemoryStore) Assert(ctx context.Context, facts []Fact) error {
 		if m.updatedAt[id] == nil {
 			m.updatedAt[id] = map[string]time.Time{}
 		}
-		m.updatedAt[id][f.Attribute] = m.now()
+		ts := m.now()
+		m.updatedAt[id][f.Attribute] = ts
 		if prev, had := ent[f.Attribute]; had {
 			if equalValues(prev, f.Value) {
-				continue // idempotent — no event
+				continue // idempotent — no event, no new version
 			}
 			emitted = append(emitted, Event{
 				Kind: EventChange,
@@ -129,6 +144,7 @@ func (m *MemoryStore) Assert(ctx context.Context, facts []Fact) error {
 			})
 		}
 		ent[f.Attribute] = f.Value
+		m.appendHistory(id, f.Attribute, cellVersion{value: f.Value, at: ts})
 	}
 	m.mu.Unlock()
 
@@ -171,6 +187,7 @@ func (m *MemoryStore) Reset() {
 	m.mu.Lock()
 	m.entities = map[int]map[string]any{}
 	m.updatedAt = map[int]map[string]time.Time{}
+	m.history = map[int]map[string][]cellVersion{}
 	m.mu.Unlock()
 }
 
@@ -241,6 +258,13 @@ func (m *MemoryStore) Retract(ctx context.Context, pattern RetractPattern) error
 		}
 	}
 
+	// Record a deleted tombstone in the history chain for every removed
+	// cell so time-travel queries see the cell as absent from now on.
+	delTS := m.now()
+	for _, f := range removed {
+		m.appendHistory(id, f.Attribute, cellVersion{at: delTS, deleted: true})
+	}
+
 	// Clear write-time stamps for every removed cell (removed lists one
 	// Fact per dropped cell in all three cases).
 	if stamps := m.updatedAt[id]; stamps != nil {
@@ -285,10 +309,29 @@ func (m *MemoryStore) Events() *EventEmitter {
 func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return m.queryOver(m.entities, q), nil
+}
 
+// QueryAsOf evaluates q against a reconstruction of the store as it
+// existed at asOf: each cell shows the value in effect at that instant
+// (or is absent if created later or retracted by then). Implements
+// [TimeTraveler]. Rules resolve against current state, so v1 as-of
+// queries carry only Pattern/Predicate clauses (no RuleCall).
+func (m *MemoryStore) QueryAsOf(ctx context.Context, q Query, asOf time.Time) ([][]any, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.queryOver(m.snapshotAsOf(asOf), q), nil
+}
+
+var _ TimeTraveler = (*MemoryStore)(nil)
+
+// queryOver runs the naive one-pass matcher against the supplied entity
+// snapshot. Query passes the live map; QueryAsOf passes a historical
+// reconstruction. The caller holds the read lock.
+func (m *MemoryStore) queryOver(entities map[int]map[string]any, q Query) [][]any {
 	// Sort entity IDs so result ordering is stable across runs — tests
 	// and the REPL both rely on deterministic ordering.
-	ids := sortedKeys(m.entities)
+	ids := sortedKeys(entities)
 
 	// Build a rule-resolution context only when the query carries
 	// rules. Resolution is lazy / per-call-site so caller-side literal
@@ -302,7 +345,7 @@ func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 	// Pass 1: collect every matching binding set.
 	var matches []map[string]any
 	for _, id := range ids {
-		attrs := m.entities[id]
+		attrs := entities[id]
 		bindings := map[string]any{}
 		// "?e" is the conventional entity binding the planner emits.
 		bindings["?e"] = float64(id)
@@ -314,7 +357,7 @@ func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 
 	// Pass 2: project or aggregate.
 	if len(q.Aggregates) > 0 {
-		return runAggregates(matches, q.GroupBy, q.Aggregates), nil
+		return runAggregates(matches, q.GroupBy, q.Aggregates)
 	}
 
 	rows := make([][]any, 0, len(matches))
@@ -325,7 +368,57 @@ func (m *MemoryStore) Query(ctx context.Context, q Query) ([][]any, error) {
 		}
 		rows = append(rows, row)
 	}
-	return rows, nil
+	return rows
+}
+
+// appendHistory records one version in a cell's history chain, creating
+// the per-entity / per-attribute slices on first write. Callers hold the
+// write lock.
+func (m *MemoryStore) appendHistory(id int, attr string, v cellVersion) {
+	if m.history[id] == nil {
+		m.history[id] = map[string][]cellVersion{}
+	}
+	m.history[id][attr] = append(m.history[id][attr], v)
+}
+
+// snapshotAsOf reconstructs the entity→attributes map as it stood at
+// asOf, from the history chains. Cells whose effective version is a
+// tombstone (or which had no version yet) are omitted; entities with no
+// live cells are dropped. Callers hold the read lock.
+func (m *MemoryStore) snapshotAsOf(asOf time.Time) map[int]map[string]any {
+	out := make(map[int]map[string]any, len(m.history))
+	for id, attrs := range m.history {
+		ent := map[string]any{}
+		for attr, versions := range attrs {
+			if v, live := latestAsOf(versions, asOf); live {
+				ent[attr] = v
+			}
+		}
+		if len(ent) > 0 {
+			out[id] = ent
+		}
+	}
+	return out
+}
+
+// latestAsOf returns the value of the version with the greatest write
+// time not after asOf. live is false when no such version exists or the
+// effective one is a tombstone. On equal timestamps the later-appended
+// version wins (last write wins within a tick).
+func latestAsOf(versions []cellVersion, asOf time.Time) (any, bool) {
+	var chosen *cellVersion
+	for i := range versions {
+		if versions[i].at.After(asOf) {
+			continue
+		}
+		if chosen == nil || !versions[i].at.Before(chosen.at) {
+			chosen = &versions[i]
+		}
+	}
+	if chosen == nil || chosen.deleted {
+		return nil, false
+	}
+	return chosen.value, true
 }
 
 // runAggregates groups matched binding sets by GroupBy and computes each

@@ -27,6 +27,7 @@ const (
 	FuncOptimizeGA           = "optimize_ga"
 	FuncOptimizeACO          = "optimize_aco"
 	FuncOptimizeILP          = "optimize_ilp"
+	FuncAsOfIntersect        = "asof_intersect"
 )
 
 // ─── Plan step types ──────────────────────────────────────────────────────────
@@ -50,6 +51,10 @@ type FactQuery struct {
 	Query    factstore.Query // structured query over patterns/predicates
 	BindVars map[string]any  // parameters bound at query time (reserved)
 	Into     string          // result variable name
+	// AsOfDelta, when non-nil, makes this a time-travel read: the executor
+	// evaluates Query against the store's state at now−AsOfDelta via the
+	// TimeTraveler capability. Emitted for `was <cond> N <unit> ago`.
+	AsOfDelta *ast.Duration
 }
 
 // GoComputation runs a non-ML Go function over a result set
@@ -354,6 +359,12 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 		})
 		last = into
 	}
+
+	// Time-travel conditions: for each `was (<inner>) N <unit> ago`, read
+	// the inner condition against the store's past state (now−Delta) and
+	// intersect with the running candidate set on entity ID. Chaining
+	// intersects ANDs multiple `was…ago` conjuncts together.
+	last = p.appendAsOfSteps(plan, qb.asOfConds, last)
 
 	if len(qb.goConditions) > 0 {
 		plan.Steps = append(plan.Steps, &Filter{
@@ -1234,6 +1245,7 @@ type queryBuilder struct {
 	thresholdConds []thresholdBinding
 	eventSeqConds  []*ast.EventSequenceCondition
 	recordSeqConds []*ast.RecordSequenceCondition
+	asOfConds      []*ast.AsOfCondition
 	usedVars       map[string]int // base name → count (for dedup)
 }
 
@@ -1282,6 +1294,36 @@ type thresholdBinding struct {
 	Method   string       // "p95"
 	Op       string       // ">", "<", ">=", "<="
 	Window   ast.Duration // recorded for explanation/audit; not enforced in phase 2
+}
+
+// appendAsOfSteps emits, per as-of condition, a time-travel FactQuery for
+// the inner condition at now−Delta plus an intersect GoComputation that
+// keeps only running candidates whose entity ID also matched the past
+// query. Returns the new "last" variable name. The inner condition is
+// assumed Datalog-expressible (enforced by the validator); any residual
+// go-side conditions on the inner builder are dropped.
+func (p *planner) appendAsOfSteps(plan *QueryPlan, conds []*ast.AsOfCondition, last string) string {
+	for i, ao := range conds {
+		inner := p.newQueryBuilder()
+		inner.addCondition(ao.Inner)
+		delta := ao.Delta
+		asofVar := fmt.Sprintf("asof_%d", i)
+		plan.Steps = append(plan.Steps, &FactQuery{
+			Query:     inner.build(),
+			BindVars:  inner.bindVars(),
+			AsOfDelta: &delta,
+			Into:      asofVar,
+		})
+		into := fmt.Sprintf("asof_intersected_%d", i)
+		plan.Steps = append(plan.Steps, &GoComputation{
+			Function: FuncAsOfIntersect,
+			Input:    last,
+			Params:   map[string]any{"with": asofVar},
+			Into:     into,
+		})
+		last = into
+	}
+	return last
 }
 
 func (p *planner) newQueryBuilder() *queryBuilder {
@@ -1336,6 +1378,8 @@ func (b *queryBuilder) addCondition(cond ast.Condition) {
 		b.eventSeqConds = append(b.eventSeqConds, c)
 	case *ast.RecordSequenceCondition:
 		b.recordSeqConds = append(b.recordSeqConds, c)
+	case *ast.AsOfCondition:
+		b.asOfConds = append(b.asOfConds, c)
 	default:
 		// TemporalCondition, ChangedToCondition, HasCondition — cannot express
 		// in Datalog, defer to Go.

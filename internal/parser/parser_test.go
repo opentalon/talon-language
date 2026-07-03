@@ -1361,3 +1361,28 @@ detect "Service soon" {
 		t.Errorf("approaching desugar:\n got  %#v\n want %#v", b.Selector.Conditions[0], want)
 	}
 }
+
+// ─── was ... ago (time-travel) ──────────────────────────────────────────────
+
+func TestParseWasAgo(t *testing.T) {
+	prog := mustParse(t, `
+detect "Regressed machines" {
+  for records where was (attr "status" == "certified") 90 days ago
+  flag matching items
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if len(b.Selector.Conditions) != 1 {
+		t.Fatalf("want 1 selector condition, got %d", len(b.Selector.Conditions))
+	}
+	want := &ast.AsOfCondition{
+		Inner: &ast.CompareCondition{
+			Left:  &ast.AttrExpr{Name: "status"},
+			Op:    "==",
+			Right: &ast.LiteralExpr{Value: "certified"},
+		},
+		Delta: ast.Duration{Value: 90, Unit: "days"},
+	}
+	if !reflect.DeepEqual(b.Selector.Conditions[0], want) {
+		t.Errorf("was...ago parse:\n got  %#v\n want %#v", b.Selector.Conditions[0], want)
+	}
+}
