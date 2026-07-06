@@ -173,9 +173,15 @@ func runOneTuned(
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.FactQuery:
-			// Aggregate FactQuery = a `calculate` scalar (avg/sum/count),
-			// bound to its variable name for `having` / label use. It never
-			// becomes the flagged candidate stream.
+			// Aggregate / reduced FactQuery = a `calculate` scalar, bound to
+			// its variable name for `having` / label use. Never the flagged
+			// candidate stream.
+			if s.Reduce == "wma" {
+				calcVars[s.Into] = mlruntime.LinearWMA(evalSeriesInMemory(s.Query, entities))
+				vars[s.Into] = calcVars[s.Into]
+				trace = append(trace, TraceStep{Type: "FactQuery", Into: s.Into, Query: s.Query.String()})
+				break
+			}
 			if len(s.Query.Aggregates) > 0 {
 				if v, ok := evalAggregateInMemory(s.Query, entities); ok {
 					calcVars[s.Into] = v
@@ -479,6 +485,42 @@ func evalAggregateInMemory(q factstore.Query, entities map[int]*entity) (float64
 	}
 	if f, ok := rows[0][0].(float64); ok {
 		return f, true
+	}
+	return 0, false
+}
+
+// evalSeriesInMemory runs a wma calculate's value query and returns the value
+// column (row[1]) as a float64 series, ordered by entity id (the store
+// returns id-sorted rows — oldest→newest by convention).
+func evalSeriesInMemory(q factstore.Query, entities map[int]*entity) []float64 {
+	store := storeFromEntities(entities)
+	rows, err := store.Query(context.Background(), q)
+	if err != nil {
+		return nil
+	}
+	out := make([]float64, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		if f, ok := seriesFloat(row[1]); ok {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// seriesFloat coerces a stored numeric cell to float64.
+func seriesFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
 	}
 	return 0, false
 }

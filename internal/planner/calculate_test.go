@@ -3,7 +3,7 @@ package planner
 import "testing"
 
 // TestPlanCalculateMethods: avg/sum/count emit an aggregate FactQuery bound to
-// the calc name; wma emits an MLComputation; having emits a Filter.
+// the calc name; wma emits a reduced FactQuery; having emits a Filter.
 func TestPlanCalculateMethods(t *testing.T) {
 	p := planBlock(t, `
 detect "Rates" {
@@ -17,8 +17,7 @@ detect "Rates" {
   priority HIGH
 }`, "Rates")
 
-	var meanX, count *FactQuery
-	var wma *MLComputation
+	var meanX, count, wma *FactQuery
 	haveFilter := false
 	for _, step := range p.Steps {
 		switch s := step.(type) {
@@ -28,9 +27,7 @@ detect "Rates" {
 				meanX = s
 			case "n":
 				count = s
-			}
-		case *MLComputation:
-			if s.Function == FuncWMA && s.Into == "rate" {
+			case "rate":
 				wma = s
 			}
 		case *Filter:
@@ -47,8 +44,8 @@ detect "Rates" {
 	if count == nil || len(count.Query.Aggregates) != 1 || count.Query.Aggregates[0].Fn != "count" {
 		t.Fatalf("n: want a count aggregate FactQuery, got %+v", count)
 	}
-	if wma == nil {
-		t.Fatal("rate: want an MLComputation with FuncWMA")
+	if wma == nil || wma.Reduce != "wma" {
+		t.Fatalf("rate: want a reduced FactQuery (Reduce==\"wma\"), got %+v", wma)
 	}
 	if !haveFilter {
 		t.Error("having: expected a Filter step")

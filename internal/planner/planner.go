@@ -57,6 +57,11 @@ type FactQuery struct {
 	// evaluates Query against the store's state at now−AsOfDelta via the
 	// TimeTraveler capability. Emitted for `was <cond> N <unit> ago`.
 	AsOfDelta *ast.Duration
+	// Reduce, when non-empty, marks a `calculate` step that reduces the
+	// query's value column (row[1]) to a single scalar bound to Into, using
+	// a non-SQL method the store can't express — today only "wma" (linearly-
+	// weighted moving average, ordered by entity id, newest heaviest).
+	Reduce string
 }
 
 // GoComputation runs a non-ML Go function over a result set
@@ -1906,14 +1911,13 @@ func (p *planner) buildCalculateQuery(calc ast.CalculateClause) factstore.Query 
 func (p *planner) appendCalcSteps(plan *QueryPlan, calcs []ast.CalculateClause, last string) {
 	for _, calc := range calcs {
 		if calc.Method == "wma" {
-			plan.Steps = append(plan.Steps, &MLComputation{
-				Function: FuncWMA,
-				Input:    last,
-				Params: map[string]any{
-					"series_var": attrVarName(calc.Value),
-					"window":     calc.Within,
-				},
-				Into: calc.Name,
+			// wma isn't a SQL aggregate: fetch the ordered value series and
+			// mark the step so the runtime reduces it via LinearWMA.
+			plan.Steps = append(plan.Steps, &FactQuery{
+				Query:    p.buildCalcSeriesQuery(calc),
+				BindVars: map[string]any{},
+				Reduce:   "wma",
+				Into:     calc.Name,
 			})
 			continue
 		}
@@ -1923,6 +1927,25 @@ func (p *planner) appendCalcSteps(plan *QueryPlan, calcs []ast.CalculateClause, 
 			Into:     calc.Name,
 		})
 	}
+}
+
+// buildCalcSeriesQuery builds the value-series query for a wma calculate: it
+// filters by calc.Where and projects [?e, ?value] so the runtime can pull the
+// value column, ordered by entity id (the store returns id-sorted rows —
+// oldest→newest by convention). No aggregate; the reduction is LinearWMA.
+func (p *planner) buildCalcSeriesQuery(calc ast.CalculateClause) factstore.Query {
+	qb := p.newQueryBuilder()
+	for _, c := range calc.Where {
+		qb.addCondition(c)
+	}
+	if path, ok := exprToFieldPath(calc.Value); ok {
+		v := qb.varFor(attrVarName(calc.Value))
+		qb.addPattern(path, factstore.Var(v))
+		q := qb.build()
+		q.Find = []string{qb.entityVar, v} // [?e, ?value]
+		return q
+	}
+	return qb.build()
 }
 
 func indexOf(s []string, v string) int {

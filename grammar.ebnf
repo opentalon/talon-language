@@ -339,11 +339,11 @@ ReturnClause    = "return" IDENT { "," IDENT }
    or via a trailing `within last N <unit>`.
 
    average/sum/count are computed natively by the FactStore (Aggregates).
-   weighted_moving_average is a recency-weighted reduction (newest value
-   weighs most) via the mlruntime primitive; sourcing its per-record series
-   from the FactStore time dimension is a follow-up shared with `forecast`.
-   A bare `calculate X from Y` with no method and no `of attr` is legacy /
-   inert (kept for backward compatibility). *)
+   weighted_moving_average reduces the value column of the matching records —
+   ordered oldest→newest by record id — with linear weights (newest heaviest),
+   so recent observations dominate the rate. A bare `calculate X from Y` with
+   no method and no `of attr` is legacy / inert (kept for backward
+   compatibility). *)
 CalculateClause = "calculate" IDENT "from" ( "activities" | "records" )
                   [ "of" "attr" STRING ]
                   [ "where" ConditionList ]

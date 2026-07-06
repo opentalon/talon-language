@@ -214,6 +214,11 @@ func executeForDecisions(
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.FactQuery:
+			if s.Reduce == "wma" {
+				dn.Calc[s.Into] = mlruntime.LinearWMA(evalSeriesInMemory(s.Query, entities))
+				vars[s.Into] = dn.Calc[s.Into]
+				break
+			}
 			if len(s.Query.Aggregates) > 0 {
 				if v, ok := evalAggregateInMemory(s.Query, entities); ok {
 					dn.Calc[s.Into] = v

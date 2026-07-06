@@ -18,17 +18,18 @@ detect "High average consumption" {
   priority HIGH
 }
 
-// weighted_moving_average form — recent days weigh more, so a slowdown last
-// week shifts the rate more than usage from 30 days ago. The primitive is
-// exercised in internal/mlruntime; wiring its per-record series from the
-// FactStore's time dimension is a shared follow-up with `forecast`.
-detect "Recent consumption rate" {
+// weighted_moving_average form — recent readings weigh more (newest heaviest),
+// so a spike last week shifts the rate more than usage from 30 days ago. The
+// series is the value column of the matching records, ordered oldest→newest
+// by record id.
+detect "Recent consumption spiking" {
   for records where type == "depot"
-  calculate daily_rate from activities
+  calculate daily_rate from records
     where type == "usage"
     of attr "amount"
-    weighted_moving_average last 30 days
+    weighted_moving_average
+  having daily_rate > 100
   flag matching items
-  label "recent daily rate ~{daily_rate}"
+  label "recent daily rate ~{daily_rate} — trending up"
   priority MEDIUM
 }

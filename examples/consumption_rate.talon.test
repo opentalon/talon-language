@@ -38,3 +38,39 @@ test "low average consumption flags nothing" {
     not flagged 1
   }
 }
+
+test "recent spike opens the wma gate" {
+  // usage series (by id) 60, 90, 200 — newest (200) weighs most, so the
+  // weighted rate clears 100 even though the flat mean is ~117.
+  given {
+    record 1 type "depot"
+    record 20 type "usage"
+    attr 20 "amount" 60
+    record 21 type "usage"
+    attr 21 "amount" 90
+    record 22 type "usage"
+    attr 22 "amount" 200
+  }
+  when detect "Recent consumption spiking"
+  expect {
+    flagged 1
+  }
+}
+
+test "recent slowdown closes the wma gate" {
+  // same values reversed — the big number is now oldest and weighs least,
+  // so the weighted rate falls below 100.
+  given {
+    record 1 type "depot"
+    record 20 type "usage"
+    attr 20 "amount" 200
+    record 21 type "usage"
+    attr 21 "amount" 90
+    record 22 type "usage"
+    attr 22 "amount" 60
+  }
+  when detect "Recent consumption spiking"
+  expect {
+    not flagged 1
+  }
+}

@@ -229,10 +229,10 @@ func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.FactQuery:
-			// As-of FactQueries feed the intersect step, and aggregate
-			// (calculate) FactQueries bind a scalar — neither is the
-			// candidate stream, so skip both to keep Flagged accurate.
-			if s.AsOfDelta == nil && len(s.Query.Aggregates) == 0 {
+			// As-of FactQueries feed the intersect step, and aggregate /
+			// reduced (calculate) FactQueries bind a scalar — none is the
+			// candidate stream, so skip them to keep Flagged accurate.
+			if s.AsOfDelta == nil && len(s.Query.Aggregates) == 0 && s.Reduce == "" {
 				if arr, ok := vars[s.Into].([][]any); ok {
 					rows = arr
 				}

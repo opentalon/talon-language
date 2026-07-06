@@ -54,7 +54,7 @@ func (w *WeightedMovingAverage) Compute(_ context.Context, in Input) ([]Result, 
 		if len(series) == 0 {
 			continue
 		}
-		wma := linearWMA(series)
+		wma := LinearWMA(series)
 		results = append(results, Result{
 			EntityID: id,
 			Value:    wma,
@@ -72,10 +72,10 @@ func (w *WeightedMovingAverage) Compute(_ context.Context, in Input) ([]Result, 
 	return results, nil
 }
 
-// linearWMA computes the linearly-weighted average of a chronological series
+// LinearWMA computes the linearly-weighted average of a chronological series
 // (newest last), giving the newest value the highest weight. Returns 0 for an
 // empty series.
-func linearWMA(xs []float64) float64 {
+func LinearWMA(xs []float64) float64 {
 	var num, den float64
 	for i, x := range xs {
 		w := float64(i + 1)
