@@ -69,6 +69,7 @@ DetectBody  = Selector
               [ ScoreAnnotation ]
               [ SourceAnnotation ]
               { CalculateClause }
+              { "having" Condition }
               { LoggerStmt }
               [ AnomalyClause ]
               [ PredictClause ]
@@ -329,9 +330,27 @@ OptimizeClause  = ( "minimize" | "maximize" ) Expr
 
 ReturnClause    = "return" IDENT { "," IDENT }
 
+(* CalculateClause reduces a series of records to one scalar bound to IDENT,
+   consumable in a `having` filter and in labels via `{IDENT}`. The optional
+   clauses are order-independent. METHOD is `average` (the default once a
+   value column is named) | `sum` | `count` | `weighted_moving_average`.
+   `of attr "X"` names the value column (required for average/sum/wma; count
+   ignores it). A METHOD may take its window inline (`average last 7 days`)
+   or via a trailing `within last N <unit>`.
+
+   average/sum/count are computed natively by the FactStore (Aggregates).
+   weighted_moving_average is a recency-weighted reduction (newest value
+   weighs most) via the mlruntime primitive; sourcing its per-record series
+   from the FactStore time dimension is a follow-up shared with `forecast`.
+   A bare `calculate X from Y` with no method and no `of attr` is legacy /
+   inert (kept for backward compatibility). *)
 CalculateClause = "calculate" IDENT "from" ( "activities" | "records" )
+                  [ "of" "attr" STRING ]
                   [ "where" ConditionList ]
+                  [ METHOD [ "last" NUMBER DurationUnit ] ]
                   [ "within" "last" NUMBER DurationUnit ]
+
+METHOD          = "average" | "sum" | "count" | "weighted_moving_average"
 
 FeaturesClause  = "features" "[" AttrList "]"
 

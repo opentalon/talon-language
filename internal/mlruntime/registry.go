@@ -20,6 +20,7 @@ func NewRegistry() *Registry {
 	r.Register(NewDBSCANCluster())
 	r.Register(NewExpSmoothingForecast())
 	r.Register(NewPearsonCorrelation())
+	r.Register(NewWeightedMovingAverage())
 	return r
 }
 

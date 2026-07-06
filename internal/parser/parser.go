@@ -161,6 +161,12 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 		b.Source = &s
 	case lexer.TokenCalculate:
 		b.Calculate = append(b.Calculate, p.parseCalculateClause())
+	case lexer.TokenHaving:
+		// Post-calculate filter: `having COND [and COND ...]`, may reference
+		// calculate variables. Evaluated after the calculate steps. (`when`
+		// in a detect block is reserved for sequence patterns.)
+		p.advance() // having
+		b.Having = append(b.Having, p.parseOrCondition())
 	case lexer.TokenIs:
 		// "is anomaly compared_to last N UNIT" — standalone anomaly clause
 		b.Anomaly = p.parseAnomalyClause()
@@ -1540,19 +1546,77 @@ func (p *parser) parseCalculateClause() ast.CalculateClause {
 	p.expect(lexer.TokenFrom)
 	from := p.expectIdent()
 	calc := ast.CalculateClause{Name: name, From: from}
-	if p.at(lexer.TokenWhere) {
-		p.advance()
-		cond := p.parseOrCondition()
-		calc.Where = []ast.Condition{cond}
+
+	// The remaining clauses — `of attr "X"`, `where COND`, a METHOD keyword
+	// (average|sum|count|weighted_moving_average), and `within last N <unit>`
+	// — are all optional and order-independent. Loop until a token that
+	// starts none of them (i.e. the next block clause).
+	for {
+		switch {
+		case p.at(lexer.TokenIdent) && p.peek().Value == "of":
+			p.advance()
+			calc.Value = p.parseExpr()
+		case p.at(lexer.TokenWhere):
+			p.advance()
+			calc.Where = []ast.Condition{p.parseOrCondition()}
+		case p.at(lexer.TokenWithin):
+			p.advance()
+			p.expect(lexer.TokenLast)
+			n, _ := strconv.Atoi(p.expectNumberStr())
+			unit := p.expectDurationUnit()
+			calc.Within = &ast.Duration{Value: n, Unit: unit}
+		case isCalcMethod(p):
+			calc.Method = readCalcMethod(p)
+			// A method may name its own window directly: `... average last
+			// 7 days` — equivalent to a trailing `within last 7 days`.
+			if p.at(lexer.TokenLast) {
+				p.advance()
+				n, _ := strconv.Atoi(p.expectNumberStr())
+				unit := p.expectDurationUnit()
+				calc.Within = &ast.Duration{Value: n, Unit: unit}
+			}
+		default:
+			// Default to average only when a value column was named; a
+			// bare `calculate X from Y` (no method, no `of attr`) stays
+			// method-less and legacy-inert for backward compatibility.
+			if calc.Method == "" && calc.Value != nil {
+				calc.Method = "average"
+			}
+			return calc
+		}
 	}
-	if p.at(lexer.TokenWithin) {
-		p.advance()
-		p.expect(lexer.TokenLast)
-		n, _ := strconv.Atoi(p.expectNumberStr())
-		unit := p.expectDurationUnit()
-		calc.Within = &ast.Duration{Value: n, Unit: unit}
+}
+
+// isCalcMethod reports whether the current token begins a calculate
+// aggregation method keyword.
+func isCalcMethod(p *parser) bool {
+	if p.at(lexer.TokenCount) {
+		return true
 	}
-	return calc
+	if p.at(lexer.TokenIdent) {
+		switch p.peek().Value {
+		case "average", "avg", "mean", "sum", "total", "weighted_moving_average", "wma":
+			return true
+		}
+	}
+	return false
+}
+
+// readCalcMethod consumes a method keyword and returns its normalized name:
+// "average", "sum", "count", or "wma".
+func readCalcMethod(p *parser) string {
+	if p.at(lexer.TokenCount) {
+		p.advance()
+		return "count"
+	}
+	switch p.advance().Value {
+	case "sum", "total":
+		return "sum"
+	case "weighted_moving_average", "wma":
+		return "wma"
+	default: // average, avg, mean
+		return "average"
+	}
 }
 
 func (p *parser) parseEveryClause() *ast.EveryClause {

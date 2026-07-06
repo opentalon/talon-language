@@ -487,3 +487,22 @@ detect "Corr bad" {
   flag matching items
 }`, "outside [-1, 1]")
 }
+
+func TestValidateCalculateCountNeedsNoValue(t *testing.T) {
+	mustClean(t, `
+detect "C" {
+  for records where type == "s"
+  calculate n from records where type == "reading" count
+  having n > 0
+  flag matching items
+}`)
+}
+
+func TestValidateCalculateAvgRequiresValue(t *testing.T) {
+	mustError(t, `
+detect "C" {
+  for records where type == "s"
+  calculate r from records average
+  flag matching items
+}`, "requires a value column")
+}

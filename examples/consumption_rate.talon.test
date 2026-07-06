@@ -1,0 +1,40 @@
+// calculate + having example suite.
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/consumption_rate.talon examples/consumption_rate.talon.test
+
+test "high average consumption flags depots" {
+  // usage amounts average (120 + 90 + 150)/3 = 120 > 100 → gate opens,
+  // every depot is flagged.
+  given {
+    record 1 type "depot"
+    record 2 type "depot"
+    record 10 type "usage"
+    attr 10 "amount" 120
+    record 11 type "usage"
+    attr 11 "amount" 90
+    record 12 type "usage"
+    attr 12 "amount" 150
+  }
+  when detect "High average consumption"
+  expect {
+    flagged 1
+    flagged 2
+  }
+}
+
+test "low average consumption flags nothing" {
+  // average (10 + 20)/2 = 15 < 100 → gate closes.
+  given {
+    record 1 type "depot"
+    record 10 type "usage"
+    attr 10 "amount" 10
+    record 11 type "usage"
+    attr 11 "amount" 20
+  }
+  when detect "High average consumption"
+  expect {
+    not flagged 1
+  }
+}

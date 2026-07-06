@@ -46,6 +46,7 @@ type DetectBlock struct {
 	Score      *float64 // provenance annotation — the rule's own confidence
 	Source     *string  // provenance annotation — where the rule came from
 	Calculate  []CalculateClause
+	Having     []Condition // post-calculate filter; may reference calculate vars
 	Anomaly    *AnomalyClause
 	Predict    *PredictClause
 	Forecast   *ForecastClause
@@ -880,6 +881,8 @@ type ApprovalExpr struct {
 type CalculateClause struct {
 	Name   string
 	From   string // "activities", "records"
+	Value  Expr   // the `of attr "X"` value column; nil for count
+	Method string // "average" (default), "sum", "count", "wma"
 	Where  []Condition
 	Within *Duration
 }

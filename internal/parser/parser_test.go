@@ -1415,3 +1415,32 @@ detect "Corr" {
 		t.Errorf("attrs: left=%#v right=%#v", cc.Left, cc.Right)
 	}
 }
+
+// ─── calculate methods + of attr + having ───────────────────────────────────
+
+func TestParseCalculateMethodAndHaving(t *testing.T) {
+	prog := mustParse(t, `
+detect "C" {
+  for records where type == "s"
+  calculate rate from activities of attr "amount" weighted_moving_average last 7 days
+  having rate > 0
+  flag matching items
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if len(b.Calculate) != 1 {
+		t.Fatalf("want 1 calculate, got %d", len(b.Calculate))
+	}
+	c := b.Calculate[0]
+	if c.Name != "rate" || c.From != "activities" || c.Method != "wma" {
+		t.Errorf("calc = %+v", c)
+	}
+	if av, ok := c.Value.(*ast.AttrExpr); !ok || av.Name != "amount" {
+		t.Errorf("value = %#v, want attr amount", c.Value)
+	}
+	if c.Within == nil || c.Within.Value != 7 || c.Within.Unit != "days" {
+		t.Errorf("window = %+v, want {7 days}", c.Within)
+	}
+	if len(b.Having) != 1 {
+		t.Errorf("want 1 having condition, got %d", len(b.Having))
+	}
+}

@@ -38,7 +38,10 @@ type RenderContext struct {
 	Row           Row
 	AggregateRows []Row
 	Context       map[string]any
-	Now           time.Time
+	// Calc holds `calculate` scalars by variable name, so a label can
+	// interpolate `{daily_rate}` from an aggregation clause.
+	Calc map[string]float64
+	Now  time.Time
 }
 
 // Render evaluates the template against the context.
@@ -92,8 +95,11 @@ func resolveRef(path string, ctx RenderContext) string {
 			return formatValue(v)
 		}
 	default:
-		// Bare key — try record fields first, then attrs.
+		// Bare key — record/attr fields first, then calculate scalars.
 		if v, ok := ctx.Row[path]; ok {
+			return formatValue(v)
+		}
+		if v, ok := ctx.Calc[path]; ok {
 			return formatValue(v)
 		}
 	}

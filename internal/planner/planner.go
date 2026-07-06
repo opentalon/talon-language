@@ -15,6 +15,7 @@ const (
 	FuncAnomalyGrubbs        = "anomaly_grubbs"
 	FuncLearnedThreshold     = "learned_threshold"
 	FuncCorrelationPearson   = "correlation_pearson"
+	FuncWMA                  = "weighted_moving_average"
 	FuncPredictDecisionTree  = "predict_decision_tree"
 	FuncForecastExpSmoothing = "forecast_exponential_smoothing"
 	FuncClusterDBSCAN        = "cluster_dbscan"
@@ -227,6 +228,7 @@ func IsMLFunction(fn string) bool {
 		FuncAnomalyGrubbs,
 		FuncLearnedThreshold,
 		FuncCorrelationPearson,
+		FuncWMA,
 		FuncPredictDecisionTree,
 		FuncForecastExpSmoothing,
 		FuncClusterDBSCAN,
@@ -481,6 +483,21 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 		last = "related_records"
 	}
 
+	// calculate + having: reduce a series to scalars bound to their names,
+	// then narrow candidates with a post-aggregation filter that may
+	// reference those scalars. Both run before labeling so `{calc_var}`
+	// resolves and the filter has taken effect.
+	p.appendCalcSteps(plan, b.Calculate, last)
+	if len(b.Having) > 0 {
+		plan.Steps = append(plan.Steps, &Filter{
+			Input:      last,
+			Condition:  renderGoConditions(b.Having),
+			Conditions: append([]ast.Condition(nil), b.Having...),
+			Into:       "having_filtered",
+		})
+		last = "having_filtered"
+	}
+
 	if b.Label != nil {
 		plan.Steps = append(plan.Steps, &GoComputation{
 			Function: FuncRenderTemplate,
@@ -577,13 +594,7 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 	}
 
 	// calculate steps
-	for _, calc := range b.Calculate {
-		plan.Steps = append(plan.Steps, &FactQuery{
-			Query:    p.buildCalculateQuery(calc),
-			BindVars: map[string]any{},
-			Into:     calc.Name,
-		})
-	}
+	p.appendCalcSteps(plan, b.Calculate, "matches")
 
 	if b.Suggest != nil {
 		params := map[string]any{"template": b.Suggest.Raw}
@@ -1859,12 +1870,59 @@ func durationToSeconds(d ast.Duration) float64 {
 	return 0
 }
 
+// buildCalculateQuery builds the aggregate query for a non-wma calculate
+// clause: it filters by calc.Where and reduces to a single scalar via a
+// native factstore Aggregate (count over ?e, or avg/sum over the `of attr`
+// value var). The scalar is returned as a 1×1 rows table bound to calc.Name.
 func (p *planner) buildCalculateQuery(calc ast.CalculateClause) factstore.Query {
 	qb := p.newQueryBuilder()
 	for _, c := range calc.Where {
 		qb.addCondition(c)
 	}
-	return qb.build()
+	var aggs []factstore.Aggregate
+	switch calc.Method {
+	case "count":
+		aggs = []factstore.Aggregate{{Fn: "count", Over: factstore.Var("e"), As: calc.Name}}
+	default: // "average" | "sum"
+		fn := "avg"
+		if calc.Method == "sum" {
+			fn = "sum"
+		}
+		if path, ok := exprToFieldPath(calc.Value); ok {
+			v := qb.varFor(attrVarName(calc.Value))
+			qb.addPattern(path, factstore.Var(v))
+			aggs = []factstore.Aggregate{{Fn: fn, Over: factstore.Var(v), As: calc.Name}}
+		}
+	}
+	q := qb.build()
+	q.Aggregates = aggs
+	return q
+}
+
+// appendCalcSteps emits one step per calculate clause: an aggregate FactQuery
+// (avg/sum/count — computed natively by the backend) or an MLComputation for
+// wma (recency-weighted; its series source is deferred, shared with forecast).
+// Each binds its scalar to vars[calc.Name] for `having` / label consumption.
+func (p *planner) appendCalcSteps(plan *QueryPlan, calcs []ast.CalculateClause, last string) {
+	for _, calc := range calcs {
+		if calc.Method == "wma" {
+			plan.Steps = append(plan.Steps, &MLComputation{
+				Function: FuncWMA,
+				Input:    last,
+				Params: map[string]any{
+					"series_var": attrVarName(calc.Value),
+					"window":     calc.Within,
+				},
+				Into: calc.Name,
+			})
+			continue
+		}
+		plan.Steps = append(plan.Steps, &FactQuery{
+			Query:    p.buildCalculateQuery(calc),
+			BindVars: map[string]any{},
+			Into:     calc.Name,
+		})
+	}
 }
 
 func indexOf(s []string, v string) int {
