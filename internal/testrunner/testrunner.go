@@ -251,7 +251,7 @@ func runOneTuned(
 					stepToRun = &cp
 				}
 			}
-			narrowed, explanations := narrowByML(reg, stepToRun, flagged, entities)
+			narrowed, explanations := narrowByML(reg, stepToRun, flagged, entities, vars)
 			flagged = narrowed
 			for _, e := range explanations {
 				mlByEntity[e.EntityID] = e
@@ -893,7 +893,7 @@ func WriteJUnit(w io.Writer, suites []JUnitSuite) error {
 // If the registry has no primitive registered for the function, or the step
 // lacks the params needed to fetch values, the original flagged set passes
 // through unchanged and explanations is nil.
-func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int, entities map[int]*entity) ([]int, []mlruntime.Explanation) {
+func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int, entities map[int]*entity, vars map[string]any) ([]int, []mlruntime.Explanation) {
 	if reg == nil || !reg.Has(s.Function) {
 		return flagged, nil
 	}
@@ -947,6 +947,7 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 		Schema:   schema,
 		Params:   s.Params,
 		Entities: entitiesByID,
+		Training: trainingRows(s, vars, entities),
 	})
 	if err != nil {
 		// Sample too small — leave flagged unchanged so tests can still run
@@ -954,27 +955,40 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 		return flagged, nil
 	}
 
+	// A supervised primitive (classify_knn) emits a class string, not a bool.
+	// It filters only when the block set a `confidence >= N` bound: keep the
+	// predictions that voted at least that strongly, drop the rest.
+	confBound, hasConf := s.Params["confidence"].(float64)
+	isClassify := s.Function == planner.FuncClassifyKNN
+
 	keep := map[int]bool{}
-	hasBoolResult := false
+	filtering := false
 	explanations := make([]mlruntime.Explanation, 0, len(results))
 	for _, r := range results {
 		explanations = append(explanations, r.Explanation)
 		switch v := r.Value.(type) {
 		case bool:
-			hasBoolResult = true
+			filtering = true
 			if v {
 				keep[r.EntityID] = true
 			}
 		default:
-			// Non-bool result (cluster ID, days_until, similarity score)
-			// — the primitive is producing information, not filtering.
-			// Keep the row; let downstream filters (e.g. a `when` clause)
-			// narrow.
+			// Non-bool result (class string, cluster ID, similarity score).
+			// Classify with a confidence bound drops low-confidence votes;
+			// otherwise the primitive is producing information, not
+			// filtering, so the row is kept for downstream narrowing.
 			_ = v
-			keep[r.EntityID] = true
+			if isClassify && hasConf {
+				filtering = true
+				if r.Explanation.Confidence >= confBound {
+					keep[r.EntityID] = true
+				}
+			} else {
+				keep[r.EntityID] = true
+			}
 		}
 	}
-	if !hasBoolResult {
+	if !filtering {
 		// No filtering primitive participated — return flagged unchanged
 		// so the row set isn't accidentally reordered by the keep map's
 		// iteration order.
@@ -1001,6 +1015,39 @@ func entityAttrsFlattened(e *entity) map[string]any {
 		case strings.HasPrefix(k, ":attr/"):
 			out[strings.TrimPrefix(k, ":attr/")] = v
 		}
+	}
+	return out
+}
+
+// trainingRows materialises the labeled training set for a supervised
+// MLComputation (classify_knn). It reads the entity ids produced by the
+// step's `training_var` FactQuery (already resolved into vars) and reads each
+// row's class from the block's `label_attr`. Returns nil for unsupervised
+// steps or when the training var is empty.
+func trainingRows(s *planner.MLComputation, vars map[string]any, entities map[int]*entity) []mlruntime.TrainingRow {
+	trainingVar, ok := s.Params["training_var"].(string)
+	if !ok || trainingVar == "" {
+		return nil
+	}
+	ids, _ := vars[trainingVar].([]int)
+	if len(ids) == 0 {
+		return nil
+	}
+	labelAttr, _ := s.Params["label_attr"].(string)
+	out := make([]mlruntime.TrainingRow, 0, len(ids))
+	for _, id := range ids {
+		e := entities[id]
+		if e == nil {
+			continue
+		}
+		attrs := entityAttrsFlattened(e)
+		label := ""
+		if labelAttr != "" {
+			if v, ok := attrs[labelAttr]; ok {
+				label = fmt.Sprint(v)
+			}
+		}
+		out = append(out, mlruntime.TrainingRow{ID: id, Attrs: attrs, Label: label})
 	}
 	return out
 }

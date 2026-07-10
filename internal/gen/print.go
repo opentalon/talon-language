@@ -445,6 +445,12 @@ func (p *printer) classify(b *ast.ClassifyBlock) {
 	if len(b.Features) > 0 {
 		p.line("features [" + exprListStr(b.Features) + "]")
 	}
+	if b.TrainedOn != nil {
+		p.line("trained_on records where " + condStr(b.TrainedOn.Conditions[0]))
+	}
+	if b.LabelAttr != "" {
+		p.line("label_attr " + quote(b.LabelAttr))
+	}
 	if b.Confidence != nil {
 		p.line("confidence >= " + numStr(*b.Confidence))
 	}

@@ -395,11 +395,61 @@ func TestPlanClassifyBlock(t *testing.T) {
 classify "Tickets" {
   for records where type == "ticket"
   features [attr "title", attr "body"]
+  trained_on records where type == "ticket" and status == "triaged"
+  label_attr "queue"
 }`, "Tickets")
 
 	queryStep(t, plan, 0)
 	if findMLStep(plan, FuncClassifyKNN) == nil {
 		t.Error("expected MLComputation with classify_knn")
+	}
+}
+
+// TestPlanClassifyTrainedOn asserts the supervised shape: a candidate
+// FactQuery, a second Auxiliary FactQuery for the training set, then the
+// classify_knn MLComputation carrying the label column, training var, k, and
+// the confidence bound.
+func TestPlanClassifyTrainedOn(t *testing.T) {
+	plan := planBlock(t, `
+classify "Failure mode" {
+  for records where type == "incident"
+  features [attr "vibration", attr "temp"]
+  trained_on records where type == "incident" and status == "resolved"
+  label_attr "root_cause"
+  confidence >= 0.6
+}`, "Failure mode")
+
+	var facts []*FactQuery
+	for _, s := range plan.Steps {
+		if fq, ok := s.(*FactQuery); ok {
+			facts = append(facts, fq)
+		}
+	}
+	if len(facts) != 2 {
+		t.Fatalf("want 2 FactQuery steps (candidates + training), got %d", len(facts))
+	}
+	if facts[0].Auxiliary {
+		t.Error("candidate query should not be Auxiliary")
+	}
+	if !facts[1].Auxiliary || facts[1].Into != "training" {
+		t.Errorf("training query: Auxiliary=%v Into=%q, want true/\"training\"", facts[1].Auxiliary, facts[1].Into)
+	}
+
+	ml := findMLStep(plan, FuncClassifyKNN)
+	if ml == nil {
+		t.Fatal("expected MLComputation with classify_knn")
+	}
+	if ml.Params["label_attr"] != "root_cause" {
+		t.Errorf("label_attr param: got %v, want root_cause", ml.Params["label_attr"])
+	}
+	if ml.Params["training_var"] != "training" {
+		t.Errorf("training_var param: got %v, want training", ml.Params["training_var"])
+	}
+	if ml.Params["k"] != defaultKNN {
+		t.Errorf("k param: got %v, want %d", ml.Params["k"], defaultKNN)
+	}
+	if conf, _ := ml.Params["confidence"].(float64); conf != 0.6 {
+		t.Errorf("confidence param: got %v, want 0.6", ml.Params["confidence"])
 	}
 }
 

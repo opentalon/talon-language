@@ -62,6 +62,10 @@ type FactQuery struct {
 	// a non-SQL method the store can't express — today only "wma" (linearly-
 	// weighted moving average, ordered by entity id, newest heaviest).
 	Reduce string
+	// Auxiliary marks a query whose rows feed a later step rather than being
+	// the block's candidate stream — e.g. a classify block's training set.
+	// The runtime binds Into but must not treat these rows as "flagged".
+	Auxiliary bool
 }
 
 // GoComputation runs a non-ML Go function over a result set
@@ -737,17 +741,44 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
+
+	// Supervised primitives need a second query: the labeled training set the
+	// vote draws from. It depends on the candidate query only in ordering
+	// (candidates first so it owns the flagged stream); the runtime resolves
+	// "training" into Input.Training before the MLComputation runs.
+	if b.TrainedOn != nil {
+		tqb := p.newQueryBuilder()
+		tqb.addSelector(ast.Selector{Target: "records", Conditions: b.TrainedOn.Conditions})
+		plan.Steps = append(plan.Steps, &FactQuery{
+			Query:     tqb.build(),
+			BindVars:  tqb.bindVars(),
+			Into:      "training",
+			Auxiliary: true,
+		})
+	}
+
+	params := map[string]any{
+		"features":      b.Features,
+		"feature_names": exprListToAttrNames(b.Features),
+		"label_attr":    b.LabelAttr,
+		"training_var":  "training",
+		"k":             defaultKNN,
+	}
+	if b.Confidence != nil {
+		params["confidence"] = *b.Confidence
+	}
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncClassifyKNN,
 		Input:    "candidates",
-		Params: map[string]any{
-			"features":      b.Features,
-			"feature_names": exprListToAttrNames(b.Features),
-		},
-		Into: "classifications",
+		Params:   params,
+		Into:     "classifications",
 	})
 	return plan
 }
+
+// defaultKNN is the neighbour count when a classify block doesn't override it.
+// Small, matching the per-tenant data volumes Talon sees (issue #70).
+const defaultKNN = 5
 
 func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}

@@ -1,0 +1,70 @@
+// Training set: two well-separated failure signatures among resolved
+// incidents — high vibration / low temp → "bearing", low vibration / high
+// temp → "overheat" (5 each). The open incidents 100 and 101 sit squarely in
+// one signature and are classified confidently (5/5 votes); 102 sits midway
+// between them, so its vote splits and the `confidence >= 0.8` bound drops it.
+
+test "route open incidents to a failure mode" {
+  given {
+    // ── resolved, labeled: the "bearing" cluster ──
+    record 1 type "incident" status "resolved"
+    attr 1 "vibration" 90
+    attr 1 "temp" 20
+    attr 1 "root_cause" "bearing"
+    record 2 type "incident" status "resolved"
+    attr 2 "vibration" 92
+    attr 2 "temp" 22
+    attr 2 "root_cause" "bearing"
+    record 3 type "incident" status "resolved"
+    attr 3 "vibration" 88
+    attr 3 "temp" 18
+    attr 3 "root_cause" "bearing"
+    record 4 type "incident" status "resolved"
+    attr 4 "vibration" 91
+    attr 4 "temp" 19
+    attr 4 "root_cause" "bearing"
+    record 5 type "incident" status "resolved"
+    attr 5 "vibration" 89
+    attr 5 "temp" 21
+    attr 5 "root_cause" "bearing"
+
+    // ── resolved, labeled: the "overheat" cluster ──
+    record 6 type "incident" status "resolved"
+    attr 6 "vibration" 20
+    attr 6 "temp" 90
+    attr 6 "root_cause" "overheat"
+    record 7 type "incident" status "resolved"
+    attr 7 "vibration" 22
+    attr 7 "temp" 92
+    attr 7 "root_cause" "overheat"
+    record 8 type "incident" status "resolved"
+    attr 8 "vibration" 18
+    attr 8 "temp" 88
+    attr 8 "root_cause" "overheat"
+    record 9 type "incident" status "resolved"
+    attr 9 "vibration" 19
+    attr 9 "temp" 91
+    attr 9 "root_cause" "overheat"
+    record 10 type "incident" status "resolved"
+    attr 10 "vibration" 21
+    attr 10 "temp" 89
+    attr 10 "root_cause" "overheat"
+
+    // ── open, unlabeled: the candidates to classify ──
+    record 100 type "incident" status "open"
+    attr 100 "vibration" 91
+    attr 100 "temp" 21
+    record 101 type "incident" status "open"
+    attr 101 "vibration" 20
+    attr 101 "temp" 90
+    record 102 type "incident" status "open"
+    attr 102 "vibration" 55
+    attr 102 "temp" 55
+  }
+  when classify "Failure mode"
+  expect {
+    flagged 100      // 5/5 bearing → confident
+    flagged 101      // 5/5 overheat → confident
+    not flagged 102  // split vote, below the 0.8 bound
+  }
+}

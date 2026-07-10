@@ -55,6 +55,20 @@ type Input struct {
 	Schema   map[string]int
 	Params   map[string]any
 	Entities map[int]map[string]any
+
+	// Training carries labeled examples for supervised primitives (kNN
+	// classify today; a future decision-tree / naive-Bayes trainer next).
+	// It's populated by the runtime from a second FactQuery when the plan
+	// step names a training source. Unsupervised primitives ignore it.
+	Training []TrainingRow
+}
+
+// TrainingRow is one labeled example: its feature attributes (bare-keyed,
+// like Input.Entities) plus the class read from the block's label_attr.
+type TrainingRow struct {
+	ID    int
+	Attrs map[string]any
+	Label string
 }
 
 // Result is one entity's prediction + its explanation.

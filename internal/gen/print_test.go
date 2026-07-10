@@ -303,8 +303,10 @@ cluster "Segments" {
 classify "Category" {
   for records where type == "ticket"
   features [attr "text_len", attr "priority_score"]
+  trained_on records where type == "ticket" and status == "triaged"
+  label_attr "queue"
   confidence >= 0.5
-  label "class"
+  label "routed to {class}"
 }`,
 		"similar_vector": `
 find similar "Near matches" {

@@ -232,7 +232,7 @@ func flaggedRows(plan *planner.QueryPlan, vars map[string]any) [][]any {
 			// As-of FactQueries feed the intersect step, and aggregate /
 			// reduced (calculate) FactQueries bind a scalar — none is the
 			// candidate stream, so skip them to keep Flagged accurate.
-			if s.AsOfDelta == nil && len(s.Query.Aggregates) == 0 && s.Reduce == "" {
+			if s.AsOfDelta == nil && len(s.Query.Aggregates) == 0 && s.Reduce == "" && !s.Auxiliary {
 				if arr, ok := vars[s.Into].([][]any); ok {
 					rows = arr
 				}
@@ -292,17 +292,27 @@ func extractFlaggedIDs(out any) (map[int]bool, bool) {
 		return nil, false
 	}
 	ids := map[int]bool{}
+	filtering := false
 	for _, r := range rs {
 		switch v := r.Value.(type) {
 		case bool:
+			filtering = true
 			if v {
 				ids[r.EntityID] = true
 			}
 		case float64:
+			filtering = true
 			if v != 0 {
 				ids[r.EntityID] = true
 			}
+		default:
+			// A string (classify class) or other informational value: the
+			// primitive labels rather than filters, so it doesn't narrow the
+			// candidate stream.
 		}
+	}
+	if !filtering {
+		return nil, false
 	}
 	return ids, true
 }

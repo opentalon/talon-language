@@ -138,7 +138,7 @@ func tunePrimitiveAgainst(plan *planner.QueryPlan, labeled *ast.TestBlock) *tuni
 		stepCopy := *step
 		stepCopy.Params = cloneParams(step.Params)
 		stepCopy.Params[spec.Param] = value
-		predIDs, _ := narrowByML(reg, &stepCopy, candidateIDs, entities)
+		predIDs, _ := narrowByML(reg, &stepCopy, candidateIDs, entities, nil)
 		pred := map[int]bool{}
 		for _, id := range predIDs {
 			pred[id] = true
@@ -154,7 +154,7 @@ func tunePrimitiveAgainst(plan *planner.QueryPlan, labeled *ast.TestBlock) *tuni
 	stepCopy := *step
 	stepCopy.Params = cloneParams(step.Params)
 	stepCopy.Params[spec.Param] = bestValue
-	predIDs, _ := narrowByML(reg, &stepCopy, candidateIDs, entities)
+	predIDs, _ := narrowByML(reg, &stepCopy, candidateIDs, entities, nil)
 	pred := map[int]bool{}
 	for _, id := range predIDs {
 		pred[id] = true

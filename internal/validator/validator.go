@@ -232,6 +232,19 @@ func (v *validator) checkCompleteness() {
 			if len(bb.Features) == 0 {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause", bb.Name), "")
 			}
+		case *ast.ClassifyBlock:
+			if len(bb.Features) == 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'features' clause", bb.Name), "")
+			}
+			if bb.TrainedOn == nil {
+				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'trained_on records where ...' clause naming the labeled examples", bb.Name), "")
+			}
+			if bb.LabelAttr == "" {
+				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'label_attr \"<name>\"' clause naming the class column on training rows", bb.Name), "")
+			}
+			if bb.Confidence != nil && (*bb.Confidence < 0 || *bb.Confidence > 1) {
+				v.errAt(bb.Pos, fmt.Sprintf("classify %q: confidence must be in [0, 1], got %v", bb.Name, *bb.Confidence), "")
+			}
 		case *ast.ForecastBlock:
 			if bb.Series.Attr == nil {
 				v.errAt(bb.Pos, fmt.Sprintf("forecast %q requires a 'series' clause", bb.Name), "")
@@ -793,6 +806,13 @@ func walkBlockConditions(b ast.Block, fn func(ast.Condition)) {
 			}
 		}
 	case *ast.PredictBlock:
+		walkSelector(bb.Selector, fn)
+		if bb.TrainedOn != nil {
+			for _, c := range bb.TrainedOn.Conditions {
+				walkCond(c, fn)
+			}
+		}
+	case *ast.ClassifyBlock:
 		walkSelector(bb.Selector, fn)
 		if bb.TrainedOn != nil {
 			for _, c := range bb.TrainedOn.Conditions {

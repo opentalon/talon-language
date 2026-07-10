@@ -193,6 +193,7 @@ const (
 	TokenEvent      // event_sequence keyword head
 	TokenHmm        // anomaly method
 	TokenProb       // "with probability N"
+	TokenLabelAttr  // "label_attr <name>" — classify's training label column
 
 	// Keywords — local imports (#19 follow-up)
 	TokenImport
@@ -355,6 +356,7 @@ var keywords = map[string]TokenType{
 	"event_sequence":    TokenEvent,
 	"hmm":               TokenHmm,
 	"probability":       TokenProb,
+	"label_attr":        TokenLabelAttr,
 }
 
 type Token struct {
