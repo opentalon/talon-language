@@ -350,12 +350,33 @@ func TestPlanPredictBlock(t *testing.T) {
 predict "Failure risk" {
   for records where type == "item"
   features [attr "km", attr "age"]
+  trained_on records where type == "item" and status == "retired"
+  label_attr "outcome"
+  confidence >= 0.7
   label "Risk"
 }`, "Failure risk")
 
-	queryStep(t, plan, 0)
-	if findMLStep(plan, FuncPredictDecisionTree) == nil {
-		t.Error("expected MLComputation with predict_decision_tree")
+	var facts []*FactQuery
+	for _, s := range plan.Steps {
+		if fq, ok := s.(*FactQuery); ok {
+			facts = append(facts, fq)
+		}
+	}
+	if len(facts) != 2 {
+		t.Fatalf("want 2 FactQuery steps (candidates + training), got %d", len(facts))
+	}
+	if !facts[1].Auxiliary || facts[1].Into != "training" {
+		t.Errorf("training query: Auxiliary=%v Into=%q, want true/\"training\"", facts[1].Auxiliary, facts[1].Into)
+	}
+	ml := findMLStep(plan, FuncPredictDecisionTree)
+	if ml == nil {
+		t.Fatal("expected MLComputation with predict_decision_tree")
+	}
+	if ml.Params["label_attr"] != "outcome" {
+		t.Errorf("label_attr param: got %v, want outcome", ml.Params["label_attr"])
+	}
+	if conf, _ := ml.Params["confidence"].(float64); conf != 0.7 {
+		t.Errorf("confidence param: got %v, want 0.7", ml.Params["confidence"])
 	}
 }
 

@@ -232,6 +232,15 @@ func (v *validator) checkCompleteness() {
 			if len(bb.Features) == 0 {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause", bb.Name), "")
 			}
+			if bb.TrainedOn == nil {
+				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'trained_on records where ...' clause naming the labeled examples", bb.Name), "")
+			}
+			if bb.LabelAttr == "" {
+				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'label_attr \"<name>\"' clause naming the target column on training rows", bb.Name), "")
+			}
+			if bb.Confidence != nil && (*bb.Confidence < 0 || *bb.Confidence > 1) {
+				v.errAt(bb.Pos, fmt.Sprintf("predict %q: confidence must be in [0, 1], got %v", bb.Name, *bb.Confidence), "")
+			}
 		case *ast.ClassifyBlock:
 			if len(bb.Features) == 0 {
 				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'features' clause", bb.Name), "")

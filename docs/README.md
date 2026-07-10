@@ -23,12 +23,15 @@
   detect conditions over a backend's write history (`TimeTraveler`).
 - **[Classification](./classify.md)** — `classify` blocks: kNN over
   `trained_on` labeled examples, with `{class}` labels and a confidence bound.
+- **[Prediction](./predict.md)** — `predict` blocks: CART decision tree over
+  `trained_on` labeled examples, with a readable split path in `talon explain`.
 
 ## Design notes
 
 - [ADR-0001: ML runtime strategy](./design/0001-ml-runtime-strategy.md)
 - [ADR-0003: Explainability tiers](./design/0003-explainability.md)
 - [ADR-0006: classify_knn primitive](./design/0006-classify-knn.md)
+- [ADR-0007: predict_decision_tree primitive](./design/0007-predict-decision-tree.md)
 - [JS runtime](./js-runtime.md)
 
 ## Where the code lives

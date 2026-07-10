@@ -655,10 +655,35 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
+	// The CART tree trains on a second, labeled query — the same supervised
+	// shape classify uses (ADR-0006 / ADR-0007). Auxiliary keeps these rows
+	// out of the candidate stream; the runtime binds them into Input.Training.
+	if b.TrainedOn != nil {
+		tqb := p.newQueryBuilder()
+		tqb.addSelector(ast.Selector{Target: "records", Conditions: b.TrainedOn.Conditions})
+		plan.Steps = append(plan.Steps, &FactQuery{
+			Query:     tqb.build(),
+			BindVars:  tqb.bindVars(),
+			Into:      "training",
+			Auxiliary: true,
+		})
+	}
+
+	params := map[string]any{
+		"features":         b.Features,
+		"feature_names":    exprListToAttrNames(b.Features),
+		"label_attr":       b.LabelAttr,
+		"training_var":     "training",
+		"max_depth":        defaultMaxDepth,
+		"min_samples_leaf": defaultMinSamplesLeaf,
+	}
+	if b.Confidence != nil {
+		params["confidence"] = *b.Confidence
+	}
 	plan.Steps = append(plan.Steps, &MLComputation{
 		Function: FuncPredictDecisionTree,
 		Input:    "candidates",
-		Params:   map[string]any{"features": b.Features, "trained_on": b.TrainedOn},
+		Params:   params,
 		Into:     "predictions",
 	})
 	if b.Label != nil {
@@ -671,6 +696,12 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 	}
 	return plan
 }
+
+// CART stop conditions when a predict block doesn't override them (issue #71).
+const (
+	defaultMaxDepth       = 5
+	defaultMinSamplesLeaf = 5
+)
 
 func (p *planner) planForecastBlock(b *ast.ForecastBlock) *QueryPlan {
 	plan := &QueryPlan{BlockName: b.Name}

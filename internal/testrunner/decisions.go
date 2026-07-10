@@ -117,6 +117,12 @@ func buildDecisionsForBlock(
 				why = w
 			}
 		}
+		// Surface a supervised primitive's decision path — the CART splits
+		// taken, or the kNN vote — so `talon explain` reads "operating_hours
+		// > 3000 AND repair_count > 3" rather than just a class.
+		if w := dn.Why[id]; len(w) > 0 {
+			why = append(why, w...)
+		}
 		// Surface auto-tuning provenance into the Decision so explain output
 		// can render "threshold = 2.7 (tuned via ABC on labeled fixture
 		// 'foo' — F1=0.93)" instead of just the threshold value.
@@ -198,7 +204,8 @@ type decisionNarrowings struct {
 	ACO    *acoNarrowing
 	ILP    *ilpNarrowing
 	Calc   map[string]float64 // calculate scalars, by variable name
-	Class  map[int]string     // classify_knn predicted class, by entity id
+	Class  map[int]string     // classify_knn / predict predicted class, by entity id
+	Why    map[int][]string   // supervised decision path (tree splits), by entity id
 }
 
 func executeForDecisions(
@@ -210,7 +217,7 @@ func executeForDecisions(
 	vars := map[string]any{}
 	var flagged []int
 	flaggedSet := false
-	dn := decisionNarrowings{Calc: map[string]float64{}, Class: map[int]string{}}
+	dn := decisionNarrowings{Calc: map[string]float64{}, Class: map[int]string{}, Why: map[int][]string{}}
 
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
@@ -258,6 +265,9 @@ func executeForDecisions(
 			for _, e := range explanations {
 				if cls, ok := e.Inputs["class"].(string); ok {
 					dn.Class[e.EntityID] = cls
+				}
+				if w := ruleWhyLines(e.Rules); len(w) > 0 {
+					dn.Why[e.EntityID] = w
 				}
 			}
 		case *planner.GoComputation:
@@ -372,6 +382,20 @@ func whyLines(b ast.Block, ent *entity) []string {
 	var out []string
 	for _, cond := range sel.Conditions {
 		out = append(out, renderConditionWhy(cond, ent)...)
+	}
+	return out
+}
+
+// ruleWhyLines formats a supervised primitive's decision path (the CART splits
+// taken, or an anomaly bound) into human-readable "why" bullets, e.g.
+// "operating_hours > 3000 (observed 3100)".
+func ruleWhyLines(rules []mlruntime.Rule) []string {
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		if r.Attr == "" {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s %s %v (observed %v)", r.Attr, r.Op, r.Value, r.Observed))
 	}
 	return out
 }

@@ -86,6 +86,8 @@ func TestValidateCompletePredict(t *testing.T) {
 predict "Failure risk" {
   for records where type == "item"
   features [attr "km", attr "age"]
+  trained_on records where type == "item" and status == "retired"
+  label_attr "outcome"
   label "Risk"
 }`)
 }

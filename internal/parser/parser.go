@@ -1151,6 +1151,9 @@ func (p *parser) parsePredictBlock() *ast.PredictBlock {
 			b.Features = p.parseFeaturesClause()
 		case lexer.TokenTrainedOn:
 			b.TrainedOn = p.parseTrainedOnClause()
+		case lexer.TokenLabelAttr:
+			p.advance() // label_attr
+			b.LabelAttr = p.expectString()
 		case lexer.TokenConfidence:
 			c := p.parseConfidenceClause()
 			b.Confidence = &c

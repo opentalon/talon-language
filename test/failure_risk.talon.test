@@ -1,0 +1,67 @@
+// Training set: ten retired machines with a clean signal — high operating
+// hours *and* several repairs → "failed"; low hours and few repairs → "ok".
+// The CART tree learns the split. Two in-service machines are then scored:
+// #100 sits deep in the failed region, #101 deep in the healthy region; both
+// land on pure leaves (confidence 1.0) and clear the 0.9 bound. #102 has
+// never-before-seen middling readings but still routes to a confident leaf.
+
+test "predict failure risk for in-service machines" {
+  given {
+    // ── retired, labeled: the "failed" signature ──
+    record 1 type "machine" status "retired"
+    attr 1 "operating_hours" 3000
+    attr 1 "repair_count" 5
+    attr 1 "outcome" "failed"
+    record 2 type "machine" status "retired"
+    attr 2 "operating_hours" 3200
+    attr 2 "repair_count" 6
+    attr 2 "outcome" "failed"
+    record 3 type "machine" status "retired"
+    attr 3 "operating_hours" 2800
+    attr 3 "repair_count" 4
+    attr 3 "outcome" "failed"
+    record 4 type "machine" status "retired"
+    attr 4 "operating_hours" 3100
+    attr 4 "repair_count" 7
+    attr 4 "outcome" "failed"
+    record 5 type "machine" status "retired"
+    attr 5 "operating_hours" 2900
+    attr 5 "repair_count" 5
+    attr 5 "outcome" "failed"
+
+    // ── retired, labeled: the "ok" signature ──
+    record 6 type "machine" status "retired"
+    attr 6 "operating_hours" 500
+    attr 6 "repair_count" 0
+    attr 6 "outcome" "ok"
+    record 7 type "machine" status "retired"
+    attr 7 "operating_hours" 400
+    attr 7 "repair_count" 1
+    attr 7 "outcome" "ok"
+    record 8 type "machine" status "retired"
+    attr 8 "operating_hours" 600
+    attr 8 "repair_count" 0
+    attr 8 "outcome" "ok"
+    record 9 type "machine" status "retired"
+    attr 9 "operating_hours" 300
+    attr 9 "repair_count" 1
+    attr 9 "outcome" "ok"
+    record 10 type "machine" status "retired"
+    attr 10 "operating_hours" 550
+    attr 10 "repair_count" 0
+    attr 10 "outcome" "ok"
+
+    // ── in-service, to be scored ──
+    record 100 type "machine" status "in_service"
+    attr 100 "operating_hours" 3100
+    attr 100 "repair_count" 6
+    record 101 type "machine" status "in_service"
+    attr 101 "operating_hours" 450
+    attr 101 "repair_count" 0
+  }
+  when predict "Failure risk"
+  expect {
+    flagged 100  // deep in the failed region → confident
+    flagged 101  // deep in the healthy region → confident (class "ok")
+  }
+}
