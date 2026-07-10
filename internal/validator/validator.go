@@ -3,6 +3,7 @@ package validator
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/diagnostic"
@@ -38,7 +39,96 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkAsOf()
 	v.checkCorrelation()
 	v.checkCalculate()
+	v.checkThresholds()
 	return v.diags
+}
+
+// checkThresholds validates cached threshold blocks and their references:
+// valid_until must parse as a date; an expired threshold warns (the stale
+// value is still used — the host's discovery job is expected to refresh it);
+// and every `threshold "name"` reference must resolve to a declared block.
+func (v *validator) checkThresholds() {
+	declared := map[string]bool{}
+	for _, b := range v.prog.Blocks {
+		t, ok := b.(*ast.ThresholdBlock)
+		if !ok {
+			continue
+		}
+		declared[t.Name] = true
+		if t.ValidUntil == "" {
+			continue
+		}
+		exp, err := parseThresholdDate(t.ValidUntil)
+		switch {
+		case err != nil:
+			v.errAt(t.Pos, fmt.Sprintf("threshold %q: valid_until %q is not a date (want YYYY-MM-DD or RFC 3339)", t.Name, t.ValidUntil), "")
+		case exp.Before(time.Now()):
+			v.diags.AddWarning(v.file, t.Pos.Line, t.Pos.Col,
+				fmt.Sprintf("threshold %q expired on %s — its stale value is still used; the host discovery job should refresh it", t.Name, t.ValidUntil), "")
+		}
+	}
+
+	for _, b := range v.prog.Blocks {
+		pos := blockPos(b)
+		walkBlockConditions(b, func(c ast.Condition) {
+			walkCondThresholdRefs(c, func(name string) {
+				if !declared[name] {
+					v.errAt(pos, fmt.Sprintf("reference to undeclared threshold %q", name), suggest(name, names(declared)))
+				}
+			})
+		})
+	}
+}
+
+// parseThresholdDate accepts a bare date (YYYY-MM-DD) or a full RFC 3339
+// timestamp — both forms appear in host-generated threshold blocks.
+func parseThresholdDate(s string) (time.Time, error) {
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
+func walkCondThresholdRefs(c ast.Condition, fn func(string)) {
+	switch cc := c.(type) {
+	case *ast.CompareCondition:
+		walkExprThresholdRefs(cc.Left, fn)
+		walkExprThresholdRefs(cc.Right, fn)
+	case *ast.MembershipCondition:
+		walkExprThresholdRefs(cc.Expr, fn)
+		for _, m := range cc.Members {
+			walkExprThresholdRefs(m, fn)
+		}
+	case *ast.StringMatchCondition:
+		walkExprThresholdRefs(cc.Subject, fn)
+	case *ast.TemporalCondition:
+		walkExprThresholdRefs(cc.Subject, fn)
+	case *ast.IsCondition:
+		walkExprThresholdRefs(cc.Subject, fn)
+	case *ast.AnomalyCondition:
+		walkExprThresholdRefs(cc.Subject, fn)
+	case *ast.CorrelationCondition:
+		walkExprThresholdRefs(cc.Left, fn)
+		walkExprThresholdRefs(cc.Right, fn)
+	case *ast.ChangedToCondition:
+		walkExprThresholdRefs(cc.Value, fn)
+	}
+}
+
+func walkExprThresholdRefs(e ast.Expr, fn func(string)) {
+	switch ex := e.(type) {
+	case *ast.ThresholdRefExpr:
+		fn(ex.Name)
+	case *ast.BinaryExpr:
+		walkExprThresholdRefs(ex.Left, fn)
+		walkExprThresholdRefs(ex.Right, fn)
+	case *ast.UnaryExpr:
+		walkExprThresholdRefs(ex.Operand, fn)
+	case *ast.ListExpr:
+		for _, el := range ex.Elements {
+			walkExprThresholdRefs(el, fn)
+		}
+	}
 }
 
 // checkScore range-checks `confidence N` provenance annotations to [0, 1].
@@ -901,6 +991,8 @@ func blockPos(b ast.Block) ast.Pos {
 	case *ast.EnrichBlock:
 		return bb.Pos
 	case *ast.CollectBlock:
+		return bb.Pos
+	case *ast.ThresholdBlock:
 		return bb.Pos
 	}
 	return ast.Pos{}

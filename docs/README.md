@@ -25,6 +25,8 @@
   `trained_on` labeled examples, with `{class}` labels and a confidence bound.
 - **[Prediction](./predict.md)** — `predict` blocks: CART decision tree over
   `trained_on` labeled examples, with a readable split path in `talon explain`.
+- **[Thresholds](./thresholds.md)** — inline `learned_threshold` vs cached
+  `threshold "name" { value … }` blocks, with expiry and provenance.
 
 ## Design notes
 

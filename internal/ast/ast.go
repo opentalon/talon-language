@@ -411,6 +411,7 @@ func (*ConstraintBlock) blockNode()    {}
 func (*StateMachineBlock) blockNode() {}
 func (*EnrichBlock) blockNode()        {}
 func (*CollectBlock) blockNode()       {}
+func (*ThresholdBlock) blockNode()     {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -429,6 +430,7 @@ func (b *ConstraintBlock) BlockName() string    { return b.Name }
 func (b *StateMachineBlock) BlockName() string { return b.Name }
 func (b *EnrichBlock) BlockName() string        { return b.Name }
 func (b *CollectBlock) BlockName() string       { return b.Name }
+func (b *ThresholdBlock) BlockName() string     { return b.Name }
 
 // CollectBlock is scheduled, host-driven MCP fact ingestion: on the
 // declared Schedule, fetch a batch from an MCP tool and assert the
@@ -442,6 +444,20 @@ type CollectBlock struct {
 	Call     *MCPCall
 	StoreAs  string // fact type for ingested records
 	Tag      string // optional tag attribute value
+}
+
+// ThresholdBlock is a host-precomputed, cached threshold — the layer-2
+// counterpart to the compute-on-demand `learned_threshold` expression. The
+// host's discovery job writes it into a generated .talon file with provenance
+// (ComputedFrom) and an expiry (ValidUntil); the runtime resolves a
+// `threshold "name"` reference to Value at plan time (a single lookup, no
+// per-eval series walk). See docs/thresholds.md and issue #74.
+type ThresholdBlock struct {
+	Pos          Pos
+	Name         string
+	Value        float64
+	ComputedFrom string // optional provenance string
+	ValidUntil   string // optional RFC 3339 / YYYY-MM-DD expiry; validator warns when past
 }
 
 // EnrichBlock refreshes stale facts from an MCP tool. It selects records
@@ -519,6 +535,13 @@ type CategoryTreeExpr struct {
 	Root string
 }
 
+// ThresholdRefExpr is `threshold "name"` — a reference to a cached
+// ThresholdBlock's value. The planner resolves it to the block's Value
+// (a LiteralExpr) at plan time.
+type ThresholdRefExpr struct {
+	Name string
+}
+
 // TodayExpr is the `today` keyword.
 type TodayExpr struct{}
 
@@ -547,6 +570,7 @@ func (*ContextExpr) exprNode()          {}
 func (*StepResultExpr) exprNode()       {}
 func (*CategoryTreeExpr) exprNode()     {}
 func (*TodayExpr) exprNode()            {}
+func (*ThresholdRefExpr) exprNode()     {}
 func (*MapExpr) exprNode()              {}
 func (*LearnedThresholdExpr) exprNode() {}
 

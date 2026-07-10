@@ -468,6 +468,18 @@ detect "Flags" {
   for records where attr "active" == true and attr "n" in [1, 2, 3]
   flag matching items
 }`,
+		"threshold_block": `
+threshold "service_interval" {
+  value 18200
+  computed_from "47 service tickets, avg 20222 km, margin 0.9"
+  valid_until "2025-05-13"
+}`,
+		"threshold_ref": `
+detect "Service overdue" {
+  for records where type == "item" and attr "km" > attr "last_service_km" + threshold "service_interval"
+  flag matching items
+  priority HIGH
+}`,
 		"import_header": `import "./shared.talon"
 import "./more.talon"
 

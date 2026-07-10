@@ -105,6 +105,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseCollect()
 	case lexer.TokenStateMachine:
 		return p.parseStateMachineBlock()
+	case lexer.TokenThreshold:
+		return p.parseThresholdBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
 	default:
@@ -1128,6 +1130,52 @@ func (p *parser) parseStateMachineBlock() *ast.StateMachineBlock {
 		}
 	}
 
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// ─── threshold (cached) ───────────────────────────────────────────────────────
+
+// parseThresholdBlock reads a host-precomputed cached threshold:
+//
+//	threshold "service_interval" {
+//	  value 18200
+//	  computed_from "47 service tickets, avg 20222 km, margin 0.9"
+//	  valid_until "2025-05-13"
+//	}
+//
+// `value` is required; `computed_from` and `valid_until` are optional
+// provenance. `value` is matched as an identifier (not reserved) so it can't
+// collide with attribute names elsewhere.
+func (p *parser) parseThresholdBlock() *ast.ThresholdBlock {
+	tok := p.advance() // threshold
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.ThresholdBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	hasValue := false
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch {
+		case p.at(lexer.TokenIdent) && p.peek().Value == "value":
+			p.advance()
+			b.Value, _ = strconv.ParseFloat(p.expectNumberStr(), 64)
+			hasValue = true
+		case p.at(lexer.TokenComputedFrom):
+			p.advance()
+			b.ComputedFrom = p.expectString()
+		case p.at(lexer.TokenValidUntil):
+			p.advance()
+			b.ValidUntil = p.expectString()
+		default:
+			p.errorf("unexpected token %q inside threshold block (expected value / computed_from / valid_until)", p.peek().Value)
+			p.advance()
+		}
+	}
+	if !hasValue {
+		p.errorf("threshold %q requires a 'value' clause", name)
+	}
 	p.expect(lexer.TokenRBrace)
 	return b
 }
@@ -2308,6 +2356,13 @@ func (p *parser) parsePrimary() ast.Expr {
 	case lexer.TokenToday:
 		p.advance()
 		return &ast.TodayExpr{}
+
+	case lexer.TokenThreshold:
+		// `threshold "name"` — a reference to a cached ThresholdBlock's value.
+		// Distinct from the top-level `threshold "name" { ... }` block, which
+		// is dispatched by parseBlock; here we're inside an expression.
+		p.advance()
+		return &ast.ThresholdRefExpr{Name: p.expectString()}
 
 	case lexer.TokenLearnedThreshold:
 		p.advance()               // learned_threshold

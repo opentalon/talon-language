@@ -139,6 +139,8 @@ func (p *printer) block(b ast.Block) {
 		p.enrich(b)
 	case *ast.CollectBlock:
 		p.collect(b)
+	case *ast.ThresholdBlock:
+		p.threshold(b)
 	case *ast.TestBlock:
 		p.test(b)
 	default:
@@ -628,6 +630,18 @@ func (p *printer) collect(b *ast.CollectBlock) {
 	p.close()
 }
 
+func (p *printer) threshold(b *ast.ThresholdBlock) {
+	p.open("threshold " + quote(b.Name))
+	p.line("value " + numStr(b.Value))
+	if b.ComputedFrom != "" {
+		p.line("computed_from " + quote(b.ComputedFrom))
+	}
+	if b.ValidUntil != "" {
+		p.line("valid_until " + quote(b.ValidUntil))
+	}
+	p.close()
+}
+
 // scheduleStr renders the stored schedule metadata back to its source form.
 // Stored values: "weekly"|"daily"|"hourly", "every N unit", "cron:<expr>", or
 // an opaque string.
@@ -1066,6 +1080,8 @@ func exprStr(e ast.Expr) string {
 		return "category_tree(" + quote(e.Root) + ")"
 	case *ast.TodayExpr:
 		return "today"
+	case *ast.ThresholdRefExpr:
+		return "threshold " + quote(e.Name)
 	case *ast.MapExpr:
 		return exprStr(e.Source) + ".map(" + e.Field + ")"
 	case *ast.LearnedThresholdExpr:
