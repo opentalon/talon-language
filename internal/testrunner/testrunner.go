@@ -166,12 +166,30 @@ func runOneTuned(
 	vars := map[string]any{}
 	var flagged []int
 	var flaggedSet bool
+	calcVars := map[string]float64{} // calculate scalars, by variable name
 	trace := make([]TraceStep, 0, len(plan.Steps))
 	mlByEntity := map[int]mlruntime.Explanation{}
 	var lastThreshold *mlruntime.Threshold
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.FactQuery:
+			// Aggregate / reduced FactQuery = a `calculate` scalar, bound to
+			// its variable name for `having` / label use. Never the flagged
+			// candidate stream.
+			if s.Reduce == "wma" {
+				calcVars[s.Into] = mlruntime.LinearWMA(evalSeriesInMemory(s.Query, entities))
+				vars[s.Into] = calcVars[s.Into]
+				trace = append(trace, TraceStep{Type: "FactQuery", Into: s.Into, Query: s.Query.String()})
+				break
+			}
+			if len(s.Query.Aggregates) > 0 {
+				if v, ok := evalAggregateInMemory(s.Query, entities); ok {
+					calcVars[s.Into] = v
+					vars[s.Into] = v
+				}
+				trace = append(trace, TraceStep{Type: "FactQuery", Into: s.Into, Query: s.Query.String()})
+				break
+			}
 			var ids []int
 			if s.AsOfDelta != nil {
 				asOf := nowFunc().Add(-constraints.DurationDelta(*s.AsOfDelta))
@@ -351,7 +369,7 @@ func runOneTuned(
 			// resolve fall back to keeping the row (better to over-
 			// include than to silently drop everything when one expr
 			// shape isn't supported yet).
-			kept := applyFilterConditions(s.Conditions, flagged, entities)
+			kept := applyFilterConditions(s.Conditions, flagged, entities, calcVars)
 			flagged = kept
 			vars[s.Into] = kept
 			trace = append(trace, TraceStep{
@@ -456,6 +474,57 @@ func evalQueryInMemory(q factstore.Query, entities map[int]*entity) []int {
 	return out
 }
 
+// evalAggregateInMemory runs a `calculate` aggregate query (avg/sum/count)
+// against the fixture entities and returns the single scalar result. ok is
+// false when the query errors or produces no row.
+func evalAggregateInMemory(q factstore.Query, entities map[int]*entity) (float64, bool) {
+	store := storeFromEntities(entities)
+	rows, err := store.Query(context.Background(), q)
+	if err != nil || len(rows) == 0 || len(rows[0]) == 0 {
+		return 0, false
+	}
+	if f, ok := rows[0][0].(float64); ok {
+		return f, true
+	}
+	return 0, false
+}
+
+// evalSeriesInMemory runs a wma calculate's value query and returns the value
+// column (row[1]) as a float64 series, ordered by entity id (the store
+// returns id-sorted rows — oldest→newest by convention).
+func evalSeriesInMemory(q factstore.Query, entities map[int]*entity) []float64 {
+	store := storeFromEntities(entities)
+	rows, err := store.Query(context.Background(), q)
+	if err != nil {
+		return nil
+	}
+	out := make([]float64, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		if f, ok := seriesFloat(row[1]); ok {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// seriesFloat coerces a stored numeric cell to float64.
+func seriesFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	}
+	return 0, false
+}
+
 // storeFromEntities materialises the testrunner's entity map as a
 // MemoryStore. The two structures are isomorphic; this is essentially a
 // type cast that runs Assert under the hood so the resulting store is
@@ -553,7 +622,7 @@ func toEntityID(v any) (int, bool) {
 // in tests for deterministic date logic.
 var nowFunc = func() time.Time { return time.Now().UTC() }
 
-func applyFilterConditions(conds []ast.Condition, flagged []int, entities map[int]*entity) []int {
+func applyFilterConditions(conds []ast.Condition, flagged []int, entities map[int]*entity, calcVars map[string]float64) []int {
 	if len(conds) == 0 {
 		return flagged
 	}
@@ -565,6 +634,11 @@ func applyFilterConditions(conds []ast.Condition, flagged []int, entities map[in
 			continue
 		}
 		row := entityAttrsFlattened(e)
+		// Expose calculate scalars (global for the block) as bare identifiers
+		// so `having daily_rate > 0` resolves alongside the row's own attrs.
+		for name, v := range calcVars {
+			row[name] = v
+		}
 		keep := true
 		for _, c := range conds {
 			ok, err := constraints.EvalConditionAt(c, row, now)

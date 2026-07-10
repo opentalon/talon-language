@@ -37,6 +37,7 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkWorkflows()
 	v.checkAsOf()
 	v.checkCorrelation()
+	v.checkCalculate()
 	return v.diags
 }
 
@@ -405,6 +406,38 @@ func detectHasTunablePrimitive(bb *ast.DetectBlock) bool {
 		}
 	}
 	return false
+}
+
+// checkCalculate validates `calculate` clauses: the average / sum / wma
+// methods aggregate a value column and so require an `of attr "X"`; count
+// does not.
+func (v *validator) checkCalculate() {
+	for _, b := range v.prog.Blocks {
+		var calcs []ast.CalculateClause
+		switch bb := b.(type) {
+		case *ast.DetectBlock:
+			calcs = bb.Calculate
+		case *ast.RecommendBlock:
+			calcs = bb.Calculate
+		}
+		for _, c := range calcs {
+			switch c.Method {
+			case "average", "sum", "wma":
+				if c.Value == nil {
+					v.errAt(blockPos(b),
+						fmt.Sprintf("calculate %q: %s requires a value column — add `of attr \"...\"`", c.Name, methodLabel(c.Method)),
+						"e.g. calculate rate from records of attr \"usage\" average")
+				}
+			}
+		}
+	}
+}
+
+func methodLabel(m string) string {
+	if m == "wma" {
+		return "weighted_moving_average"
+	}
+	return m
 }
 
 // checkCorrelation validates `correlates_with` conditions: the Pearson

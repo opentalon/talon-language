@@ -142,7 +142,7 @@ func buildDecisionsForBlock(
 			d.Score = score
 			d.Source = source
 		}
-		ctx := renderContextFor(ent, flagged, entities, now)
+		ctx := renderContextFor(ent, flagged, entities, now, dn.Calc)
 		if tmpl := blockTemplate(b); tmpl != nil {
 			d.Action = template.Render(*tmpl, ctx)
 		}
@@ -197,6 +197,7 @@ type decisionNarrowings struct {
 	GA     *gaNarrowing
 	ACO    *acoNarrowing
 	ILP    *ilpNarrowing
+	Calc   map[string]float64 // calculate scalars, by variable name
 }
 
 func executeForDecisions(
@@ -208,11 +209,23 @@ func executeForDecisions(
 	vars := map[string]any{}
 	var flagged []int
 	flaggedSet := false
-	var dn decisionNarrowings
+	dn := decisionNarrowings{Calc: map[string]float64{}}
 
 	for _, step := range plan.Steps {
 		switch s := step.(type) {
 		case *planner.FactQuery:
+			if s.Reduce == "wma" {
+				dn.Calc[s.Into] = mlruntime.LinearWMA(evalSeriesInMemory(s.Query, entities))
+				vars[s.Into] = dn.Calc[s.Into]
+				break
+			}
+			if len(s.Query.Aggregates) > 0 {
+				if v, ok := evalAggregateInMemory(s.Query, entities); ok {
+					dn.Calc[s.Into] = v
+					vars[s.Into] = v
+				}
+				break
+			}
 			ids := evalQueryInMemory(s.Query, entities)
 			vars[s.Into] = ids
 			if !flaggedSet {
@@ -268,6 +281,8 @@ func executeForDecisions(
 				}
 				dn.ILP = &n
 			}
+		case *planner.Filter:
+			flagged = applyFilterConditions(s.Conditions, flagged, entities, dn.Calc)
 		}
 	}
 
@@ -428,8 +443,8 @@ func renderCompareWhy(c *ast.CompareCondition, ent *entity) string {
 // AggregateRows carries the same flattened shape for every flagged
 // entity, so `{count}` / `{total(attr.x)}` / `{avg(attr.x)}` etc. work
 // without an extra FactStore round-trip.
-func renderContextFor(ent *entity, flagged []int, all map[int]*entity, now time.Time) template.RenderContext {
-	ctx := template.RenderContext{Now: now}
+func renderContextFor(ent *entity, flagged []int, all map[int]*entity, now time.Time, calc map[string]float64) template.RenderContext {
+	ctx := template.RenderContext{Now: now, Calc: calc}
 	if ent != nil {
 		ctx.Row = entityToRow(ent)
 	}
@@ -564,7 +579,7 @@ func FireBlockLoggers(b ast.Block, flagged []int, entities map[int]*entity, now 
 	emitted := 0
 	for _, id := range flagged {
 		ent := entities[id]
-		ctx := renderContextFor(ent, flagged, entities, now)
+		ctx := renderContextFor(ent, flagged, entities, now, nil)
 		for _, ls := range loggers {
 			emitLogger(ls, b.BlockName(), id, ctx)
 			emitted++

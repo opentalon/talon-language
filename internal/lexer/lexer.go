@@ -160,6 +160,7 @@ const (
 	TokenFollowedBy
 	TokenWas
 	TokenAgo
+	TokenHaving
 
 	// Keywords — priority values
 	TokenLow
@@ -324,6 +325,7 @@ var keywords = map[string]TokenType{
 	"followed_by":       TokenFollowedBy,
 	"was":               TokenWas,
 	"ago":               TokenAgo,
+	"having":            TokenHaving,
 	"LOW":               TokenLow,
 	"MEDIUM":            TokenMedium,
 	"HIGH":              TokenHigh,
