@@ -188,12 +188,14 @@ const (
 	TokenInitial
 	TokenTransition
 	TokenInvariant
-	TokenArrow      // "->" in transition declarations
-	TokenStateAttr  // "state_attr <name>"
-	TokenEvent      // event_sequence keyword head
-	TokenHmm        // anomaly method
-	TokenProb       // "with probability N"
-	TokenLabelAttr  // "label_attr <name>" — classify's training label column
+	TokenArrow     // "->" in transition declarations
+	TokenStateAttr // "state_attr <name>"
+	TokenEvent     // event_sequence keyword head
+	TokenHmm       // anomaly method
+	TokenProb      // "with probability N"
+	TokenLabelAttr // "label_attr <name>" — classify's training label column
+	TokenComputedFrom
+	TokenValidUntil
 
 	// Keywords — local imports (#19 follow-up)
 	TokenImport
@@ -347,16 +349,18 @@ var keywords = map[string]TokenType{
 	"source":            TokenSource,
 	"import":            TokenImport,
 
-	"state_machine":     TokenStateMachine,
-	"states":            TokenStates,
-	"initial":           TokenInitial,
-	"transition":        TokenTransition,
-	"invariant":         TokenInvariant,
-	"state_attr":        TokenStateAttr,
-	"event_sequence":    TokenEvent,
-	"hmm":               TokenHmm,
-	"probability":       TokenProb,
-	"label_attr":        TokenLabelAttr,
+	"state_machine":  TokenStateMachine,
+	"states":         TokenStates,
+	"initial":        TokenInitial,
+	"transition":     TokenTransition,
+	"invariant":      TokenInvariant,
+	"state_attr":     TokenStateAttr,
+	"event_sequence": TokenEvent,
+	"hmm":            TokenHmm,
+	"probability":    TokenProb,
+	"label_attr":     TokenLabelAttr,
+	"computed_from":  TokenComputedFrom,
+	"valid_until":    TokenValidUntil,
 }
 
 type Token struct {

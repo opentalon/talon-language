@@ -261,11 +261,199 @@ func QueryOf(q *FactQuery) factstore.Query {
 // Plan compiles a validated AST into per-block QueryPlans.
 // define blocks are inlined at compile time and produce no plan of their own.
 func Plan(prog *ast.Program) (map[string]*QueryPlan, diagnostic.List) {
+	// Inline cached `threshold "name"` references to their literal value before
+	// planning, so the query builder and Go condition evaluator only ever see
+	// plain numbers — the resolution is a single lookup, not a per-eval series
+	// walk (issue #74). Undeclared refs are left intact for the validator.
+	resolveThresholdRefs(prog, collectThresholds(prog))
 	p := &planner{
 		prog:    prog,
 		defines: collectDefines(prog),
 	}
 	return p.planAll()
+}
+
+// collectThresholds indexes cached threshold blocks by name → value.
+func collectThresholds(prog *ast.Program) map[string]float64 {
+	m := map[string]float64{}
+	for _, b := range prog.Blocks {
+		if t, ok := b.(*ast.ThresholdBlock); ok {
+			m[t.Name] = t.Value
+		}
+	}
+	return m
+}
+
+// resolveThresholdRefs rewrites every `threshold "name"` expression to a
+// LiteralExpr of the cached value, in place across all blocks. Refs to names
+// with no declared block are left as ThresholdRefExpr for the validator to
+// report.
+func resolveThresholdRefs(prog *ast.Program, th map[string]float64) {
+	if len(th) == 0 {
+		return
+	}
+	for _, b := range prog.Blocks {
+		rewriteBlockThresholds(b, th)
+	}
+}
+
+func rewriteBlockThresholds(b ast.Block, th map[string]float64) {
+	sel := func(s *ast.Selector) {
+		for _, c := range s.Conditions {
+			rewriteThresholdCond(c, th)
+		}
+	}
+	conds := func(cs []ast.Condition) {
+		for _, c := range cs {
+			rewriteThresholdCond(c, th)
+		}
+	}
+	switch bb := b.(type) {
+	case *ast.DetectBlock:
+		sel(&bb.Selector)
+		conds(bb.Having)
+		for i := range bb.Calculate {
+			conds(bb.Calculate[i].Where)
+		}
+	case *ast.RuleBlock:
+		if bb.Selector != nil {
+			sel(bb.Selector)
+		}
+		if bb.When != nil {
+			rewriteThresholdCond(bb.When, th)
+		}
+	case *ast.RecommendBlock:
+		if bb.When != nil {
+			rewriteThresholdCond(bb.When, th)
+		}
+		for i := range bb.Calculate {
+			conds(bb.Calculate[i].Where)
+		}
+	case *ast.ConstraintBlock:
+		sel(&bb.Selector)
+		if bb.Require != nil {
+			rewriteThresholdCond(bb.Require, th)
+		}
+	case *ast.PredictBlock:
+		sel(&bb.Selector)
+		if bb.TrainedOn != nil {
+			conds(bb.TrainedOn.Conditions)
+		}
+	case *ast.ClassifyBlock:
+		sel(&bb.Selector)
+		if bb.TrainedOn != nil {
+			conds(bb.TrainedOn.Conditions)
+		}
+	case *ast.ForecastBlock:
+		sel(&bb.Selector)
+		if bb.When != nil {
+			rewriteThresholdCond(bb.When, th)
+		}
+		bb.Series.Attr = rewriteThresholdExpr(bb.Series.Attr, th)
+		if bb.Predict != nil {
+			rewriteThresholdCond(bb.Predict.Condition, th)
+		}
+	case *ast.ClusterBlock:
+		sel(&bb.Selector)
+		for i := range bb.ByAttrs {
+			bb.ByAttrs[i] = rewriteThresholdExpr(bb.ByAttrs[i], th)
+		}
+	case *ast.SimilarBlock:
+		sel(&bb.Selector)
+		bb.To = rewriteThresholdExpr(bb.To, th)
+	case *ast.RelatedBlock:
+		sel(&bb.Selector)
+		bb.To = rewriteThresholdExpr(bb.To, th)
+		for i := range bb.Seeds {
+			bb.Seeds[i] = rewriteThresholdExpr(bb.Seeds[i], th)
+		}
+	case *ast.CombineBlock:
+		sel(&bb.Selector)
+		for i := range bb.Optimize {
+			bb.Optimize[i].Attr = rewriteThresholdExpr(bb.Optimize[i].Attr, th)
+		}
+		for i := range bb.Constraints {
+			bb.Constraints[i].Left = rewriteThresholdExpr(bb.Constraints[i].Left, th)
+			bb.Constraints[i].Right = rewriteThresholdExpr(bb.Constraints[i].Right, th)
+		}
+	case *ast.StateMachineBlock:
+		sel(&bb.Selector)
+		for i := range bb.Transitions {
+			if bb.Transitions[i].When != nil {
+				rewriteThresholdCond(bb.Transitions[i].When, th)
+			}
+		}
+		for i := range bb.Invariants {
+			rewriteThresholdCond(bb.Invariants[i].Required, th)
+		}
+	case *ast.EnrichBlock:
+		sel(&bb.Selector)
+	case *ast.DefineBlock:
+		conds(bb.Conditions)
+		if bb.ForEach != nil {
+			conds(bb.ForEach.Body)
+			bb.ForEach.Over = rewriteThresholdExpr(bb.ForEach.Over, th)
+		}
+	}
+}
+
+func rewriteThresholdCond(c ast.Condition, th map[string]float64) {
+	switch cc := c.(type) {
+	case *ast.LogicalCondition:
+		rewriteThresholdCond(cc.Left, th)
+		rewriteThresholdCond(cc.Right, th)
+	case *ast.NotCondition:
+		rewriteThresholdCond(cc.Inner, th)
+	case *ast.AsOfCondition:
+		rewriteThresholdCond(cc.Inner, th)
+	case *ast.CompareCondition:
+		cc.Left = rewriteThresholdExpr(cc.Left, th)
+		cc.Right = rewriteThresholdExpr(cc.Right, th)
+	case *ast.MembershipCondition:
+		cc.Expr = rewriteThresholdExpr(cc.Expr, th)
+		for i := range cc.Members {
+			cc.Members[i] = rewriteThresholdExpr(cc.Members[i], th)
+		}
+	case *ast.StringMatchCondition:
+		cc.Subject = rewriteThresholdExpr(cc.Subject, th)
+	case *ast.TemporalCondition:
+		cc.Subject = rewriteThresholdExpr(cc.Subject, th)
+	case *ast.IsCondition:
+		cc.Subject = rewriteThresholdExpr(cc.Subject, th)
+	case *ast.AnomalyCondition:
+		cc.Subject = rewriteThresholdExpr(cc.Subject, th)
+	case *ast.CorrelationCondition:
+		cc.Left = rewriteThresholdExpr(cc.Left, th)
+		cc.Right = rewriteThresholdExpr(cc.Right, th)
+	case *ast.ChangedToCondition:
+		cc.Value = rewriteThresholdExpr(cc.Value, th)
+	}
+}
+
+func rewriteThresholdExpr(e ast.Expr, th map[string]float64) ast.Expr {
+	switch ex := e.(type) {
+	case nil:
+		return nil
+	case *ast.ThresholdRefExpr:
+		if v, ok := th[ex.Name]; ok {
+			return &ast.LiteralExpr{Value: v}
+		}
+		return ex
+	case *ast.BinaryExpr:
+		ex.Left = rewriteThresholdExpr(ex.Left, th)
+		ex.Right = rewriteThresholdExpr(ex.Right, th)
+		return ex
+	case *ast.UnaryExpr:
+		ex.Operand = rewriteThresholdExpr(ex.Operand, th)
+		return ex
+	case *ast.ListExpr:
+		for i := range ex.Elements {
+			ex.Elements[i] = rewriteThresholdExpr(ex.Elements[i], th)
+		}
+		return ex
+	default:
+		return e
+	}
 }
 
 type planner struct {
@@ -316,6 +504,9 @@ func (p *planner) planAll() (map[string]*QueryPlan, diagnostic.List) {
 			plans[bb.Name] = p.planStateMachine(bb)
 		case *ast.EnrichBlock:
 			plans[bb.Name] = p.planEnrich(bb)
+		case *ast.ThresholdBlock:
+			// Cached data, not an evaluable block — its value is inlined into
+			// referencing expressions during resolveThresholdRefs; no plan.
 		}
 	}
 	return plans, p.diags

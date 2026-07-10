@@ -23,6 +23,7 @@ Block     = DetectBlock
           | ConstraintBlock
           | EnrichBlock
           | CollectBlock
+          | ThresholdBlock
 
 (* ─── collect ────────────────────────────────────────────────────────────────── *)
 
@@ -55,6 +56,23 @@ EnrichBlock  = "enrich" STRING "{"
                  UpdateClause { UpdateClause }
                "}"
 UpdateClause = "update" "attr" STRING "from" "result" "." IDENT { "." IDENT }
+
+(* ─── threshold (cached) ─────────────────────────────────────────────────────── *)
+
+(* A cached, host-precomputed threshold — the layer-2 counterpart to the
+   compute-on-demand `learned_threshold` expression. The host's discovery job
+   writes the value with provenance; the runtime inlines a `threshold "name"`
+   reference to the value at plan time. `value` is matched as an identifier
+   (not reserved) so it stays usable as a field name elsewhere. An expired
+   `valid_until` warns but the stale value is still used. See docs/thresholds.md. *)
+ThresholdBlock = "threshold" STRING "{"
+                   "value" NUMBER
+                   [ "computed_from" STRING ]
+                   [ "valid_until" STRING ]
+                 "}"
+
+(* A `threshold "name"` reference resolves to the named block's cached value,
+   usable anywhere a numeric expression is (see PrimaryExpr). *)
 
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)
 
@@ -455,6 +473,7 @@ PrimaryExpr = AttrRef
             | ContextRef
             | StepRef
             | CategoryTreeExpr
+            | "threshold" STRING       (* cached-threshold reference *)
             | "today"
             | Literal
             | IDENT

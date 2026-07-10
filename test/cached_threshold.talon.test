@@ -1,0 +1,24 @@
+// The cached interval is 18200. An item is overdue when
+//   km > last_service_km + 18200.
+// Truck A (45000 km, last serviced at 25000) clears 43200 → flagged.
+// Van B (40000 km, last serviced at 25000) is below 43200 → not flagged.
+// This exercises that the *cached value* actually feeds the arithmetic.
+
+test "cached service interval gates overdue detection" {
+  given {
+    record 1 type "item"
+    attr 1 "name" "Truck A"
+    attr 1 "km" 45000
+    attr 1 "last_service_km" 25000
+
+    record 2 type "item"
+    attr 2 "name" "Van B"
+    attr 2 "km" 40000
+    attr 2 "last_service_km" 25000
+  }
+  when detect "Service overdue"
+  expect {
+    flagged 1
+    not flagged 2
+  }
+}

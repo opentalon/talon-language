@@ -1,0 +1,34 @@
+// Cached threshold: a host-precomputed value the runtime looks up instead of
+// recomputing on every evaluation. This is the layer-2 counterpart to the
+// compute-on-demand `learned_threshold p95 of attr "x" over last 90 days`
+// form — same idea, but the expensive discovery runs host-side on a schedule
+// and writes the answer here (issue #74, ADR docs/thresholds.md).
+//
+// A `threshold` block carries the value plus provenance:
+//   - value        — the number `threshold "name"` resolves to.
+//   - computed_from — free-text provenance for audit ("47 tickets, margin 0.9").
+//   - valid_until   — expiry; the validator warns once past, but the stale
+//                     value is still used (the host is expected to refresh it).
+//
+// A `threshold "name"` reference resolves to the cached value at plan time —
+// one lookup, no per-eval series walk — and composes in arithmetic like any
+// number: here, an item is overdue once its odometer passes the last service
+// by more than the cached interval.
+//
+//   ./talon build   examples/cached_threshold.talon
+//   ./talon test    examples/cached_threshold.talon test/cached_threshold.talon.test
+//   ./talon explain examples/cached_threshold.talon test/cached_threshold.talon.test
+
+threshold "service_interval" {
+  value 18200
+  computed_from "47 service tickets, avg 20222 km, margin 0.9"
+  valid_until "2099-05-13"
+}
+
+detect "Service overdue" {
+  for records where type == "item"
+    and attr "km" > attr "last_service_km" + threshold "service_interval"
+  flag matching items
+  label "{item.name}: {attr.km} km — over the {attr.last_service_km} km + cached interval"
+  priority HIGH
+}
