@@ -955,11 +955,11 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 		return flagged, nil
 	}
 
-	// A supervised primitive (classify_knn) emits a class string, not a bool.
-	// It filters only when the block set a `confidence >= N` bound: keep the
-	// predictions that voted at least that strongly, drop the rest.
+	// A supervised primitive (classify_knn, predict_decision_tree) emits a
+	// class string, not a bool. It filters only when the block set a
+	// `confidence >= N` bound: keep the predictions that scored at least that
+	// strongly (kNN vote fraction / CART leaf purity), drop the rest.
 	confBound, hasConf := s.Params["confidence"].(float64)
-	isClassify := s.Function == planner.FuncClassifyKNN
 
 	keep := map[int]bool{}
 	filtering := false
@@ -972,13 +972,10 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 			if v {
 				keep[r.EntityID] = true
 			}
-		default:
-			// Non-bool result (class string, cluster ID, similarity score).
-			// Classify with a confidence bound drops low-confidence votes;
-			// otherwise the primitive is producing information, not
-			// filtering, so the row is kept for downstream narrowing.
-			_ = v
-			if isClassify && hasConf {
+		case string:
+			// A predicted class label. With a confidence bound it filters;
+			// otherwise it's informational and the row is kept.
+			if hasConf {
 				filtering = true
 				if r.Explanation.Confidence >= confBound {
 					keep[r.EntityID] = true
@@ -986,6 +983,12 @@ func narrowByML(reg *mlruntime.Registry, s *planner.MLComputation, flagged []int
 			} else {
 				keep[r.EntityID] = true
 			}
+		default:
+			// Other non-bool output (cluster ID, similarity score): the
+			// primitive is producing information, not filtering, so keep the
+			// row for downstream narrowing.
+			_ = v
+			keep[r.EntityID] = true
 		}
 	}
 	if !filtering {

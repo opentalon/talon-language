@@ -282,8 +282,10 @@ workflow "Refill" {
 predict "Failure risk" {
   for records where type == "item"
   features [attr "hours", attr "repairs"]
+  trained_on records where type == "item" and status == "retired"
+  label_attr "outcome"
   confidence >= 0.7
-  label "{item.name}: risk"
+  label "{item.name}: {class}"
   priority HIGH
 }`,
 		"forecast_block": `

@@ -168,8 +168,9 @@ type PredictBlock struct {
 	Name       string
 	Selector   Selector
 	Features   []Expr
-	TrainedOn  *TrainedOnClause
-	Confidence *float64
+	TrainedOn  *TrainedOnClause // labeled examples the tree trains on
+	LabelAttr  string           // attribute on training rows holding the target class
+	Confidence *float64         // minimum leaf purity to keep a prediction
 	Label      *Template
 	Priority   *Priority
 }

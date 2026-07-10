@@ -395,6 +395,9 @@ func (p *printer) predict(b *ast.PredictBlock) {
 	if b.TrainedOn != nil {
 		p.line("trained_on records where " + condStr(b.TrainedOn.Conditions[0]))
 	}
+	if b.LabelAttr != "" {
+		p.line("label_attr " + quote(b.LabelAttr))
+	}
 	if b.Confidence != nil {
 		p.line("confidence >= " + numStr(*b.Confidence))
 	}

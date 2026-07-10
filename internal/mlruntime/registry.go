@@ -22,6 +22,7 @@ func NewRegistry() *Registry {
 	r.Register(NewPearsonCorrelation())
 	r.Register(NewWeightedMovingAverage())
 	r.Register(NewKNNClassifier())
+	r.Register(NewDecisionTreePredictor())
 	return r
 }
 
