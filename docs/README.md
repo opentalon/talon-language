@@ -21,11 +21,14 @@
   with `require` / `on_violation reject|warn|quarantine`.
 - **[Time-travel queries](./time_travel.md)** — `was ( … ) N <unit> ago`
   detect conditions over a backend's write history (`TimeTraveler`).
+- **[Classification](./classify.md)** — `classify` blocks: kNN over
+  `trained_on` labeled examples, with `{class}` labels and a confidence bound.
 
 ## Design notes
 
 - [ADR-0001: ML runtime strategy](./design/0001-ml-runtime-strategy.md)
 - [ADR-0003: Explainability tiers](./design/0003-explainability.md)
+- [ADR-0006: classify_knn primitive](./design/0006-classify-knn.md)
 - [JS runtime](./js-runtime.md)
 
 ## Where the code lives

@@ -41,7 +41,11 @@ type RenderContext struct {
 	// Calc holds `calculate` scalars by variable name, so a label can
 	// interpolate `{daily_rate}` from an aggregation clause.
 	Calc map[string]float64
-	Now  time.Time
+	// Class is the classify block's predicted class for the current row,
+	// resolved by the reserved `{class}` reference. Empty for non-classify
+	// blocks.
+	Class string
+	Now   time.Time
 }
 
 // Render evaluates the template against the context.
@@ -93,6 +97,11 @@ func resolveRef(path string, ctx RenderContext) string {
 		key := strings.TrimPrefix(path, "context.")
 		if v, ok := ctx.Context[key]; ok {
 			return formatValue(v)
+		}
+	case path == "class":
+		// Reserved ref: the classify block's predicted class for this row.
+		if ctx.Class != "" {
+			return ctx.Class
 		}
 	default:
 		// Bare key — record/attr fields first, then calculate scalars.

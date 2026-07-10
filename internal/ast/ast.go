@@ -207,7 +207,9 @@ type ClassifyBlock struct {
 	Name       string
 	Selector   Selector
 	Features   []Expr
-	Confidence *float64
+	TrainedOn  *TrainedOnClause // labeled examples the kNN vote draws from
+	LabelAttr  string           // attribute on training rows holding the class
+	Confidence *float64         // minimum vote-ratio to keep a prediction
 	Label      *Template
 	Priority   *Priority
 }
