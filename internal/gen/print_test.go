@@ -480,6 +480,16 @@ detect "Service overdue" {
   flag matching items
   priority HIGH
 }`,
+		"derive_block": `
+derive overdue(v) {
+  for records where type == "vehicle" and attr "km" > attr "last_service_km" + 20000
+}`,
+		"derive_ref": `
+detect "Recall candidates" {
+  for records where overdue(v) and attr "model" in ["Transit", "Sprinter"]
+  flag matching items
+  priority HIGH
+}`,
 		"import_header": `import "./shared.talon"
 import "./more.talon"
 

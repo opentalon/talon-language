@@ -269,6 +269,7 @@ func Plan(prog *ast.Program) (map[string]*QueryPlan, diagnostic.List) {
 	p := &planner{
 		prog:    prog,
 		defines: collectDefines(prog),
+		derives: collectDerives(prog),
 	}
 	return p.planAll()
 }
@@ -388,6 +389,8 @@ func rewriteBlockThresholds(b ast.Block, th map[string]float64) {
 		}
 	case *ast.EnrichBlock:
 		sel(&bb.Selector)
+	case *ast.DeriveBlock:
+		sel(&bb.Selector)
 	case *ast.DefineBlock:
 		conds(bb.Conditions)
 		if bb.ForEach != nil {
@@ -459,6 +462,7 @@ func rewriteThresholdExpr(e ast.Expr, th map[string]float64) ast.Expr {
 type planner struct {
 	prog    *ast.Program
 	defines map[string]*ast.DefineBlock
+	derives map[string]*ast.DeriveBlock
 	diags   diagnostic.List
 }
 
@@ -467,6 +471,16 @@ func collectDefines(prog *ast.Program) map[string]*ast.DefineBlock {
 	for _, b := range prog.Blocks {
 		if def, ok := b.(*ast.DefineBlock); ok {
 			m[def.Name] = def
+		}
+	}
+	return m
+}
+
+func collectDerives(prog *ast.Program) map[string]*ast.DeriveBlock {
+	m := map[string]*ast.DeriveBlock{}
+	for _, b := range prog.Blocks {
+		if d, ok := b.(*ast.DeriveBlock); ok {
+			m[d.Name] = d
 		}
 	}
 	return m
@@ -507,6 +521,9 @@ func (p *planner) planAll() (map[string]*QueryPlan, diagnostic.List) {
 		case *ast.ThresholdBlock:
 			// Cached data, not an evaluable block — its value is inlined into
 			// referencing expressions during resolveThresholdRefs; no plan.
+		case *ast.DeriveBlock:
+			// A derived predicate is inlined into referencing queries via
+			// addPredicateCall; it has no standalone plan (like define).
 		}
 	}
 	return plans, p.diags
@@ -1526,6 +1543,8 @@ func topoSortSteps(steps []ast.WorkflowStep) []ast.WorkflowStep {
 
 type queryBuilder struct {
 	defines        map[string]*ast.DefineBlock
+	derives        map[string]*ast.DeriveBlock
+	deriving       map[string]bool // predicate names currently being inlined (cycle guard)
 	entityVar      string
 	findVars       []string
 	whereClauses   []factstore.Clause
@@ -1634,6 +1653,8 @@ func (p *planner) appendAsOfSteps(plan *QueryPlan, conds []*ast.AsOfCondition, l
 func (p *planner) newQueryBuilder() *queryBuilder {
 	return &queryBuilder{
 		defines:   p.defines,
+		derives:   p.derives,
+		deriving:  map[string]bool{},
 		entityVar: "?e",
 		findVars:  []string{"?e"},
 		usedVars:  map[string]int{},
@@ -1675,6 +1696,8 @@ func (b *queryBuilder) addCondition(cond ast.Condition) {
 		b.addMembership(c)
 	case *ast.IsCondition:
 		b.addIsCondition(c)
+	case *ast.PredicateCallCondition:
+		b.addPredicateCall(c)
 	case *ast.StringMatchCondition:
 		b.addStringMatch(c)
 	case *ast.AnomalyCondition:
@@ -1716,6 +1739,8 @@ func (b *queryBuilder) addNot(c *ast.NotCondition) {
 func (b *queryBuilder) subClauses(cond ast.Condition) []factstore.Clause {
 	child := &queryBuilder{
 		defines:   b.defines,
+		derives:   b.derives,
+		deriving:  b.deriving,
 		entityVar: b.entityVar,
 		usedVars:  copyMap(b.usedVars),
 	}
@@ -1891,6 +1916,27 @@ func (b *queryBuilder) addIsCondition(c *ast.IsCondition) {
 		}
 	}
 	// if no define found, validator already reported the error
+}
+
+// addPredicateCall inlines a derived predicate's body conditions into the
+// referencing query — the same mechanism as `is`/define, so the derivation
+// reads exactly like an asserted fact (and the full condition language,
+// including arithmetic, flows through the normal Datalog + Go-filter split).
+// The validator rejects cycles, so inlining terminates; the `deriving` guard
+// is defence-in-depth against a missed cycle.
+func (b *queryBuilder) addPredicateCall(c *ast.PredicateCallCondition) {
+	if b.deriving[c.Name] {
+		return // cycle — validator already reported it
+	}
+	d, ok := b.derives[c.Name]
+	if !ok {
+		return // undeclared — validator already reported it
+	}
+	b.deriving[c.Name] = true
+	defer delete(b.deriving, c.Name)
+	for _, cond := range d.Selector.Conditions {
+		b.addCondition(cond)
+	}
 }
 
 // addLearnedThresholdCompare lifts `attr X OP learned_threshold ...` out of

@@ -412,6 +412,7 @@ func (*StateMachineBlock) blockNode() {}
 func (*EnrichBlock) blockNode()        {}
 func (*CollectBlock) blockNode()       {}
 func (*ThresholdBlock) blockNode()     {}
+func (*DeriveBlock) blockNode()        {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -431,6 +432,7 @@ func (b *StateMachineBlock) BlockName() string { return b.Name }
 func (b *EnrichBlock) BlockName() string        { return b.Name }
 func (b *CollectBlock) BlockName() string       { return b.Name }
 func (b *ThresholdBlock) BlockName() string     { return b.Name }
+func (b *DeriveBlock) BlockName() string        { return b.Name }
 
 // CollectBlock is scheduled, host-driven MCP fact ingestion: on the
 // declared Schedule, fetch a batch from an MCP tool and assert the
@@ -444,6 +446,23 @@ type CollectBlock struct {
 	Call     *MCPCall
 	StoreAs  string // fact type for ingested records
 	Tag      string // optional tag attribute value
+}
+
+// DeriveBlock is a Datalog-style derived predicate: `derive overdue(v) { for
+// records where ... }` defines a boolean predicate over a single record,
+// referenceable as `overdue(v)` in any other block's conditions. The planner
+// inlines the body into the referencing query, so a derived predicate reads
+// exactly like an asserted fact — closing the deductive cycle without host
+// glue. See docs/derive.md and issue #91.
+//
+// v1 is arity-1 and non-recursive (the validator rejects cycles); recursive /
+// arity-N derivations via the FactStore's recursive rule resolver are a
+// tracked follow-up.
+type DeriveBlock struct {
+	Pos      Pos
+	Name     string   // predicate name, e.g. "overdue"
+	Var      string   // head variable, e.g. "v" (arity 1; cosmetic — always the record)
+	Selector Selector // body: for records where <conditions>
 }
 
 // ThresholdBlock is a host-precomputed, cached threshold — the layer-2
@@ -672,6 +691,14 @@ type BlockMatchesCondition struct {
 	Name string
 }
 
+// PredicateCallCondition is `overdue(v)` — a reference to a derived predicate
+// declared by a DeriveBlock. The planner inlines the predicate's body
+// conditions into the referencing query. Var is the argument (arity 1).
+type PredicateCallCondition struct {
+	Name string
+	Var  string
+}
+
 func (*CompareCondition) condNode()      {}
 func (*LogicalCondition) condNode()      {}
 func (*NotCondition) condNode()          {}
@@ -685,6 +712,7 @@ func (*TemporalCondition) condNode()     {}
 func (*ChangedToCondition) condNode()    {}
 func (*AsOfCondition) condNode()         {}
 func (*BlockMatchesCondition) condNode() {}
+func (*PredicateCallCondition) condNode() {}
 func (*EventSequenceCondition) condNode()  {}
 func (*RecordSequenceCondition) condNode() {}
 
