@@ -423,6 +423,8 @@ func renderConditionWhy(cond ast.Condition, ent *entity) []string {
 		if c.Name != "" {
 			return []string{fmt.Sprintf("matches define %q", c.Name)}
 		}
+	case *ast.PredicateCallCondition:
+		return []string{fmt.Sprintf("satisfies derived %s(%s)", c.Name, c.Var)}
 	}
 	return nil
 }

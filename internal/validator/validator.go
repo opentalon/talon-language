@@ -40,7 +40,80 @@ func Validate(file string, prog *ast.Program) diagnostic.List {
 	v.checkCorrelation()
 	v.checkCalculate()
 	v.checkThresholds()
+	v.checkDerives()
 	return v.diags
+}
+
+// checkDerives validates derived-predicate blocks: every `pred(X)` reference
+// must resolve to a declared `derive`, and the derive dependency graph must be
+// acyclic. v1 is arity-1 and non-recursive; a cycle (which for arity-1 has no
+// base case) is rejected — this also subsumes negation-through-recursion.
+func (v *validator) checkDerives() {
+	derives := map[string]*ast.DeriveBlock{}
+	var order []string
+	for _, b := range v.prog.Blocks {
+		if d, ok := b.(*ast.DeriveBlock); ok {
+			derives[d.Name] = d
+			order = append(order, d.Name)
+		}
+	}
+
+	// Every predicate-call reference must resolve to a declared derive.
+	for _, b := range v.prog.Blocks {
+		pos := blockPos(b)
+		walkBlockConditions(b, func(c ast.Condition) {
+			pc, ok := c.(*ast.PredicateCallCondition)
+			if ok {
+				if _, declared := derives[pc.Name]; !declared {
+					v.errAt(pos, fmt.Sprintf("reference to undeclared derived predicate %q", pc.Name), suggest(pc.Name, order))
+				}
+			}
+		})
+	}
+
+	// Build the derive→derive dependency graph and reject any cycle.
+	deps := map[string][]string{}
+	for _, name := range order {
+		seen := map[string]bool{}
+		for _, c := range derives[name].Selector.Conditions {
+			walkCond(c, func(cc ast.Condition) {
+				if pc, ok := cc.(*ast.PredicateCallCondition); ok {
+					if _, isDerive := derives[pc.Name]; isDerive && !seen[pc.Name] {
+						seen[pc.Name] = true
+						deps[name] = append(deps[name], pc.Name)
+					}
+				}
+			})
+		}
+	}
+
+	const (
+		white = 0
+		gray  = 1
+		black = 2
+	)
+	color := map[string]int{}
+	var dfs func(n string) bool
+	dfs = func(n string) bool {
+		color[n] = gray
+		for _, m := range deps[n] {
+			if color[m] == gray {
+				v.errAt(derives[n].Pos,
+					fmt.Sprintf("recursive derive cycle through %q — not supported in v1 (arity-1 recursion has no base case)", m), "")
+				return true
+			}
+			if color[m] == white && dfs(m) {
+				return true
+			}
+		}
+		color[n] = black
+		return false
+	}
+	for _, name := range order {
+		if color[name] == white && dfs(name) {
+			return
+		}
+	}
 }
 
 // checkThresholds validates cached threshold blocks and their references:
@@ -923,6 +996,8 @@ func walkBlockConditions(b ast.Block, fn func(ast.Condition)) {
 		walkCond(bb.When, fn)
 	case *ast.RelatedBlock:
 		walkSelector(bb.Selector, fn)
+	case *ast.DeriveBlock:
+		walkSelector(bb.Selector, fn)
 	}
 }
 
@@ -993,6 +1068,8 @@ func blockPos(b ast.Block) ast.Pos {
 	case *ast.CollectBlock:
 		return bb.Pos
 	case *ast.ThresholdBlock:
+		return bb.Pos
+	case *ast.DeriveBlock:
 		return bb.Pos
 	}
 	return ast.Pos{}

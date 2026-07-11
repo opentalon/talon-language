@@ -24,6 +24,7 @@ Block     = DetectBlock
           | EnrichBlock
           | CollectBlock
           | ThresholdBlock
+          | DeriveBlock
 
 (* ─── collect ────────────────────────────────────────────────────────────────── *)
 
@@ -73,6 +74,20 @@ ThresholdBlock = "threshold" STRING "{"
 
 (* A `threshold "name"` reference resolves to the named block's cached value,
    usable anywhere a numeric expression is (see PrimaryExpr). *)
+
+(* ─── derive (derived predicates) ─────────────────────────────────────────────── *)
+
+(* A `derive` block names a boolean predicate over a record; the body is the
+   selector grammar. The predicate is referenceable as `name(var)` in any other
+   block's conditions (see PredicateCall under Condition), where the planner
+   inlines the body. v1 is arity-1 and non-recursive (validator rejects
+   cycles); recursive / arity-N derivations via the FactStore rule resolver are
+   a follow-up. See docs/derive.md. *)
+DeriveBlock = "derive" IDENT "(" IDENT ")" "{"
+                Selector
+              "}"
+
+PredicateCall = IDENT "(" IDENT ")"   (* reference to a derived predicate *)
 
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)
 
@@ -395,6 +410,7 @@ Condition       = NotCondition
                 | TemporalCondition
                 | ChangedToCondition
                 | AsOfCondition
+                | PredicateCall
                 | SugarCondition
 
 (* SugarConditions desugar at parse time to the forms above (no new AST):

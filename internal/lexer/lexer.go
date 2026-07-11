@@ -196,6 +196,7 @@ const (
 	TokenLabelAttr // "label_attr <name>" — classify's training label column
 	TokenComputedFrom
 	TokenValidUntil
+	TokenDerive // "derive p(X) { ... }" — derived-predicate block
 
 	// Keywords — local imports (#19 follow-up)
 	TokenImport
@@ -361,6 +362,7 @@ var keywords = map[string]TokenType{
 	"label_attr":     TokenLabelAttr,
 	"computed_from":  TokenComputedFrom,
 	"valid_until":    TokenValidUntil,
+	"derive":         TokenDerive,
 }
 
 type Token struct {

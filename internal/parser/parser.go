@@ -107,6 +107,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseStateMachineBlock()
 	case lexer.TokenThreshold:
 		return p.parseThresholdBlock()
+	case lexer.TokenDerive:
+		return p.parseDeriveBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
 	default:
@@ -1180,6 +1182,50 @@ func (p *parser) parseThresholdBlock() *ast.ThresholdBlock {
 	return b
 }
 
+// ─── derive (derived predicates) ──────────────────────────────────────────────
+
+// parseDeriveBlock reads a Datalog-style derived predicate:
+//
+//	derive overdue(v) {
+//	  for records where type == "vehicle"
+//	    and attr "km" > attr "last_service_km" + 20000
+//	}
+//
+// The head is a predicate name + one variable (arity 1); the body is the
+// existing selector grammar. The predicate is then referenceable as
+// `overdue(v)` in any other block's conditions.
+func (p *parser) parseDeriveBlock() *ast.DeriveBlock {
+	tok := p.advance() // derive
+	name := p.expectIdent()
+	b := &ast.DeriveBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	if p.expect(lexer.TokenLParen) {
+		b.Var = p.expectIdent()
+		p.expect(lexer.TokenRParen)
+	}
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	if p.at(lexer.TokenFor) {
+		b.Selector = p.parseSelector()
+	} else {
+		p.errorf("derive %q: expected 'for records where ...' body", name)
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parsePredicateCall reads `name(var)` in a condition position — a reference to
+// a derived predicate. Only reached when an IDENT is immediately followed by
+// `(`, which no other condition form uses.
+func (p *parser) parsePredicateCall() ast.Condition {
+	name := p.expectIdent()
+	p.expect(lexer.TokenLParen)
+	v := p.expectIdent()
+	p.expect(lexer.TokenRParen)
+	return &ast.PredicateCallCondition{Name: name, Var: v}
+}
+
 // ─── top-level ML blocks ──────────────────────────────────────────────────────
 
 func (p *parser) parsePredictBlock() *ast.PredictBlock {
@@ -1984,6 +2030,12 @@ func (p *parser) parseAtomCondition() ast.Condition {
 		name := p.expectString()
 		return &ast.IsCondition{Name: name}
 	default:
+		// `name(var)` — a derived-predicate call. An IDENT immediately
+		// followed by `(` matches no other condition form (aggregates and
+		// category_tree use dedicated keyword tokens), so it's unambiguous.
+		if p.at(lexer.TokenIdent) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenLParen {
+			return p.parsePredicateCall()
+		}
 		return p.parseExprCondition()
 	}
 }

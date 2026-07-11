@@ -141,6 +141,8 @@ func (p *printer) block(b ast.Block) {
 		p.collect(b)
 	case *ast.ThresholdBlock:
 		p.threshold(b)
+	case *ast.DeriveBlock:
+		p.derive(b)
 	case *ast.TestBlock:
 		p.test(b)
 	default:
@@ -630,6 +632,12 @@ func (p *printer) collect(b *ast.CollectBlock) {
 	p.close()
 }
 
+func (p *printer) derive(b *ast.DeriveBlock) {
+	p.open("derive " + b.Name + "(" + b.Var + ")")
+	p.selector(b.Selector)
+	p.close()
+}
+
 func (p *printer) threshold(b *ast.ThresholdBlock) {
 	p.open("threshold " + quote(b.Name))
 	p.line("value " + numStr(b.Value))
@@ -982,6 +990,8 @@ func condStr(c ast.Condition) string {
 		return "was (" + condStr(c.Inner) + ") " + durationStr(c.Delta) + " ago"
 	case *ast.BlockMatchesCondition:
 		return c.Kind + " " + quote(c.Name) + " matches"
+	case *ast.PredicateCallCondition:
+		return c.Name + "(" + c.Var + ")"
 	case *ast.EventSequenceCondition:
 		steps := make([]string, len(c.Steps))
 		for i, st := range c.Steps {

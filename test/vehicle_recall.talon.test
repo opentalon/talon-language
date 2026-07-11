@@ -1,0 +1,35 @@
+// The derived `overdue(v)` predicate gates the recall detect. A vehicle is a
+// recall candidate iff it is overdue (km > last_service_km + 20000) AND its
+// model is on the recall list — the two conditions coming from two different
+// blocks, composed by the language, not the host.
+
+test "derived overdue predicate feeds the recall detect" {
+  given {
+    // overdue (80000 > 55000 + 20000) and a recalled model → flagged
+    record 1 type "vehicle"
+    attr 1 "name" "Van 1"
+    attr 1 "model" "Transit"
+    attr 1 "km" 80000
+    attr 1 "last_service_km" 55000
+
+    // overdue but not a recalled model → not flagged
+    record 2 type "vehicle"
+    attr 2 "name" "Car 2"
+    attr 2 "model" "Civic"
+    attr 2 "km" 80000
+    attr 2 "last_service_km" 55000
+
+    // recalled model but not overdue (70000 < 55000 + 20000) → not flagged
+    record 3 type "vehicle"
+    attr 3 "name" "Van 3"
+    attr 3 "model" "Sprinter"
+    attr 3 "km" 70000
+    attr 3 "last_service_km" 55000
+  }
+  when detect "Recall candidates"
+  expect {
+    flagged 1
+    not flagged 2
+    not flagged 3
+  }
+}

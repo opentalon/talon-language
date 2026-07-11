@@ -27,6 +27,8 @@
   `trained_on` labeled examples, with a readable split path in `talon explain`.
 - **[Thresholds](./thresholds.md)** — inline `learned_threshold` vs cached
   `threshold "name" { value … }` blocks, with expiry and provenance.
+- **[Derived predicates](./derive.md)** — `derive p(v) { … }` blocks: named
+  predicates referenced as `p(v)`, inlined to close the deductive cycle.
 
 ## Design notes
 
