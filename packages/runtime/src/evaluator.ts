@@ -4,6 +4,9 @@ export interface EvalContext {
   state: Map<string, any>
   defines: Map<string, Define>
   changedPaths: Set<string>
+  // Loop variables bound by an enclosing `for each`. A path arg naming one
+  // resolves to its value rather than being passed as a raw path string.
+  loopVars?: Map<string, any>
 }
 
 export function evaluate(condition: Condition, ctx: EvalContext): boolean {
@@ -62,6 +65,8 @@ export function resolveExpr(expr: Expr, ctx: EvalContext): any {
     }
     case "binary":
       return evalBinary(expr.left, expr.op, expr.right, ctx)
+    case "list":
+      return expr.elements.map((el) => resolveExpr(el, ctx))
   }
 }
 

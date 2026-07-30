@@ -1,7 +1,7 @@
 import { lex } from "./lexer"
 import { parse } from "./parser"
 import { evaluate, resolveExpr, resolvePath } from "./evaluator"
-import type { Rule, Define, Action } from "./ast"
+import type { Rule, Define, Action, VerbAction } from "./ast"
 import type { EvalContext } from "./evaluator"
 export type { EvalContext } from "./evaluator"
 
@@ -90,10 +90,7 @@ export class TalonStore {
         const matches = rule.when === null || evaluate(rule.when, ctx)
         if (!matches) continue
 
-        for (const action of rule.actions) {
-          const result = this.executeAction(rule.name, action, ctx)
-          if (result) allActions.push(result)
-        }
+        this.executeActions(rule.name, rule.actions, ctx, allActions)
       }
     }
 
@@ -101,9 +98,65 @@ export class TalonStore {
     this.notifySubscribers(allActions)
   }
 
-  private executeAction(
+  // executeActions walks an action body, dispatching leaf verbs and the
+  // control-flow forms (if/else, for-each, while). Results from every
+  // fired leaf accumulate into `acc`.
+  private executeActions(
     ruleName: string,
-    action: Action,
+    actions: Action[],
+    ctx: EvalContext,
+    acc: ActionResult[]
+  ): void {
+    for (const action of actions) {
+      switch (action.type) {
+        case "verb": {
+          const result = this.executeVerb(ruleName, action, ctx)
+          if (result) acc.push(result)
+          break
+        }
+        case "if": {
+          const branch = evaluate(action.cond, ctx) ? action.then : action.else
+          this.executeActions(ruleName, branch, ctx, acc)
+          break
+        }
+        case "forEach": {
+          const over = resolveExpr(action.over, ctx)
+          const items = Array.isArray(over) ? over : over == null ? [] : [over]
+          if (!ctx.loopVars) ctx.loopVars = new Map()
+          const hadVar = ctx.loopVars.has(action.variable)
+          const savedVar = ctx.loopVars.get(action.variable)
+          // Bind in state too so nested if/while guards resolve the variable.
+          const hadState = this.state.has(action.variable)
+          const savedState = this.state.get(action.variable)
+          for (const item of items) {
+            ctx.loopVars.set(action.variable, item)
+            this.state.set(action.variable, item)
+            this.executeActions(ruleName, action.body, ctx, acc)
+          }
+          if (hadVar) ctx.loopVars.set(action.variable, savedVar)
+          else ctx.loopVars.delete(action.variable)
+          if (hadState) this.state.set(action.variable, savedState)
+          else this.state.delete(action.variable)
+          break
+        }
+        case "while": {
+          let iter = 0
+          // The store has mutable state, so a `do set` inside the body can
+          // flip the guard and terminate; maxIter is only a backstop.
+          while (evaluate(action.cond, ctx)) {
+            if (iter >= action.maxIter) break
+            this.executeActions(ruleName, action.body, ctx, acc)
+            iter++
+          }
+          break
+        }
+      }
+    }
+  }
+
+  private executeVerb(
+    ruleName: string,
+    action: VerbAction,
     ctx: EvalContext
   ): ActionResult | null {
     // Built-in: "set" — update store state
@@ -119,9 +172,15 @@ export class TalonStore {
       return this.executeValidate(ruleName, action, ctx)
     }
 
-    // App-registered action — pass raw path strings for path args, resolved values for literals
+    // App-registered action — pass raw path strings for path args, resolved
+    // values for literals. A path naming a `for each` loop variable resolves
+    // to its bound value (so `do notify channel` emits the element, not "channel").
     const handlerArgs = action.args.map((arg) =>
-      arg.type === "path" ? arg.value : resolveExpr(arg, ctx)
+      arg.type === "path"
+        ? ctx.loopVars?.has(arg.value)
+          ? ctx.loopVars.get(arg.value)
+          : arg.value
+        : resolveExpr(arg, ctx)
     )
 
     const handler = this.actionHandlers.get(action.verb)
@@ -134,7 +193,7 @@ export class TalonStore {
 
   private executeValidate(
     ruleName: string,
-    action: Action,
+    action: VerbAction,
     ctx: EvalContext
   ): ActionResult {
     const path =

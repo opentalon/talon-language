@@ -7,6 +7,9 @@ export enum TokenType {
   // Delimiters
   LBrace,
   RBrace,
+  LBracket,
+  RBracket,
+  Comma,
 
   // Operators
   Eq,    // ==
@@ -38,6 +41,14 @@ export enum TokenType {
   True,
   False,
 
+  // Control flow
+  If,
+  Else,
+  While,
+  For,
+  Each,
+  In,
+
   // Special
   Ident,
   EOF,
@@ -67,6 +78,12 @@ const keywords: Record<string, TokenType> = {
   max: TokenType.Max,
   true: TokenType.True,
   false: TokenType.False,
+  if: TokenType.If,
+  else: TokenType.Else,
+  while: TokenType.While,
+  for: TokenType.For,
+  each: TokenType.Each,
+  in: TokenType.In,
 }
 
 export function lex(source: string): Token[] {
@@ -170,6 +187,15 @@ export function lex(source: string): Token[] {
         break
       case "}":
         tokens.push({ type: TokenType.RBrace, value: ch, line: startLine, col: startCol })
+        break
+      case "[":
+        tokens.push({ type: TokenType.LBracket, value: ch, line: startLine, col: startCol })
+        break
+      case "]":
+        tokens.push({ type: TokenType.RBracket, value: ch, line: startLine, col: startCol })
+        break
+      case ",":
+        tokens.push({ type: TokenType.Comma, value: ch, line: startLine, col: startCol })
         break
       case "+":
         tokens.push({ type: TokenType.Plus, value: ch, line: startLine, col: startCol })
