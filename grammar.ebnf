@@ -25,6 +25,8 @@ Block     = DetectBlock
           | CollectBlock
           | ThresholdBlock
           | DeriveBlock
+          | ModelBlock
+          | ModuleBlock
 
 (* ─── collect ────────────────────────────────────────────────────────────────── *)
 
@@ -88,6 +90,39 @@ DeriveBlock = "derive" IDENT "(" IDENT ")" "{"
               "}"
 
 PredicateCall = IDENT "(" IDENT ")"   (* reference to a derived predicate *)
+
+(* ─── ML modules (issue #13) ─────────────────────────────────────────────────────
+   A `model` block is a named ML model carrying inline `fitted` params — the
+   model analog of a cached `threshold` (train-once, reference-many). v1 is a
+   lazy kNN classifier, so the fitted params ARE the labeled examples. A
+   `module` namespaces its `export`ed members; an exported model "m" inside
+   `module "ns"` is referenceable as "ns.m".
+
+   Models resolve from two providers under the same qualified name: Talon
+   `model` blocks (in-source, possibly imported) and host-registered Go models
+   (planner.PlanWithModels). A classify block draws its training set from one
+   via `using model "<qualified name>"` instead of `trained_on`.
+
+   Import-by-module-name: `import "ns"` (no path separator / .talon suffix)
+   resolves by module identity — the project tree is searched for the file
+   declaring `module "ns"`. A Go-registered module needs no import (it is
+   resolvable by qualified name at plan time). File-path imports still work. *)
+ModuleBlock = "module" STRING "{" { "export" Block } "}"
+
+ModelBlock  = "model" STRING "{"
+                ModelAlgo
+                FeaturesClause
+                FittedClause
+                [ "computed_from" STRING ]
+                [ "valid_until" STRING ]
+              "}"
+ModelAlgo    = "classify" "knn" [ "k" NUMBER ]      (* v1: kNN only *)
+FittedClause = "fitted" "{" { FittedExample } "}"
+FittedExample = "example" "[" NUMBER { "," NUMBER } "]" "label" STRING
+
+(* On a classify block, `using model "..."` replaces the features / trained_on
+   / label_attr clauses — they come from the resolved model. *)
+UsingModelClause = "using" "model" STRING
 
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)
 

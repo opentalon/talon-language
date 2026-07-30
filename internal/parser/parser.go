@@ -109,6 +109,10 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseThresholdBlock()
 	case lexer.TokenDerive:
 		return p.parseDeriveBlock()
+	case lexer.TokenModel:
+		return p.parseModelBlock()
+	case lexer.TokenModule:
+		return p.parseModuleBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
 	default:
@@ -1426,6 +1430,16 @@ func (p *parser) parseClassifyBlock() *ast.ClassifyBlock {
 			b.Features = p.parseFeaturesClause()
 		case lexer.TokenTrainedOn:
 			b.TrainedOn = p.parseTrainedOnClause()
+		case lexer.TokenUsing:
+			// `using model "ns.name"` — draw the training set from a named
+			// model's inline fitted examples instead of trained_on.
+			p.advance() // using
+			if p.at(lexer.TokenModel) {
+				p.advance()
+			} else {
+				p.errorf("expected 'model' after 'using', got %q", p.peek().Value)
+			}
+			b.UsingModel = p.expectString()
 		case lexer.TokenLabelAttr:
 			p.advance() // label_attr
 			b.LabelAttr = p.expectString()
@@ -1440,6 +1454,113 @@ func (p *parser) parseClassifyBlock() *ast.ClassifyBlock {
 		default:
 			p.errorf("unexpected token %q inside classify block", p.peek().Value)
 			p.synchronizeInBlock()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseModelBlock reads a `model "name" { ... }` block with inline fitted
+// params. v1 supports the kNN classifier: `classify knn [k N]`, a features
+// list, and a `fitted { example [...] label "..." }` set.
+func (p *parser) parseModelBlock() *ast.ModelBlock {
+	tok := p.advance() // model
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.ModelBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}, K: 5}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch {
+		case p.at(lexer.TokenClassify):
+			p.advance() // classify
+			algo := p.expectIdent()
+			if algo != "knn" {
+				p.errorf("unsupported model algorithm %q (v1 supports: knn)", algo)
+			}
+			b.Algo = "classify_knn"
+			if p.at(lexer.TokenIdent) && p.peek().Value == "k" {
+				p.advance()
+				n, _ := strconv.Atoi(p.expectNumberStr())
+				b.K = n
+			}
+		case p.at(lexer.TokenFeatures):
+			b.Features = p.parseFeaturesClause()
+		case p.at(lexer.TokenFitted):
+			b.Examples = p.parseFittedClause()
+		case p.at(lexer.TokenComputedFrom):
+			p.advance()
+			b.ComputedFrom = p.expectString()
+		case p.at(lexer.TokenValidUntil):
+			p.advance()
+			b.ValidUntil = p.expectString()
+		default:
+			p.errorf("unexpected token %q inside model block", p.peek().Value)
+			p.synchronizeInBlock()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseFittedClause reads `fitted { example [n, n, ...] label "x" ... }`.
+func (p *parser) parseFittedClause() []ast.FittedExample {
+	p.advance() // fitted
+	if !p.expect(lexer.TokenLBrace) {
+		return nil
+	}
+	var out []ast.FittedExample
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !p.at(lexer.TokenExample) {
+			p.errorf("expected 'example' inside fitted block, got %q", p.peek().Value)
+			p.synchronizeInBlock()
+			break
+		}
+		p.advance() // example
+		p.expect(lexer.TokenLBracket)
+		var feats []float64
+		for !p.at(lexer.TokenRBracket) && !p.at(lexer.TokenEOF) {
+			n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+			feats = append(feats, n)
+			if p.at(lexer.TokenComma) {
+				p.advance()
+			}
+		}
+		p.expect(lexer.TokenRBracket)
+		label := ""
+		if p.at(lexer.TokenLabel) {
+			p.advance()
+			label = p.expectString()
+		} else {
+			p.errorf("fitted example requires a `label \"...\"`")
+		}
+		out = append(out, ast.FittedExample{Features: feats, Label: label})
+	}
+	p.expect(lexer.TokenRBrace)
+	return out
+}
+
+// parseModuleBlock reads `module "ns" { export <block> ... }`. Each exported
+// member is namespaced under ns (see ast.ModuleBlock.QualifiedName).
+func (p *parser) parseModuleBlock() *ast.ModuleBlock {
+	tok := p.advance() // module
+	ns := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.ModuleBlock{Namespace: ns, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !p.at(lexer.TokenExport) {
+			p.errorf("module body only contains `export <block>`, got %q", p.peek().Value)
+			p.synchronizeInBlock()
+			continue
+		}
+		p.advance() // export
+		member := p.parseBlock()
+		if member != nil {
+			b.Members = append(b.Members, member)
 		}
 	}
 	p.expect(lexer.TokenRBrace)

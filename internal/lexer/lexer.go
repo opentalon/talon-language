@@ -122,6 +122,15 @@ const (
 	TokenElse
 	TokenWhile
 
+	// Keywords — ML modules: a `module` namespaces `export`ed members; a
+	// `model` block carries inline `fitted` examples; classify/predict
+	// reference one via `using model "ns.name"`.
+	TokenModule
+	TokenModel
+	TokenExport
+	TokenFitted
+	TokenExample
+
 	// Keywords — ML
 	TokenAnomaly
 	TokenCorrelatesWith
@@ -300,6 +309,11 @@ var keywords = map[string]TokenType{
 	"if":                TokenIf,
 	"else":              TokenElse,
 	"while":             TokenWhile,
+	"module":            TokenModule,
+	"model":             TokenModel,
+	"export":            TokenExport,
+	"fitted":            TokenFitted,
+	"example":           TokenExample,
 	"anomaly":           TokenAnomaly,
 	"correlates_with":   TokenCorrelatesWith,
 	"using":             TokenUsing,

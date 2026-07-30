@@ -143,6 +143,10 @@ func (p *printer) block(b ast.Block) {
 		p.threshold(b)
 	case *ast.DeriveBlock:
 		p.derive(b)
+	case *ast.ModelBlock:
+		p.model(b)
+	case *ast.ModuleBlock:
+		p.module(b)
 	case *ast.TestBlock:
 		p.test(b)
 	default:
@@ -455,6 +459,9 @@ func (p *printer) classify(b *ast.ClassifyBlock) {
 	if b.TrainedOn != nil {
 		p.line("trained_on records where " + condStr(b.TrainedOn.Conditions[0]))
 	}
+	if b.UsingModel != "" {
+		p.line("using model " + quote(b.UsingModel))
+	}
 	if b.LabelAttr != "" {
 		p.line("label_attr " + quote(b.LabelAttr))
 	}
@@ -466,6 +473,45 @@ func (p *printer) classify(b *ast.ClassifyBlock) {
 	}
 	if b.Priority != nil {
 		p.line("priority " + priorityStr(*b.Priority))
+	}
+	p.close()
+}
+
+// model prints a `model "name" { ... }` block with inline fitted params.
+func (p *printer) model(b *ast.ModelBlock) {
+	p.open("model " + quote(b.Name))
+	if b.Algo == "classify_knn" {
+		p.line(fmt.Sprintf("classify knn k %d", b.K))
+	}
+	if len(b.Features) > 0 {
+		p.line("features [" + exprListStr(b.Features) + "]")
+	}
+	if len(b.Examples) > 0 {
+		p.open("fitted")
+		for _, ex := range b.Examples {
+			nums := make([]string, len(ex.Features))
+			for i, f := range ex.Features {
+				nums[i] = numStr(f)
+			}
+			p.line("example [" + strings.Join(nums, ", ") + "] label " + quote(ex.Label))
+		}
+		p.close()
+	}
+	if b.ComputedFrom != "" {
+		p.line("computed_from " + quote(b.ComputedFrom))
+	}
+	if b.ValidUntil != "" {
+		p.line("valid_until " + quote(b.ValidUntil))
+	}
+	p.close()
+}
+
+// module prints a `module "ns" { export <block> ... }` block.
+func (p *printer) module(b *ast.ModuleBlock) {
+	p.open("module " + quote(b.Namespace))
+	for _, mem := range b.Members {
+		p.line("export")
+		p.block(mem)
 	}
 	p.close()
 }

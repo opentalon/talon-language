@@ -409,14 +409,23 @@ func (v *validator) checkCompleteness() {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q: confidence must be in [0, 1], got %v", bb.Name, *bb.Confidence), "")
 			}
 		case *ast.ClassifyBlock:
-			if len(bb.Features) == 0 {
-				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'features' clause", bb.Name), "")
-			}
-			if bb.TrainedOn == nil {
-				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'trained_on records where ...' clause naming the labeled examples", bb.Name), "")
-			}
-			if bb.LabelAttr == "" {
-				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'label_attr \"<name>\"' clause naming the class column on training rows", bb.Name), "")
+			// A `using model "..."` block draws features, labels, and the
+			// training set from the referenced model, so the inline clauses
+			// are not required (and are mutually exclusive with trained_on).
+			if bb.UsingModel != "" {
+				if bb.TrainedOn != nil {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q: `using model` and `trained_on` are mutually exclusive", bb.Name), "")
+				}
+			} else {
+				if len(bb.Features) == 0 {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'features' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.TrainedOn == nil {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'trained_on records where ...' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.LabelAttr == "" {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'label_attr \"<name>\"' clause naming the class column on training rows", bb.Name), "")
+				}
 			}
 			if bb.Confidence != nil && (*bb.Confidence < 0 || *bb.Confidence > 1) {
 				v.errAt(bb.Pos, fmt.Sprintf("classify %q: confidence must be in [0, 1], got %v", bb.Name, *bb.Confidence), "")

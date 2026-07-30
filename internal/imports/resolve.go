@@ -12,6 +12,7 @@ package imports
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +84,18 @@ func (r *resolver) walk(imports []ast.ImportStatement, fromPath string) ([]ast.B
 
 	for _, imp := range imports {
 		target := imp.Path
+		// Module-name import: `import "fleet.ml"` (no path separator, no
+		// .talon extension) resolves by module identity — find the file in
+		// the project tree that declares `module "fleet.ml"`. If none does,
+		// it may be a Go-registered module (resolved at plan time by
+		// qualified name, no file needed), so this is a no-op, not an error.
+		if isModuleName(target) {
+			found, ok := findModuleFile(baseDir, target)
+			if !ok {
+				continue
+			}
+			target = found
+		}
 		if !filepath.IsAbs(target) {
 			target = filepath.Join(baseDir, target)
 		}
@@ -130,6 +143,51 @@ func (r *resolver) walk(imports []ast.ImportStatement, fromPath string) ([]ast.B
 		out = append(out, subProg.Blocks...)
 	}
 	return out, diags
+}
+
+// isModuleName reports whether an import target is a module name (e.g.
+// "fleet.ml") rather than a file path ("./x.talon", "sub/y.talon"). Module
+// names carry no path separator and no .talon extension.
+func isModuleName(target string) bool {
+	return !strings.ContainsAny(target, `/\`) && !strings.HasSuffix(target, ".talon")
+}
+
+// findModuleFile searches baseDir's tree for the .talon file that declares
+// `module "<moduleName>"`, returning its absolute path. First match wins.
+func findModuleFile(baseDir, moduleName string) (string, bool) {
+	if baseDir == "" {
+		baseDir = "."
+	}
+	var found string
+	_ = filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".talon") {
+			return nil
+		}
+		src, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil
+		}
+		toks, ld := lexer.Lex(filepath.Base(path), string(src))
+		if ld.HasErrors() {
+			return nil
+		}
+		prog, pd := parser.Parse(filepath.Base(path), toks)
+		if pd.HasErrors() {
+			return nil
+		}
+		for _, b := range prog.Blocks {
+			if mb, ok := b.(*ast.ModuleBlock); ok && mb.Namespace == moduleName {
+				if abs, aerr := filepath.Abs(path); aerr == nil {
+					found = abs
+				} else {
+					found = path
+				}
+				return fs.SkipAll
+			}
+		}
+		return nil
+	})
+	return found, found != ""
 }
 
 // dedupeByName resolves block-name collisions. Caller blocks always
@@ -210,6 +268,10 @@ func blockPos(b ast.Block) ast.Pos {
 	case *ast.OnBlock:
 		return bb.Pos
 	case *ast.ConstraintBlock:
+		return bb.Pos
+	case *ast.ModelBlock:
+		return bb.Pos
+	case *ast.ModuleBlock:
 		return bb.Pos
 	}
 	return ast.Pos{}

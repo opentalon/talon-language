@@ -1118,6 +1118,47 @@ recommend "Order more" {
 	}
 }
 
+// TestParseModelAndModule: a `module` namespaces an exported `model` block
+// with inline fitted params, and a classify block references it.
+func TestParseModelAndModule(t *testing.T) {
+	prog := mustParse(t, `
+module "fleet.ml" {
+  export model "failure_risk" {
+    classify knn k 3
+    features [attr "km", attr "age"]
+    fitted {
+      example [50000, 8] label "high"
+      example [10000, 2] label "low"
+    }
+    computed_from "1204 vehicles"
+    valid_until "2026-12-31"
+  }
+}
+classify "Risk" {
+  for records where type == "vehicle"
+  using model "fleet.ml.failure_risk"
+}`)
+	mod, ok := prog.Blocks[0].(*ast.ModuleBlock)
+	if !ok || mod.Namespace != "fleet.ml" || len(mod.Members) != 1 {
+		t.Fatalf("module not parsed: %#v", prog.Blocks[0])
+	}
+	if mod.QualifiedName("failure_risk") != "fleet.ml.failure_risk" {
+		t.Fatalf("qualified name: %q", mod.QualifiedName("failure_risk"))
+	}
+	model, ok := mod.Members[0].(*ast.ModelBlock)
+	if !ok || model.Algo != "classify_knn" || model.K != 3 {
+		t.Fatalf("model not parsed: %#v", mod.Members[0])
+	}
+	if len(model.Examples) != 2 || model.Examples[0].Label != "high" ||
+		len(model.Examples[0].Features) != 2 || model.Examples[0].Features[0] != 50000 {
+		t.Fatalf("fitted examples: %#v", model.Examples)
+	}
+	cls, ok := prog.Blocks[1].(*ast.ClassifyBlock)
+	if !ok || cls.UsingModel != "fleet.ml.failure_risk" {
+		t.Fatalf("classify using model: %#v", prog.Blocks[1])
+	}
+}
+
 // TestParseStringBuiltinCall: a builtin function in expression position
 // parses as a CallExpr, and a same-shaped non-builtin stays a predicate call.
 func TestParseStringBuiltinCall(t *testing.T) {

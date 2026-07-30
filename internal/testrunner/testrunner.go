@@ -1028,6 +1028,11 @@ func entityAttrsFlattened(e *entity) map[string]any {
 // row's class from the block's `label_attr`. Returns nil for unsupervised
 // steps or when the training var is empty.
 func trainingRows(s *planner.MLComputation, vars map[string]any, entities map[int]*entity) []mlruntime.TrainingRow {
+	// A `using model "..."` classify block ships its training set inline as
+	// the model's fitted examples — no training query to materialise.
+	if fitted, ok := s.Params["fitted_rows"].([]mlruntime.TrainingRow); ok {
+		return fitted
+	}
 	trainingVar, ok := s.Params["training_var"].(string)
 	if !ok || trainingVar == "" {
 		return nil

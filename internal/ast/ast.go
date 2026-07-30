@@ -262,6 +262,7 @@ type ClassifyBlock struct {
 	Selector   Selector
 	Features   []Expr
 	TrainedOn  *TrainedOnClause // labeled examples the kNN vote draws from
+	UsingModel string           // qualified model name (e.g. "fleet.ml.failure_risk"); alternative to TrainedOn — the model's inline fitted examples supply the training set
 	LabelAttr  string           // attribute on training rows holding the class
 	Confidence *float64         // minimum vote-ratio to keep a prediction
 	Label      *Template
@@ -466,6 +467,8 @@ func (*EnrichBlock) blockNode()        {}
 func (*CollectBlock) blockNode()       {}
 func (*ThresholdBlock) blockNode()     {}
 func (*DeriveBlock) blockNode()        {}
+func (*ModelBlock) blockNode()         {}
+func (*ModuleBlock) blockNode()        {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -486,6 +489,44 @@ func (b *EnrichBlock) BlockName() string        { return b.Name }
 func (b *CollectBlock) BlockName() string       { return b.Name }
 func (b *ThresholdBlock) BlockName() string     { return b.Name }
 func (b *DeriveBlock) BlockName() string        { return b.Name }
+func (b *ModelBlock) BlockName() string         { return b.Name }
+func (b *ModuleBlock) BlockName() string        { return "module " + b.Namespace }
+
+// ModelBlock is a named ML model carrying inline fitted params (issue #13
+// ML-module system). v1 is a lazy kNN classifier: the "fitted" params are
+// the labeled examples themselves. A classify/predict block references it
+// via `using model "<qualified name>"` instead of training inline.
+type ModelBlock struct {
+	Pos          Pos
+	Name         string
+	Algo         string   // "classify_knn" (v1)
+	K            int      // neighbours, for kNN
+	Features     []Expr   // ordered feature attr references
+	Examples     []FittedExample
+	ComputedFrom string // optional provenance (mirrors ThresholdBlock)
+	ValidUntil   string // optional expiry hint
+}
+
+// FittedExample is one labeled point in a model's inline fitted set: a
+// feature vector (positionally aligned with the model's Features) and a class.
+type FittedExample struct {
+	Features []float64
+	Label    string
+}
+
+// ModuleBlock namespaces a set of exported members. An exported member named
+// "m" inside `module "fleet.ml"` is referenceable as "fleet.ml.m". Members
+// are the blocks declared with `export` in the module body.
+type ModuleBlock struct {
+	Pos       Pos
+	Namespace string
+	Members   []Block
+}
+
+// QualifiedName returns a module member's fully-qualified name.
+func (b *ModuleBlock) QualifiedName(member string) string {
+	return b.Namespace + "." + member
+}
 
 // CollectBlock is scheduled, host-driven MCP fact ingestion: on the
 // declared Schedule, fetch a batch from an MCP tool and assert the
