@@ -524,13 +524,42 @@ func (v *validator) checkRemediate(blockName string, r *ast.RemediateClause) {
 	if r == nil {
 		return
 	}
-	if len(r.Calls) == 0 {
+	if len(r.Body) == 0 {
 		v.errAt(r.Pos, fmt.Sprintf("%q: remediate block requires at least one mcp call", blockName), "")
 		return
 	}
-	for _, c := range r.Calls {
-		if c.Server == "" || c.Tool == "" {
-			v.errAt(r.Pos, fmt.Sprintf("%q: remediate mcp call requires a server and tool name", blockName), "")
+	calls := 0
+	v.walkActions(blockName, r.Pos, r.Body, &calls)
+	if calls == 0 {
+		v.errAt(r.Pos, fmt.Sprintf("%q: remediate block requires at least one mcp call", blockName), "")
+	}
+}
+
+// walkActions validates an imperative action body: every leaf MCP call needs
+// a server and tool, for-each needs a loop variable, and while must carry a
+// positive iteration cap. It tallies the reachable MCP calls so an all
+// control-flow body with no effect is rejected.
+func (v *validator) walkActions(blockName string, pos ast.Pos, actions []ast.Action, calls *int) {
+	for _, a := range actions {
+		switch act := a.(type) {
+		case *ast.MCPAction:
+			*calls++
+			if act.Call.Server == "" || act.Call.Tool == "" {
+				v.errAt(pos, fmt.Sprintf("%q: remediate mcp call requires a server and tool name", blockName), "")
+			}
+		case *ast.IfAction:
+			v.walkActions(blockName, act.Pos, act.Then, calls)
+			v.walkActions(blockName, act.Pos, act.Else, calls)
+		case *ast.ForEachAction:
+			if act.Variable == "" {
+				v.errAt(act.Pos, fmt.Sprintf("%q: for each requires a loop variable", blockName), "")
+			}
+			v.walkActions(blockName, act.Pos, act.Body, calls)
+		case *ast.WhileAction:
+			if act.MaxIter <= 0 {
+				v.errAt(act.Pos, fmt.Sprintf("%q: while loop needs a positive iteration bound", blockName), "")
+			}
+			v.walkActions(blockName, act.Pos, act.Body, calls)
 		}
 	}
 }

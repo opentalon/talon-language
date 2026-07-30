@@ -1090,10 +1090,11 @@ detect "Defective without ticket" {
 	if b.Remediate == nil {
 		t.Fatal("Remediate clause not parsed")
 	}
-	if len(b.Remediate.Calls) != 2 {
-		t.Fatalf("expected 2 mcp calls, got %d", len(b.Remediate.Calls))
+	calls := remediateCalls(b.Remediate.Body)
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 mcp calls, got %d", len(calls))
 	}
-	first := b.Remediate.Calls[0]
+	first := calls[0]
 	if first.Server != "inventory" || first.Tool != "create-ticket" {
 		t.Errorf("first call target: got %s/%s", first.Server, first.Tool)
 	}
@@ -1112,9 +1113,80 @@ recommend "Order more" {
   }
 }`)
 	b := block[*ast.RecommendBlock](t, prog, 0)
-	if b.Remediate == nil || len(b.Remediate.Calls) != 1 {
+	if b.Remediate == nil || len(remediateCalls(b.Remediate.Body)) != 1 {
 		t.Fatalf("recommend remediate not parsed: %+v", b.Remediate)
 	}
+}
+
+// TestParseRemediateControlFlow covers the imperative action body: if/else
+// (with else-if), for-each, and while parse into the expected AST shapes.
+func TestParseRemediateControlFlow(t *testing.T) {
+	prog := mustParse(t, `
+detect "Escalate" {
+  for records where type == "vehicle"
+  flag matching items
+  remediate {
+    if attr "priority" == "CRITICAL" {
+      mcp "ops" "page" { id attr "id" }
+    } else if attr "priority" == "HIGH" {
+      mcp "ops" "ticket" { id attr "id" }
+    } else {
+      mcp "ops" "log" { id attr "id" }
+    }
+    for each channel in ["a", "b"] {
+      mcp "slack" "notify" { channel channel }
+    }
+    while attr "open" == 1 {
+      mcp "ops" "retry" { id attr "id" }
+    }
+  }
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	if b.Remediate == nil || len(b.Remediate.Body) != 3 {
+		t.Fatalf("expected 3 top-level actions, got %+v", b.Remediate)
+	}
+
+	// if / else-if / else
+	iff, ok := b.Remediate.Body[0].(*ast.IfAction)
+	if !ok {
+		t.Fatalf("action 0 should be IfAction, got %T", b.Remediate.Body[0])
+	}
+	if len(iff.Then) != 1 || len(iff.Else) != 1 {
+		t.Fatalf("if should have then + else-if chain, got then=%d else=%d", len(iff.Then), len(iff.Else))
+	}
+	if _, ok := iff.Else[0].(*ast.IfAction); !ok {
+		t.Fatalf("else-if should nest an IfAction, got %T", iff.Else[0])
+	}
+
+	// for each
+	fe, ok := b.Remediate.Body[1].(*ast.ForEachAction)
+	if !ok || fe.Variable != "channel" {
+		t.Fatalf("action 1 should be ForEachAction over 'channel', got %+v", b.Remediate.Body[1])
+	}
+	if _, ok := fe.Over.(*ast.ListExpr); !ok {
+		t.Fatalf("for-each collection should be a ListExpr, got %T", fe.Over)
+	}
+
+	// while (bounded)
+	wh, ok := b.Remediate.Body[2].(*ast.WhileAction)
+	if !ok {
+		t.Fatalf("action 2 should be WhileAction, got %T", b.Remediate.Body[2])
+	}
+	if wh.MaxIter != ast.DefaultWhileMaxIter {
+		t.Fatalf("while should carry the default iteration cap, got %d", wh.MaxIter)
+	}
+}
+
+// remediateCalls extracts the leaf MCP calls (in order) from a remediate
+// action body, skipping the control-flow wrappers.
+func remediateCalls(body []ast.Action) []*ast.MCPCall {
+	var out []*ast.MCPCall
+	for _, a := range body {
+		if m, ok := a.(*ast.MCPAction); ok {
+			out = append(out, m.Call)
+		}
+	}
+	return out
 }
 
 // Regression: an MCP arg whose name collides with a Talon keyword (e.g.
@@ -1133,10 +1205,11 @@ detect "Act" {
   }
 }`)
 	b := block[*ast.DetectBlock](t, prog, 0)
-	if b.Remediate == nil || len(b.Remediate.Calls) != 1 {
+	calls := remediateCalls(b.Remediate.Body)
+	if b.Remediate == nil || len(calls) != 1 {
 		t.Fatalf("remediate not parsed: %+v", b.Remediate)
 	}
-	args := b.Remediate.Calls[0].Args
+	args := calls[0].Args
 	for _, k := range []string{"priority", "status", "title"} {
 		if _, ok := args[k]; !ok {
 			t.Errorf("missing arg %q; got keys %v", k, args)

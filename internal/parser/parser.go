@@ -227,10 +227,6 @@ func (p *parser) parseRemediateClause() *ast.RemediateClause {
 	}
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
 		switch {
-		case p.at(lexer.TokenMcp):
-			if call := p.parseMCPCall(); call != nil {
-				rc.Calls = append(rc.Calls, call)
-			}
 		case p.at(lexer.TokenRequires):
 			// `requires role "manager"` — approver role for approve mode.
 			p.advance()
@@ -243,12 +239,92 @@ func (p *parser) parseRemediateClause() *ast.RemediateClause {
 			p.advance()
 			rc.Batch = p.expectString()
 		default:
-			p.errorf("unexpected token %q inside remediate block (expected mcp / requires role / batch)", p.peek().Value)
-			p.advance()
+			if act := p.parseActionStmt(); act != nil {
+				rc.Body = append(rc.Body, act)
+			}
 		}
 	}
 	p.expect(lexer.TokenRBrace)
 	return rc
+}
+
+// parseActionStmt parses one statement of an imperative action body: an MCP
+// call, or one of the control-flow forms (if/else, for-each, while). Shared
+// by remediate today; on / workflow bodies will reuse it. On an
+// unrecognised token it reports an error and advances to guarantee progress.
+func (p *parser) parseActionStmt() ast.Action {
+	switch {
+	case p.at(lexer.TokenIf):
+		return p.parseIfAction()
+	case p.at(lexer.TokenWhile):
+		return p.parseWhileAction()
+	case p.at(lexer.TokenFor) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenEach:
+		return p.parseForEachAction()
+	case p.at(lexer.TokenMcp):
+		if call := p.parseMCPCall(); call != nil {
+			return &ast.MCPAction{Call: call}
+		}
+		return nil
+	default:
+		p.errorf("unexpected token %q inside action body (expected mcp / if / for each / while / requires role / batch)", p.peek().Value)
+		p.advance()
+		return nil
+	}
+}
+
+// parseActionBody parses a `{ ActionStmt* }` block into an action list.
+func (p *parser) parseActionBody() []ast.Action {
+	if !p.expect(lexer.TokenLBrace) {
+		return nil
+	}
+	var body []ast.Action
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if act := p.parseActionStmt(); act != nil {
+			body = append(body, act)
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return body
+}
+
+// parseIfAction parses `if <condition> { ... } [ else { ... } | else if ... ]`.
+func (p *parser) parseIfAction() ast.Action {
+	tok := p.advance() // if
+	node := &ast.IfAction{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	node.Cond = p.parseOrCondition()
+	node.Then = p.parseActionBody()
+	if p.at(lexer.TokenElse) {
+		p.advance() // else
+		if p.at(lexer.TokenIf) {
+			// `else if` chains as a single nested IfAction.
+			node.Else = []ast.Action{p.parseIfAction()}
+		} else {
+			node.Else = p.parseActionBody()
+		}
+	}
+	return node
+}
+
+// parseForEachAction parses `for each <ident> in <expr> { ... }`. Unlike the
+// define-block ForEachClause (whose body is conditions), this iterates an
+// action body and its collection is any Expr, not just a bare identifier.
+func (p *parser) parseForEachAction() ast.Action {
+	tok := p.advance() // for
+	p.advance()        // each
+	variable := p.expectIdent()
+	p.expect(lexer.TokenIn)
+	over := p.parseExpr()
+	body := p.parseActionBody()
+	return &ast.ForEachAction{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}, Variable: variable, Over: over, Body: body}
+}
+
+// parseWhileAction parses `while <condition> { ... }`. The iteration cap is
+// implicit (ast.DefaultWhileMaxIter) — the runtime errors if it is hit.
+func (p *parser) parseWhileAction() ast.Action {
+	tok := p.advance() // while
+	cond := p.parseOrCondition()
+	body := p.parseActionBody()
+	return &ast.WhileAction{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}, Cond: cond, Body: body, MaxIter: ast.DefaultWhileMaxIter}
 }
 
 // atLoggerStatement reports whether the parser is positioned at a

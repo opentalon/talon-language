@@ -121,8 +121,61 @@ type RemediateClause struct {
 	Mode  string // "auto" | "propose" (default) | "approve" | "queue"
 	Role  string // required approver role, for Mode == "approve"
 	Batch string // queue name, for Mode == "queue"
-	Calls []*MCPCall
+	Body  []Action
 }
+
+// Action is a statement in an imperative action body. Today that body is a
+// `remediate` block; `on` reactive rules and workflow steps adopt the same
+// grammar as their runtimes gain execution paths. Leaf actions perform an
+// effect (an MCP call); the control-flow actions (IfAction, ForEachAction,
+// WhileAction) nest further actions and branch/iterate over the row context.
+// This is the language-level groundwork for self-hosting (issue #13): the
+// imperative control flow a compiler needs, evaluated against the existing
+// Condition grammar (no new expression language).
+type Action interface{ actionNode() }
+
+// MCPAction is a leaf action wrapping a single MCP side-effect call.
+type MCPAction struct{ Call *MCPCall }
+
+// IfAction branches on Cond (evaluated against the current row) and runs
+// Then, otherwise Else (nil when there is no `else`). `else if` desugars to
+// a single IfAction in Else.
+type IfAction struct {
+	Pos  Pos
+	Cond Condition
+	Then []Action
+	Else []Action
+}
+
+// ForEachAction binds Variable to each element of Over (which must evaluate
+// to a list — a `[...]` literal or a list-valued `attr "x"`) and runs Body
+// once per element. Bounded by construction: the collection is finite.
+type ForEachAction struct {
+	Pos      Pos
+	Variable string
+	Over     Expr
+	Body     []Action
+}
+
+// WhileAction runs Body while Cond holds, re-evaluating after each iteration.
+// MaxIter is a hard safety cap: because the current per-row context has no
+// mutable loop state, a stateless condition would otherwise spin forever, so
+// the runtime errors once MaxIter is reached rather than looping unbounded.
+type WhileAction struct {
+	Pos     Pos
+	Cond    Condition
+	Body    []Action
+	MaxIter int
+}
+
+// DefaultWhileMaxIter caps a `while` action's iterations when the source
+// gives no explicit bound. Reaching it is a runtime error (see WhileAction).
+const DefaultWhileMaxIter = 10000
+
+func (*MCPAction) actionNode()     {}
+func (*IfAction) actionNode()      {}
+func (*ForEachAction) actionNode() {}
+func (*WhileAction) actionNode()   {}
 
 type CombineBlock struct {
 	Pos         Pos

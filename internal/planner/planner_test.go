@@ -791,12 +791,16 @@ detect "Defective" {
 	if found == nil {
 		t.Fatalf("no remediate_mcp step emitted; steps: %+v", plan.Steps)
 	}
-	calls, ok := found.Params["calls"].([]*ast.MCPCall)
-	if !ok || len(calls) != 1 {
-		t.Fatalf("remediate step should carry 1 call, got %+v", found.Params["calls"])
+	body, ok := found.Params["body"].([]ast.Action)
+	if !ok || len(body) != 1 {
+		t.Fatalf("remediate step should carry 1 action, got %+v", found.Params["body"])
 	}
-	if calls[0].Server != "inventory" || calls[0].Tool != "create-ticket" {
-		t.Errorf("call target: got %s/%s", calls[0].Server, calls[0].Tool)
+	call, ok := body[0].(*ast.MCPAction)
+	if !ok {
+		t.Fatalf("remediate action should be an MCP call, got %T", body[0])
+	}
+	if call.Call.Server != "inventory" || call.Call.Tool != "create-ticket" {
+		t.Errorf("call target: got %s/%s", call.Call.Server, call.Call.Tool)
 	}
 }
 

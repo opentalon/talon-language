@@ -731,7 +731,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 			Function: FuncRemediateMCP,
 			Input:    last,
 			Params: map[string]any{
-				"calls":      b.Remediate.Calls,
+				"body":       b.Remediate.Body,
 				"block_name": b.Name,
 				"mode":       b.Remediate.Mode,
 				"role":       b.Remediate.Role,
@@ -842,7 +842,7 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 			Function: FuncRemediateMCP,
 			Input:    "matches",
 			Params: map[string]any{
-				"calls":      b.Remediate.Calls,
+				"body":       b.Remediate.Body,
 				"block_name": b.Name,
 				"mode":       b.Remediate.Mode,
 				"role":       b.Remediate.Role,

@@ -786,10 +786,36 @@ func (p *printer) remediate(r *ast.RemediateClause) {
 	if r.Batch != "" {
 		p.line("batch " + quote(r.Batch))
 	}
-	for _, c := range r.Calls {
-		p.mcpCall(c)
-	}
+	p.actionBody(r.Body)
 	p.close()
+}
+
+// actionBody prints an imperative action body: MCP calls plus the
+// control-flow forms (if/else, for-each, while), round-tripping the source.
+func (p *printer) actionBody(actions []ast.Action) {
+	for _, a := range actions {
+		switch act := a.(type) {
+		case *ast.MCPAction:
+			p.mcpCall(act.Call)
+		case *ast.IfAction:
+			p.open("if " + condStr(act.Cond))
+			p.actionBody(act.Then)
+			p.close()
+			if len(act.Else) > 0 {
+				p.open("else")
+				p.actionBody(act.Else)
+				p.close()
+			}
+		case *ast.ForEachAction:
+			p.open("for each " + act.Variable + " in " + exprStr(act.Over))
+			p.actionBody(act.Body)
+			p.close()
+		case *ast.WhileAction:
+			p.open("while " + condStr(act.Cond))
+			p.actionBody(act.Body)
+			p.close()
+		}
+	}
 }
 
 func (p *printer) mcpCall(c *ast.MCPCall) {

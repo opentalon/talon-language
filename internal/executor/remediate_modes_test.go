@@ -32,7 +32,7 @@ func runRemediateMode(t *testing.T, e *Executor, mode, role, batch string) {
 		Function: planner.FuncRemediateMCP,
 		Input:    "candidates",
 		Params: map[string]any{
-			"calls": []*ast.MCPCall{call}, "block_name": "blk",
+			"body": []ast.Action{&ast.MCPAction{Call: call}}, "block_name": "blk",
 			"mode": mode, "role": role, "batch": batch,
 		},
 	}
@@ -120,7 +120,7 @@ func TestRemediateApproveHookError(t *testing.T) {
 	}}
 	call := &ast.MCPCall{Server: "inv", Tool: "do"}
 	gc := &planner.GoComputation{Function: planner.FuncRemediateMCP, Input: "candidates", Params: map[string]any{
-		"calls": []*ast.MCPCall{call}, "mode": "approve", "block_name": "blk",
+		"body": []ast.Action{&ast.MCPAction{Call: call}}, "mode": "approve", "block_name": "blk",
 	}}
 	e.Client = factstore.NewMemoryStore()
 	if _, err := e.execRemediate(context.Background(), gc, map[string]any{"candidates": [][]any{{float64(1)}}}); err == nil {

@@ -126,9 +126,36 @@ DetectBody  = Selector
 RemediateClause = "remediate" [ RemediateMode ] "{"
                     [ "requires" "role" STRING ]
                     [ "batch" STRING ]
-                    { MCPCall }
+                    { ActionStmt }
                   "}"
 RemediateMode   = "auto" | "propose" | "approve" | "queue"
+
+(* ─── Imperative control flow (issue #13 groundwork) ─────────────────────────────
+   An ActionStmt body is an ordered list of side effects with branching and
+   iteration. It reuses the existing Condition and Expr grammar wholesale — an
+   `if`/`while` guard is any Condition, evaluated per flagged row against that
+   row's entity via the same evaluator `when` / `having` use, so no new
+   expression language is introduced. Today ActionStmt bodies appear inside
+   `remediate`; `on` reactive rules and workflow steps adopt the same grammar
+   as their runtimes gain execution paths.
+
+   `for each` iterates a finite collection (a list literal or a list-valued
+   attr), so it is bounded by construction. `while` re-tests its guard after
+   each pass; because the current per-row context has no mutable loop state, a
+   `while` is capped (ast.DefaultWhileMaxIter) and the runtime errors on
+   overrun rather than spinning — full `while` semantics arrive with mutable
+   loop bindings (a follow-up). *)
+ActionStmt  = MCPCall
+            | IfStmt
+            | ForEachStmt
+            | WhileStmt
+
+IfStmt      = "if" Condition "{" { ActionStmt } "}"
+              [ "else" ( IfStmt | "{" { ActionStmt } "}" ) ]
+
+ForEachStmt = "for" "each" IDENT "in" Expr "{" { ActionStmt } "}"
+
+WhileStmt   = "while" Condition "{" { ActionStmt } "}"
 
 (* ScoreAnnotation declares the rule's self-asserted confidence, intended
    for auto-discovered rules ("mined from data with score 0.82").
