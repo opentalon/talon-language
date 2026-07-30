@@ -51,6 +51,12 @@ export enum TokenType {
   Each,
   In,
 
+  // Modules: `module "ns" { export rule ... }`. `model` is recognised only so
+  // its (Go-only ML) block can be skipped cleanly by the reactive runtime.
+  Module,
+  Export,
+  Model,
+
   // Special
   Ident,
   EOF,
@@ -86,6 +92,9 @@ const keywords: Record<string, TokenType> = {
   for: TokenType.For,
   each: TokenType.Each,
   in: TokenType.In,
+  module: TokenType.Module,
+  export: TokenType.Export,
+  model: TokenType.Model,
 }
 
 export function lex(source: string): Token[] {

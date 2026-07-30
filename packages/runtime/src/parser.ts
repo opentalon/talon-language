@@ -27,12 +27,59 @@ class Parser {
         rules.push(this.parseRule())
       } else if (this.at(TokenType.Define)) {
         defines.push(this.parseDefine())
+      } else if (this.at(TokenType.Module)) {
+        this.parseModule(rules, defines)
+      } else if (this.at(TokenType.Model)) {
+        // ML models are Go-only (the reactive runtime has no ML) — skip the
+        // whole block so a shared source file still loads.
+        this.skipBlock()
       } else {
         this.advance() // skip unknown
       }
     }
 
     return { rules, defines }
+  }
+
+  // parseModule flattens `module "ns" { export rule/define ... }` into the
+  // program's rules/defines with namespaced names (ns.name), mirroring the Go
+  // side. Exported `model` blocks are skipped (ML is Go-only). References use
+  // the fully-qualified name, e.g. `is "ns.helper"`.
+  private parseModule(rules: Rule[], defines: Define[]): void {
+    this.advance() // module
+    const ns = this.expectString()
+    this.expect(TokenType.LBrace)
+    while (!this.at(TokenType.RBrace) && !this.at(TokenType.EOF)) {
+      if (this.at(TokenType.Export)) this.advance()
+      if (this.at(TokenType.Rule)) {
+        const r = this.parseRule()
+        r.name = `${ns}.${r.name}`
+        rules.push(r)
+      } else if (this.at(TokenType.Define)) {
+        const d = this.parseDefine()
+        d.name = `${ns}.${d.name}`
+        defines.push(d)
+      } else if (this.at(TokenType.Model)) {
+        this.skipBlock()
+      } else {
+        this.advance()
+      }
+    }
+    this.expect(TokenType.RBrace)
+  }
+
+  // skipBlock consumes a block head (`model "x"`) and its balanced `{ ... }`
+  // body without interpreting it.
+  private skipBlock(): void {
+    this.advance() // block keyword
+    while (!this.at(TokenType.LBrace) && !this.at(TokenType.EOF)) this.advance()
+    if (this.at(TokenType.EOF)) return
+    let depth = 0
+    do {
+      if (this.at(TokenType.LBrace)) depth++
+      else if (this.at(TokenType.RBrace)) depth--
+      this.advance()
+    } while (depth > 0 && !this.at(TokenType.EOF))
   }
 
   private parseRule(): Rule {
