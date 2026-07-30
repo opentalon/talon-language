@@ -1,0 +1,56 @@
+// Modeling a diagnosis when the evidence disagrees.
+//
+// In medicine "cancer" is not a property of the patient — it is a set of
+// *reads*, each by a distinct observer: pathologist A, pathologist B, the
+// imaging model. The naive model stores one attribute on the patient:
+//
+//     attr 1 "cancer" true      // Dr. A reads the photo → positive
+//     attr 1 "cancer" false     // Dr. B reads the photo → negative
+//
+// Talon's FactStore is last-write-wins (no contradiction detection), so the
+// second read silently OVERWRITES the first and the single most important
+// clinical signal — that two experts disagreed — is lost.
+//
+// The fix: give each observer its own attribute slot. Nothing overwrites, the
+// disagreement is data, and an explicit rule says what to do about it. Talon is
+// deterministic and auditable, not probabilistic — it does not fuse the two
+// opinions for you; you state the policy. Here the policy is:
+//
+//   classify "Imaging screen"  — an independent machine read of the photo,
+//                                gated on confidence, trained on biopsy-proven
+//                                cases. A third opinion for the tumor board.
+//   detect "Conflicting reads" — the two human reads disagree → escalate,
+//                                CRITICAL. No verdict is forced.
+//
+//   ./talon build   examples/medical_diagnosis.talon
+//   ./talon test    examples/medical_diagnosis.talon test/medical_diagnosis.talon.test
+//   ./talon explain examples/medical_diagnosis.talon test/medical_diagnosis.talon.test
+
+// ── ML consensus: an independent machine read of the photo, gated on
+//    confidence, trained on biopsy-proven outcomes. ──
+classify "Imaging screen" {
+  for records where type == "patient" and status == "under_review"
+  features [attr "lesion_diameter_mm", attr "border_irregularity", attr "color_variance"]
+  trained_on records where type == "patient" and status == "biopsy_confirmed"
+  label_attr "biopsy_result"
+  confidence >= 0.8
+  label "imaging screen: {class}"
+  priority HIGH
+}
+
+// ── Escalate on human conflict. The disagreement is the finding; no verdict
+//    is forced. ──
+detect "Conflicting reads" {
+  for records where type == "patient" and status == "under_review"
+    and attr "read_primary" != attr "read_secondary"
+  flag matching items
+  label "{item.name}: pathologists disagree (primary {attr.read_primary} / secondary {attr.read_secondary}) — route to tumor board"
+  priority CRITICAL
+}
+
+// The disagreement drives an action: convene the tumor board.
+recommend "Book tumor board" {
+  when detect "Conflicting reads" matches
+  suggest "convene the tumor board for {item.name} — pathologists disagree"
+  priority CRITICAL
+}

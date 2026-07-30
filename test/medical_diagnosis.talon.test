@@ -1,0 +1,112 @@
+// Two policies, two tests.
+//
+// Test 1 — escalation. Each pathologist's read is its own attribute slot, so
+// nothing overwrites and a per-record detect can compare them. When the two
+// reads differ the patient is flagged CRITICAL for the tumor board; when they
+// agree, no verdict is forced and nothing fires.
+//
+// Test 2 — imaging screen. Two well-separated photo signatures among
+// biopsy-confirmed cases — small, regular, uniform lesions → "benign"; large,
+// irregular, mottled lesions → "malignant" (5 each). An under-review patient
+// sitting squarely in one signature is classified confidently (5/5 votes); one
+// sitting midway has its vote split and is dropped by the confidence >= 0.8
+// bound — an ambiguous photo does not get an automated verdict.
+
+test "conflicting pathologist reads escalate to the tumor board" {
+  given {
+    // Both pathologists agree it is benign — no conflict.
+    record 200 type "patient" status "under_review"
+    attr 200 "name" "Patient Agree"
+    attr 200 "read_primary" "benign"
+    attr 200 "read_secondary" "benign"
+
+    // The pathologists disagree — this is the finding.
+    record 201 type "patient" status "under_review"
+    attr 201 "name" "Patient Disagree"
+    attr 201 "read_primary" "malignant"
+    attr 201 "read_secondary" "benign"
+  }
+  when detect "Conflicting reads"
+  expect {
+    not flagged 200  // both read benign → nothing to escalate
+    flagged 201      // reads differ → route to tumor board
+  }
+}
+
+test "imaging screen classifies clear photos, abstains on ambiguous ones" {
+  given {
+    // ── biopsy-confirmed, labeled: the "benign" signature ──
+    record 1 type "patient" status "biopsy_confirmed"
+    attr 1 "lesion_diameter_mm" 5
+    attr 1 "border_irregularity" 10
+    attr 1 "color_variance" 12
+    attr 1 "biopsy_result" "benign"
+    record 2 type "patient" status "biopsy_confirmed"
+    attr 2 "lesion_diameter_mm" 6
+    attr 2 "border_irregularity" 12
+    attr 2 "color_variance" 10
+    attr 2 "biopsy_result" "benign"
+    record 3 type "patient" status "biopsy_confirmed"
+    attr 3 "lesion_diameter_mm" 4
+    attr 3 "border_irregularity" 8
+    attr 3 "color_variance" 14
+    attr 3 "biopsy_result" "benign"
+    record 4 type "patient" status "biopsy_confirmed"
+    attr 4 "lesion_diameter_mm" 5
+    attr 4 "border_irregularity" 11
+    attr 4 "color_variance" 9
+    attr 4 "biopsy_result" "benign"
+    record 5 type "patient" status "biopsy_confirmed"
+    attr 5 "lesion_diameter_mm" 7
+    attr 5 "border_irregularity" 9
+    attr 5 "color_variance" 13
+    attr 5 "biopsy_result" "benign"
+
+    // ── biopsy-confirmed, labeled: the "malignant" signature ──
+    record 6 type "patient" status "biopsy_confirmed"
+    attr 6 "lesion_diameter_mm" 22
+    attr 6 "border_irregularity" 88
+    attr 6 "color_variance" 90
+    attr 6 "biopsy_result" "malignant"
+    record 7 type "patient" status "biopsy_confirmed"
+    attr 7 "lesion_diameter_mm" 24
+    attr 7 "border_irregularity" 92
+    attr 7 "color_variance" 88
+    attr 7 "biopsy_result" "malignant"
+    record 8 type "patient" status "biopsy_confirmed"
+    attr 8 "lesion_diameter_mm" 20
+    attr 8 "border_irregularity" 90
+    attr 8 "color_variance" 86
+    attr 8 "biopsy_result" "malignant"
+    record 9 type "patient" status "biopsy_confirmed"
+    attr 9 "lesion_diameter_mm" 26
+    attr 9 "border_irregularity" 85
+    attr 9 "color_variance" 91
+    attr 9 "biopsy_result" "malignant"
+    record 10 type "patient" status "biopsy_confirmed"
+    attr 10 "lesion_diameter_mm" 23
+    attr 10 "border_irregularity" 89
+    attr 10 "color_variance" 87
+    attr 10 "biopsy_result" "malignant"
+
+    // ── under review, unlabeled: the candidates to screen ──
+    record 100 type "patient" status "under_review"  // squarely benign
+    attr 100 "lesion_diameter_mm" 5
+    attr 100 "border_irregularity" 10
+    attr 100 "color_variance" 11
+    record 101 type "patient" status "under_review"  // squarely malignant
+    attr 101 "lesion_diameter_mm" 23
+    attr 101 "border_irregularity" 90
+    attr 101 "color_variance" 89
+    record 102 type "patient" status "under_review"  // ambiguous — midway
+    attr 102 "lesion_diameter_mm" 14
+    attr 102 "border_irregularity" 50
+    attr 102 "color_variance" 50
+  }
+  when classify "Imaging screen"
+  expect {
+    flagged 100      // 5/5 benign → confident
+    flagged 101      // 5/5 malignant → confident
+    not flagged 102  // split vote, below the 0.8 bound → abstain
+  }
+}
