@@ -23,14 +23,16 @@ type Example struct {
 	Label    string
 }
 
-// Model is the resolved, provider-agnostic form of an ML model. v1 is a lazy
-// kNN classifier, so Examples IS the fitted state.
+// Model is the resolved, provider-agnostic form of an ML model. For kNN
+// (lazy) Examples IS the fitted state; for a decision tree (eager) Tree holds
+// the fitted splits + leaves.
 type Model struct {
 	Name     string
-	Algo     string   // "classify_knn"
+	Algo     string   // "classify_knn" | "predict_decision_tree"
 	K        int      // neighbours, for kNN
 	Features []string // ordered feature attribute names
 	Examples []Example
+	Tree     []mlruntime.FittedTreeNode
 }
 
 // TrainingRows materialises the fitted examples as mlruntime training rows,
@@ -66,7 +68,14 @@ func FromAST(b *ast.ModelBlock, featureName func(ast.Expr) string) *Model {
 		}
 		examples = append(examples, Example{Features: fm, Label: ex.Label})
 	}
-	return &Model{Name: b.Name, Algo: b.Algo, K: b.K, Features: feats, Examples: examples}
+	tree := make([]mlruntime.FittedTreeNode, 0, len(b.Tree))
+	for _, n := range b.Tree {
+		tree = append(tree, mlruntime.FittedTreeNode{
+			Index: n.Index, Leaf: n.Leaf, Class: n.Class, Purity: n.Purity,
+			Feature: n.Feature, Threshold: n.Threshold, Left: n.Left, Right: n.Right,
+		})
+	}
+	return &Model{Name: b.Name, Algo: b.Algo, K: b.K, Features: feats, Examples: examples, Tree: tree}
 }
 
 // Registry holds Go-provided models keyed by qualified name — the "Go module"

@@ -70,6 +70,14 @@ func (d *DecisionTreePredictor) Compute(_ context.Context, in Input) ([]Result, 
 	if len(features) == 0 {
 		return nil, fmt.Errorf("predict_decision_tree: at least one feature is required")
 	}
+	// A `using model "..."` predict block ships a pre-fitted tree inline — walk
+	// it directly, no training. This is the tree's true fitted representation
+	// (the splits + leaves), the eager-model counterpart to kNN's inline
+	// examples.
+	if nodes, ok := in.Params["fitted_tree"].([]FittedTreeNode); ok && len(nodes) > 0 {
+		tree := buildFittedTree(nodes, features)
+		return classifyWithTree(tree, features, in), nil
+	}
 	if len(in.Training) == 0 {
 		// No labeled examples reached the primitive (e.g. the executor path;
 		// see ADR-0006/0007). Emit no predictions rather than erroring, so a
@@ -87,7 +95,12 @@ func (d *DecisionTreePredictor) Compute(_ context.Context, in Input) ([]Result, 
 		samples[i] = trainSample{vec: featureVec(t.Attrs, features), label: t.Label}
 	}
 	tree := buildTree(samples, features, 0, maxDepth, minLeaf)
+	return classifyWithTree(tree, features, in), nil
+}
 
+// classifyWithTree walks each candidate down the tree and emits a prediction
+// with its decision path. Shared by the trained and pre-fitted paths.
+func classifyWithTree(tree *treeNode, features []string, in Input) []Result {
 	results := make([]Result, 0, len(in.Rows))
 	for _, row := range in.Rows {
 		if len(row) == 0 {
@@ -114,7 +127,54 @@ func (d *DecisionTreePredictor) Compute(_ context.Context, in Input) ([]Result, 
 			},
 		})
 	}
-	return results, nil
+	return results
+}
+
+// FittedTreeNode is one node of a serialised decision tree carried inline by a
+// `model` block's `fitted tree { ... }`. Nodes are flat and index-referenced:
+// an internal node names a feature, a threshold, and the Left/Right child
+// indices (feature ≤ threshold goes Left); a leaf carries a class + purity.
+type FittedTreeNode struct {
+	Index     int
+	Leaf      bool
+	Class     string
+	Purity    float64
+	Feature   string
+	Threshold float64
+	Left      int
+	Right     int
+}
+
+// buildFittedTree reconstructs the internal treeNode graph from a flat node
+// list, resolving feature names to axis indices via features. The root is the
+// node with index 0.
+func buildFittedTree(nodes []FittedTreeNode, features []string) *treeNode {
+	byIdx := make(map[int]FittedTreeNode, len(nodes))
+	for _, n := range nodes {
+		byIdx[n.Index] = n
+	}
+	fidx := make(map[string]int, len(features))
+	for i, f := range features {
+		fidx[f] = i
+	}
+	var build func(i int, depth int) *treeNode
+	build = func(i, depth int) *treeNode {
+		n, ok := byIdx[i]
+		if !ok || depth > len(nodes) { // missing ref / cycle guard
+			return &treeNode{leaf: true}
+		}
+		if n.Leaf {
+			return &treeNode{leaf: true, class: n.Class, purity: n.Purity}
+		}
+		return &treeNode{
+			featureIdx:  fidx[n.Feature],
+			featureName: n.Feature,
+			threshold:   n.Threshold,
+			left:        build(n.Left, depth+1),
+			right:       build(n.Right, depth+1),
+		}
+	}
+	return build(0, 0)
 }
 
 // buildTree recursively grows a CART tree. It stops (returns a leaf) when the

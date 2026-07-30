@@ -396,14 +396,22 @@ func (v *validator) checkCompleteness() {
 				v.errAt(bb.Pos, fmt.Sprintf("collect %q requires a 'store results as <type>' clause", bb.Name), "")
 			}
 		case *ast.PredictBlock:
-			if len(bb.Features) == 0 {
-				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause", bb.Name), "")
-			}
-			if bb.TrainedOn == nil {
-				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'trained_on records where ...' clause naming the labeled examples", bb.Name), "")
-			}
-			if bb.LabelAttr == "" {
-				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'label_attr \"<name>\"' clause naming the target column on training rows", bb.Name), "")
+			// A `using model "..."` block drives prediction from the model's
+			// inline fitted tree, so the inline training clauses aren't needed.
+			if bb.UsingModel != "" {
+				if bb.TrainedOn != nil {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q: `using model` and `trained_on` are mutually exclusive", bb.Name), "")
+				}
+			} else {
+				if len(bb.Features) == 0 {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.TrainedOn == nil {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'trained_on records where ...' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.LabelAttr == "" {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'label_attr \"<name>\"' clause naming the target column on training rows", bb.Name), "")
+				}
 			}
 			if bb.Confidence != nil && (*bb.Confidence < 0 || *bb.Confidence > 1) {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q: confidence must be in [0, 1], got %v", bb.Name, *bb.Confidence), "")

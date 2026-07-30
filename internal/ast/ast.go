@@ -222,6 +222,7 @@ type PredictBlock struct {
 	Selector   Selector
 	Features   []Expr
 	TrainedOn  *TrainedOnClause // labeled examples the tree trains on
+	UsingModel string           // qualified model name; alternative to TrainedOn — the model's inline fitted tree drives prediction
 	LabelAttr  string           // attribute on training rows holding the target class
 	Confidence *float64         // minimum leaf purity to keep a prediction
 	Label      *Template
@@ -499,10 +500,11 @@ func (b *ModuleBlock) BlockName() string        { return "module " + b.Namespace
 type ModelBlock struct {
 	Pos          Pos
 	Name         string
-	Algo         string   // "classify_knn" (v1)
+	Algo         string   // "classify_knn" | "predict_decision_tree"
 	K            int      // neighbours, for kNN
 	Features     []Expr   // ordered feature attr references
-	Examples     []FittedExample
+	Examples     []FittedExample // kNN: the labeled points (lazy — this IS the model)
+	Tree         []TreeNode      // decision tree: the fitted splits + leaves
 	ComputedFrom string // optional provenance (mirrors ThresholdBlock)
 	ValidUntil   string // optional expiry hint
 }
@@ -512,6 +514,21 @@ type ModelBlock struct {
 type FittedExample struct {
 	Features []float64
 	Label    string
+}
+
+// TreeNode is one node of an inline `fitted tree { ... }` decision tree. Nodes
+// are flat and index-referenced (root = index 0). An internal node names a
+// feature + threshold and its Left/Right child indices (feature ≤ threshold
+// goes Left); a leaf carries a class and optional purity.
+type TreeNode struct {
+	Index     int
+	Leaf      bool
+	Class     string
+	Purity    float64
+	Feature   string
+	Threshold float64
+	Left      int
+	Right     int
 }
 
 // ModuleBlock namespaces a set of exported members. An exported member named

@@ -897,10 +897,35 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
-	// The CART tree trains on a second, labeled query — the same supervised
-	// shape classify uses (ADR-0006 / ADR-0007). Auxiliary keeps these rows
-	// out of the candidate stream; the runtime binds them into Input.Training.
-	if b.TrainedOn != nil {
+	params := map[string]any{
+		"features":         b.Features,
+		"feature_names":    exprListToAttrNames(b.Features),
+		"label_attr":       b.LabelAttr,
+		"training_var":     "training",
+		"max_depth":        defaultMaxDepth,
+		"min_samples_leaf": defaultMinSamplesLeaf,
+	}
+
+	switch {
+	case b.UsingModel != "":
+		// `using model "ns.name"` — walk the model's inline fitted tree; no
+		// training query. Resolved from Talon or Go providers.
+		model, provider, ok := p.models.Resolve(b.UsingModel)
+		if !ok {
+			p.diags.AddError("", b.Pos.Line, b.Pos.Col,
+				fmt.Sprintf("predict %q: unknown model %q (no Talon `model` block or registered Go model)", b.Name, b.UsingModel), "")
+			break
+		}
+		params["feature_names"] = model.Features
+		params["fitted_tree"] = model.Tree
+		params["model_name"] = b.UsingModel
+		params["model_provider"] = provider
+
+	case b.TrainedOn != nil:
+		// The CART tree trains on a second, labeled query — the same
+		// supervised shape classify uses (ADR-0006 / ADR-0007). Auxiliary
+		// keeps these rows out of the candidate stream; the runtime binds
+		// them into Input.Training.
 		tqb := p.newQueryBuilder()
 		tqb.addSelector(ast.Selector{Target: "records", Conditions: b.TrainedOn.Conditions})
 		plan.Steps = append(plan.Steps, &FactQuery{
@@ -911,14 +936,6 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 		})
 	}
 
-	params := map[string]any{
-		"features":         b.Features,
-		"feature_names":    exprListToAttrNames(b.Features),
-		"label_attr":       b.LabelAttr,
-		"training_var":     "training",
-		"max_depth":        defaultMaxDepth,
-		"min_samples_leaf": defaultMinSamplesLeaf,
-	}
 	if b.Confidence != nil {
 		params["confidence"] = *b.Confidence
 	}

@@ -1325,6 +1325,16 @@ func (p *parser) parsePredictBlock() *ast.PredictBlock {
 			b.Features = p.parseFeaturesClause()
 		case lexer.TokenTrainedOn:
 			b.TrainedOn = p.parseTrainedOnClause()
+		case lexer.TokenUsing:
+			// `using model "ns.name"` — predict from a model's inline fitted
+			// tree instead of training on a trained_on query.
+			p.advance() // using
+			if p.at(lexer.TokenModel) {
+				p.advance()
+			} else {
+				p.errorf("expected 'model' after 'using', got %q", p.peek().Value)
+			}
+			b.UsingModel = p.expectString()
 		case lexer.TokenLabelAttr:
 			p.advance() // label_attr
 			b.LabelAttr = p.expectString()
@@ -1477,7 +1487,7 @@ func (p *parser) parseModelBlock() *ast.ModelBlock {
 			p.advance() // classify
 			algo := p.expectIdent()
 			if algo != "knn" {
-				p.errorf("unsupported model algorithm %q (v1 supports: knn)", algo)
+				p.errorf("unsupported classify algorithm %q (supports: knn)", algo)
 			}
 			b.Algo = "classify_knn"
 			if p.at(lexer.TokenIdent) && p.peek().Value == "k" {
@@ -1485,10 +1495,23 @@ func (p *parser) parseModelBlock() *ast.ModelBlock {
 				n, _ := strconv.Atoi(p.expectNumberStr())
 				b.K = n
 			}
+		case p.at(lexer.TokenPredict):
+			p.advance() // predict
+			algo := p.expectIdent()
+			if algo != "tree" {
+				p.errorf("unsupported predict algorithm %q (supports: tree)", algo)
+			}
+			b.Algo = "predict_decision_tree"
 		case p.at(lexer.TokenFeatures):
 			b.Features = p.parseFeaturesClause()
 		case p.at(lexer.TokenFitted):
-			b.Examples = p.parseFittedClause()
+			// `fitted tree { node ... }` (decision tree) vs `fitted { example
+			// ... }` (kNN labeled points).
+			if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenIdent && p.tokens[p.pos+1].Value == "tree" {
+				b.Tree = p.parseFittedTree()
+			} else {
+				b.Examples = p.parseFittedClause()
+			}
 		case p.at(lexer.TokenComputedFrom):
 			p.advance()
 			b.ComputedFrom = p.expectString()
@@ -1536,6 +1559,55 @@ func (p *parser) parseFittedClause() []ast.FittedExample {
 			p.errorf("fitted example requires a `label \"...\"`")
 		}
 		out = append(out, ast.FittedExample{Features: feats, Label: label})
+	}
+	p.expect(lexer.TokenRBrace)
+	return out
+}
+
+// parseFittedTree reads `fitted tree { node N (leaf "C" [P] | split "F" T
+// left L right R) ... }` — the inline serialised decision tree.
+func (p *parser) parseFittedTree() []ast.TreeNode {
+	p.advance() // fitted
+	p.advance() // tree
+	if !p.expect(lexer.TokenLBrace) {
+		return nil
+	}
+	var out []ast.TreeNode
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !(p.at(lexer.TokenIdent) && p.peek().Value == "node") {
+			p.errorf("expected 'node' in fitted tree, got %q", p.peek().Value)
+			p.synchronizeInBlock()
+			break
+		}
+		p.advance() // node
+		idx, _ := strconv.Atoi(p.expectNumberStr())
+		n := ast.TreeNode{Index: idx}
+		switch {
+		case p.at(lexer.TokenIdent) && p.peek().Value == "leaf":
+			p.advance()
+			n.Leaf = true
+			n.Class = p.expectString()
+			if p.at(lexer.TokenNumber) {
+				n.Purity, _ = strconv.ParseFloat(p.advance().Value, 64)
+			} else {
+				n.Purity = 1.0
+			}
+		case p.at(lexer.TokenIdent) && p.peek().Value == "split":
+			p.advance()
+			n.Feature = p.expectString()
+			n.Threshold, _ = strconv.ParseFloat(p.expectNumberStr(), 64)
+			if p.at(lexer.TokenIdent) && p.peek().Value == "left" {
+				p.advance()
+			}
+			n.Left, _ = strconv.Atoi(p.expectNumberStr())
+			if p.at(lexer.TokenIdent) && p.peek().Value == "right" {
+				p.advance()
+			}
+			n.Right, _ = strconv.Atoi(p.expectNumberStr())
+		default:
+			p.errorf("expected 'leaf' or 'split' after node %d, got %q", idx, p.peek().Value)
+		}
+		out = append(out, n)
 	}
 	p.expect(lexer.TokenRBrace)
 	return out

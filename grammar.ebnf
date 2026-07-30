@@ -116,12 +116,22 @@ ModelBlock  = "model" STRING "{"
                 [ "computed_from" STRING ]
                 [ "valid_until" STRING ]
               "}"
-ModelAlgo    = "classify" "knn" [ "k" NUMBER ]      (* v1: kNN only *)
-FittedClause = "fitted" "{" { FittedExample } "}"
+ModelAlgo    = "classify" "knn" [ "k" NUMBER ]   (* lazy: fitted = examples *)
+             | "predict" "tree"                  (* eager: fitted = the tree *)
+FittedClause = "fitted" "{" { FittedExample } "}"          (* kNN *)
+             | "fitted" "tree" "{" { TreeNode } "}"        (* decision tree *)
 FittedExample = "example" "[" NUMBER { "," NUMBER } "]" "label" STRING
 
-(* On a classify block, `using model "..."` replaces the features / trained_on
-   / label_attr clauses — they come from the resolved model. *)
+(* A flat, index-referenced decision-tree node (root = node 0). A split sends
+   `feature <= threshold` to the Left child index, else Right; a leaf carries a
+   class and optional purity. *)
+TreeNode     = "node" NUMBER
+               ( "leaf" STRING [ NUMBER ]
+               | "split" STRING NUMBER "left" NUMBER "right" NUMBER )
+
+(* On a classify OR predict block, `using model "..."` replaces the features /
+   trained_on / label_attr clauses — they come from the resolved model. classify
+   → kNN model (inline examples); predict → decision-tree model (inline tree). *)
 UsingModelClause = "using" "model" STRING
 
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)

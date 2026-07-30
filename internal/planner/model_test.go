@@ -50,6 +50,47 @@ classify "Risk" {
 	}
 }
 
+// TestUsingTreeModel: a decision-tree `model` block's inline fitted tree is
+// injected into the predict step, and no training query is emitted.
+func TestUsingTreeModel(t *testing.T) {
+	plans := planAll(t, `
+model "failure_risk" {
+  predict tree
+  features [attr "km", attr "age"]
+  fitted tree {
+    node 0 split "km" 30000 left 1 right 2
+    node 1 leaf "low" 1.0
+    node 2 leaf "high" 0.9
+  }
+}
+predict "Risk" {
+  for records where type == "vehicle"
+  using model "failure_risk"
+}`)
+	var ml *MLComputation
+	for _, s := range plans["Risk"].Steps {
+		if m, ok := s.(*MLComputation); ok && m.Function == FuncPredictDecisionTree {
+			ml = m
+		}
+	}
+	if ml == nil {
+		t.Fatalf("no predict step; steps: %+v", plans["Risk"].Steps)
+	}
+	tree, ok := ml.Params["fitted_tree"].([]mlruntime.FittedTreeNode)
+	if !ok || len(tree) != 3 {
+		t.Fatalf("expected 3 fitted tree nodes, got %+v", ml.Params["fitted_tree"])
+	}
+	if ml.Params["model_provider"] != "talon" {
+		t.Fatalf("provider: %v", ml.Params["model_provider"])
+	}
+	// No training FactQuery should be present.
+	for _, s := range plans["Risk"].Steps {
+		if fq, ok := s.(*FactQuery); ok && fq.Into == "training" {
+			t.Fatal("using model should not emit a training query")
+		}
+	}
+}
+
 // TestUsingModelGo: a model registered in Go resolves through PlanWithModels
 // under the same `using model` reference — the "Go module" provider.
 func TestUsingModelGo(t *testing.T) {

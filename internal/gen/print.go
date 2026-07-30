@@ -403,6 +403,9 @@ func (p *printer) predict(b *ast.PredictBlock) {
 	if b.TrainedOn != nil {
 		p.line("trained_on records where " + condStr(b.TrainedOn.Conditions[0]))
 	}
+	if b.UsingModel != "" {
+		p.line("using model " + quote(b.UsingModel))
+	}
 	if b.LabelAttr != "" {
 		p.line("label_attr " + quote(b.LabelAttr))
 	}
@@ -480,8 +483,11 @@ func (p *printer) classify(b *ast.ClassifyBlock) {
 // model prints a `model "name" { ... }` block with inline fitted params.
 func (p *printer) model(b *ast.ModelBlock) {
 	p.open("model " + quote(b.Name))
-	if b.Algo == "classify_knn" {
+	switch b.Algo {
+	case "classify_knn":
 		p.line(fmt.Sprintf("classify knn k %d", b.K))
+	case "predict_decision_tree":
+		p.line("predict tree")
 	}
 	if len(b.Features) > 0 {
 		p.line("features [" + exprListStr(b.Features) + "]")
@@ -494,6 +500,18 @@ func (p *printer) model(b *ast.ModelBlock) {
 				nums[i] = numStr(f)
 			}
 			p.line("example [" + strings.Join(nums, ", ") + "] label " + quote(ex.Label))
+		}
+		p.close()
+	}
+	if len(b.Tree) > 0 {
+		p.open("fitted tree")
+		for _, n := range b.Tree {
+			if n.Leaf {
+				p.line(fmt.Sprintf("node %d leaf %s %s", n.Index, quote(n.Class), numStr(n.Purity)))
+			} else {
+				p.line(fmt.Sprintf("node %d split %s %s left %d right %d",
+					n.Index, quote(n.Feature), numStr(n.Threshold), n.Left, n.Right))
+			}
 		}
 		p.close()
 	}
