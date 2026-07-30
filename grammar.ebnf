@@ -516,11 +516,27 @@ PrimaryExpr = AttrRef
             | ContextRef
             | StepRef
             | CategoryTreeExpr
+            | CallExpr
             | "threshold" STRING       (* cached-threshold reference *)
             | "today"
             | Literal
             | IDENT
             | "(" Expr ")"
+
+(* CallExpr is a builtin string-valued function (issue #13 groundwork — a
+   lexer/compiler is mostly string work). The function name is an IDENT that
+   is one of the reserved string builtins, which is what disambiguates it from
+   a derived-predicate call (`overdue(v)`); any other IDENT "(" stays a
+   predicate call in condition position.
+     upper(s) lower(s) trim(s)     → string
+     length(s)                     → number (rune count)
+     substring(s, start [, len])   → string (rune-safe)
+     replace(s, old, new)          → string (replace all)
+     concat(a, b, ...)             → string
+     split(s, sep)                 → list        join(list, sep) → string *)
+CallExpr    = StringBuiltin "(" [ Expr { "," Expr } ] ")"
+StringBuiltin = "upper" | "lower" | "trim" | "length" | "substring"
+              | "replace" | "concat" | "split" | "join"
 
 AttrRef     = "attr" STRING
 

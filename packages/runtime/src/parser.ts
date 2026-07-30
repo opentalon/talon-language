@@ -1,6 +1,7 @@
 import { Token, TokenType } from "./lexer"
 import {
   DEFAULT_WHILE_MAX_ITER,
+  STRING_BUILTINS,
   type Program,
   type Rule,
   type Define,
@@ -298,12 +299,27 @@ class Parser {
 
     if (tok.type === TokenType.Ident) {
       this.advance()
+      // `name(args...)` — a builtin string function call.
+      if (this.at(TokenType.LParen) && STRING_BUILTINS.has(tok.value)) {
+        return this.parseCallArgs(tok.value)
+      }
       return { type: "path", value: tok.value }
     }
 
     // Fallback
     this.advance()
     return { type: "literal", value: tok.value }
+  }
+
+  private parseCallArgs(func: string): Expr {
+    this.expect(TokenType.LParen)
+    const args: Expr[] = []
+    while (!this.at(TokenType.RParen) && !this.at(TokenType.EOF)) {
+      args.push(this.parseExpr())
+      if (this.at(TokenType.Comma)) this.advance()
+    }
+    this.expect(TokenType.RParen)
+    return { type: "call", func, args }
   }
 
   // ─── Helpers ─────────────────────────────────────────────

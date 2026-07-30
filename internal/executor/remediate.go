@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/constraints"
@@ -345,20 +346,18 @@ func referencedAttrs(actions []ast.Action) []string {
 // {item.x} / {attr.x} / {x} interpolations in string-literal args.
 func addCallAttrs(call *ast.MCPCall, add func(string)) {
 	for _, expr := range call.Args {
-		switch v := expr.(type) {
-		case *ast.AttrExpr:
-			add(v.Name)
-		case *ast.LiteralExpr:
-			s, ok := v.Value.(string)
+		// Any expression form (attr, arithmetic, string builtins, lists).
+		collectExprAttrs(expr, add)
+		// Plus {item.x} / {attr.x} template refs in string-literal args.
+		if lit, ok := expr.(*ast.LiteralExpr); ok {
+			s, ok := lit.Value.(string)
 			if !ok || !strings.Contains(s, "{") {
 				continue
 			}
 			for _, node := range ast.ParseTemplate(s).Nodes {
-				ref, ok := node.(*ast.RefNode)
-				if !ok {
-					continue
+				if ref, ok := node.(*ast.RefNode); ok {
+					add(templateRefAttr(ref.Path))
 				}
-				add(templateRefAttr(ref.Path))
 			}
 		}
 	}
@@ -395,6 +394,10 @@ func collectExprAttrs(e ast.Expr, add func(string)) {
 	case *ast.ListExpr:
 		for _, el := range ee.Elements {
 			collectExprAttrs(el, add)
+		}
+	case *ast.CallExpr:
+		for _, a := range ee.Args {
+			collectExprAttrs(a, add)
 		}
 	}
 }
@@ -484,6 +487,11 @@ func resolveRemediateArg(expr ast.Expr, row map[string]any, rctx template.Render
 		}
 		return v.Name
 	default:
+		// Arithmetic, string builtins, etc. — resolve through the shared
+		// value evaluator so MCP args support the full expression language.
+		if val, err := constraints.EvalExpr(expr, row, time.Now().UTC()); err == nil {
+			return val
+		}
 		return nil
 	}
 }

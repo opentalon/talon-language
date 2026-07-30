@@ -1490,6 +1490,10 @@ func walkExprAttrs(e ast.Expr, add func(string)) {
 	case *ast.BinaryExpr:
 		walkExprAttrs(ee.Left, add)
 		walkExprAttrs(ee.Right, add)
+	case *ast.CallExpr:
+		for _, a := range ee.Args {
+			walkExprAttrs(a, add)
+		}
 	}
 }
 

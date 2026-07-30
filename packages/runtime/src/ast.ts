@@ -84,12 +84,34 @@ export interface IsCondition {
   name: string
 }
 
-export type Expr = PathExpr | LiteralExpr | BinaryExpr | ListExpr
+export type Expr = PathExpr | LiteralExpr | BinaryExpr | ListExpr | CallExpr
 
 export interface ListExpr {
   type: "list"
   elements: Expr[]
 }
+
+// CallExpr is a builtin string function: upper/lower/trim/length/substring/
+// replace/concat/split/join. Mirrors the Go side's CallExpr (issue #13).
+export interface CallExpr {
+  type: "call"
+  func: string
+  args: Expr[]
+}
+
+// STRING_BUILTINS are the function names parsed as CallExpr rather than a
+// bare path. Kept in sync with the Go evaluator's string toolkit.
+export const STRING_BUILTINS = new Set([
+  "upper",
+  "lower",
+  "trim",
+  "length",
+  "substring",
+  "replace",
+  "concat",
+  "split",
+  "join",
+])
 
 export interface PathExpr {
   type: "path"

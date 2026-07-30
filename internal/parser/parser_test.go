@@ -1118,6 +1118,45 @@ recommend "Order more" {
 	}
 }
 
+// TestParseStringBuiltinCall: a builtin function in expression position
+// parses as a CallExpr, and a same-shaped non-builtin stays a predicate call.
+func TestParseStringBuiltinCall(t *testing.T) {
+	prog := mustParse(t, `
+detect "T" {
+  for records where type == "vehicle"
+    and upper(substring(attr "vin", 0, 3)) == "1FT"
+}`)
+	b := block[*ast.DetectBlock](t, prog, 0)
+	// selector: type == "vehicle" AND <compare with a CallExpr on the left>
+	top, ok := b.Selector.Conditions[0].(*ast.LogicalCondition)
+	if !ok {
+		t.Fatalf("selector should be a logical AND, got %T", b.Selector.Conditions[0])
+	}
+	cmp, ok := top.Right.(*ast.CompareCondition)
+	if !ok {
+		t.Fatalf("right conjunct should be a compare, got %T", top.Right)
+	}
+	call, ok := cmp.Left.(*ast.CallExpr)
+	if !ok || call.Func != "upper" || len(call.Args) != 1 {
+		t.Fatalf("left should be upper(<expr>), got %#v", cmp.Left)
+	}
+	if inner, ok := call.Args[0].(*ast.CallExpr); !ok || inner.Func != "substring" || len(inner.Args) != 3 {
+		t.Fatalf("nested arg should be substring(_,_,_), got %#v", call.Args[0])
+	}
+}
+
+// TestParsePredicateCallStillWorks: a non-builtin `name(var)` in condition
+// position remains a derived-predicate call, unaffected by string builtins.
+func TestParsePredicateCallStillWorks(t *testing.T) {
+	prog := mustParse(t, `
+derive overdue(v) { for records where type == "vehicle" }
+detect "D" { for records where overdue(x) }`)
+	b := block[*ast.DetectBlock](t, prog, 1)
+	if _, ok := b.Selector.Conditions[0].(*ast.PredicateCallCondition); !ok {
+		t.Fatalf("expected a predicate call, got %T", b.Selector.Conditions[0])
+	}
+}
+
 // TestParseRemediateControlFlow covers the imperative action body: if/else
 // (with else-if), for-each, and while parse into the expected AST shapes.
 func TestParseRemediateControlFlow(t *testing.T) {

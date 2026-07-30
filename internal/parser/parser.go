@@ -2108,9 +2108,13 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	default:
 		// `name(var)` — a derived-predicate call. An IDENT immediately
 		// followed by `(` matches no other condition form (aggregates and
-		// category_tree use dedicated keyword tokens), so it's unambiguous.
+		// category_tree use dedicated keyword tokens), so it's unambiguous —
+		// except for the string builtins (`upper(...)`, `substring(...)`),
+		// which are function-valued expressions used inside a comparison.
 		if p.at(lexer.TokenIdent) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenLParen {
-			return p.parsePredicateCall()
+			if !ast.IsStringBuiltin(p.peek().Value) {
+				return p.parsePredicateCall()
+			}
 		}
 		return p.parseExprCondition()
 	}
@@ -2561,6 +2565,10 @@ func (p *parser) parsePrimary() ast.Expr {
 	case lexer.TokenStatus, lexer.TokenCategory, lexer.TokenTypeKw,
 		lexer.TokenIdent, lexer.TokenRecords:
 		name := p.advance().Value
+		// `name(args...)` — a builtin function call (upper/substring/…).
+		if p.at(lexer.TokenLParen) {
+			return p.parseCallExpr(name)
+		}
 		// handle "tool_arg STRING" → treat as attr expr
 		if name == "tool_arg" && p.at(lexer.TokenString) {
 			argName := p.advance().Value
@@ -2572,6 +2580,21 @@ func (p *parser) parsePrimary() ast.Expr {
 		p.errorf("expected expression, got %q", p.peek().Value)
 		return &ast.LiteralExpr{Value: nil}
 	}
+}
+
+// parseCallExpr reads `name(arg, arg, ...)` — a builtin function call. The
+// opening `(` is the current token. Args are comma-separated expressions.
+func (p *parser) parseCallExpr(name string) ast.Expr {
+	p.expect(lexer.TokenLParen)
+	var args []ast.Expr
+	for !p.at(lexer.TokenRParen) && !p.at(lexer.TokenEOF) {
+		args = append(args, p.parseExpr())
+		if p.at(lexer.TokenComma) {
+			p.advance()
+		}
+	}
+	p.expect(lexer.TokenRParen)
+	return &ast.CallExpr{Func: name, Args: args}
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

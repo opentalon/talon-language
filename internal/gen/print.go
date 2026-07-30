@@ -1128,6 +1128,8 @@ func exprStr(e ast.Expr) string {
 			return e.Fn + "(records)"
 		}
 		return e.Fn + "(" + exprStr(e.Arg) + ")"
+	case *ast.CallExpr:
+		return e.Func + "(" + exprListStr(e.Args) + ")"
 	default:
 		return fmt.Sprintf("/* unsupported expr %T */", e)
 	}

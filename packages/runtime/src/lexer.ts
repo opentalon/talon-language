@@ -9,6 +9,8 @@ export enum TokenType {
   RBrace,
   LBracket,
   RBracket,
+  LParen,
+  RParen,
   Comma,
 
   // Operators
@@ -193,6 +195,12 @@ export function lex(source: string): Token[] {
         break
       case "]":
         tokens.push({ type: TokenType.RBracket, value: ch, line: startLine, col: startCol })
+        break
+      case "(":
+        tokens.push({ type: TokenType.LParen, value: ch, line: startLine, col: startCol })
+        break
+      case ")":
+        tokens.push({ type: TokenType.RParen, value: ch, line: startLine, col: startCol })
         break
       case ",":
         tokens.push({ type: TokenType.Comma, value: ch, line: startLine, col: startCol })

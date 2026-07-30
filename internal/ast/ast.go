@@ -632,6 +632,37 @@ type LearnedThresholdExpr struct {
 	Window  Duration
 }
 
+// CallExpr is a builtin function call in expression position, e.g.
+// `upper(attr "code")`, `substring(attr "sku", 0, 2)`, `concat(a, "-", b)`.
+// v1 is the string-builtin toolkit (issue #13 groundwork: a lexer/compiler
+// is mostly string work). Func is one of the names in StringBuiltins.
+type CallExpr struct {
+	Func string
+	Args []Expr
+}
+
+// stringBuiltins are the builtin string-valued functions callable as
+// `name(args...)`. Kept as a set so the parser can tell a function call
+// apart from a derived-predicate call (`overdue(v)`), and the evaluator
+// can dispatch on the name.
+//
+//	upper(s) lower(s) trim(s)         → string
+//	length(s)                         → number (rune count)
+//	substring(s, start [, len])       → string (rune-safe)
+//	replace(s, old, new)              → string (replace all)
+//	concat(a, b, ...)                 → string (stringify + join)
+//	split(s, sep)                     → list
+//	join(list, sep)                   → string
+var stringBuiltins = map[string]bool{
+	"upper": true, "lower": true, "trim": true, "length": true,
+	"substring": true, "replace": true, "concat": true,
+	"split": true, "join": true,
+}
+
+// IsStringBuiltin reports whether name is a builtin string function, so
+// `name(` parses as a CallExpr rather than a derived-predicate call.
+func IsStringBuiltin(name string) bool { return stringBuiltins[name] }
+
 func (*AttrExpr) exprNode()             {}
 func (*LiteralExpr) exprNode()          {}
 func (*IdentExpr) exprNode()            {}
@@ -645,6 +676,7 @@ func (*TodayExpr) exprNode()            {}
 func (*ThresholdRefExpr) exprNode()     {}
 func (*MapExpr) exprNode()              {}
 func (*LearnedThresholdExpr) exprNode() {}
+func (*CallExpr) exprNode()             {}
 
 // ─── Conditions ───────────────────────────────────────────────────────────────
 

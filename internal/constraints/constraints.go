@@ -15,6 +15,8 @@ package constraints
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
@@ -285,8 +287,143 @@ func evalExpr(e ast.Expr, record map[string]any, now time.Time) (any, error) {
 			return float64(int64(lf) % int64(rf)), nil
 		}
 		return nil, fmt.Errorf("unknown binary op %q", ee.Op)
+	case *ast.CallExpr:
+		return evalCall(ee, record, now)
 	}
 	return nil, fmt.Errorf("constraint evaluator cannot evaluate expression %T", e)
+}
+
+// EvalExpr evaluates a value expression against a record's attributes, using
+// the shared value evaluator that powers filter conditions. Exported so
+// callers resolving expression-valued arguments (e.g. remediate MCP args)
+// reuse one code path — arithmetic and the string builtins work everywhere
+// expressions do.
+func EvalExpr(e ast.Expr, record map[string]any, now time.Time) (any, error) {
+	return evalExpr(e, record, now)
+}
+
+// evalCall evaluates a builtin function call (the string toolkit). Args are
+// evaluated first, then dispatched by name. Arity mismatches are errors.
+func evalCall(c *ast.CallExpr, record map[string]any, now time.Time) (any, error) {
+	args := make([]any, len(c.Args))
+	for i, a := range c.Args {
+		v, err := evalExpr(a, record, now)
+		if err != nil {
+			return nil, err
+		}
+		args[i] = v
+	}
+	arity := func(n int) error {
+		if len(args) != n {
+			return fmt.Errorf("%s expects %d argument(s), got %d", c.Func, n, len(args))
+		}
+		return nil
+	}
+	switch c.Func {
+	case "upper":
+		if err := arity(1); err != nil {
+			return nil, err
+		}
+		return strings.ToUpper(stringify(args[0])), nil
+	case "lower":
+		if err := arity(1); err != nil {
+			return nil, err
+		}
+		return strings.ToLower(stringify(args[0])), nil
+	case "trim":
+		if err := arity(1); err != nil {
+			return nil, err
+		}
+		return strings.TrimSpace(stringify(args[0])), nil
+	case "length":
+		if err := arity(1); err != nil {
+			return nil, err
+		}
+		return float64(len([]rune(stringify(args[0])))), nil
+	case "replace":
+		if err := arity(3); err != nil {
+			return nil, err
+		}
+		return strings.ReplaceAll(stringify(args[0]), stringify(args[1]), stringify(args[2])), nil
+	case "concat":
+		var b strings.Builder
+		for _, a := range args {
+			b.WriteString(stringify(a))
+		}
+		return b.String(), nil
+	case "substring":
+		if len(args) != 2 && len(args) != 3 {
+			return nil, fmt.Errorf("substring expects 2 or 3 arguments, got %d", len(args))
+		}
+		runes := []rune(stringify(args[0]))
+		start := clampIndex(toInt(args[1]), len(runes))
+		end := len(runes)
+		if len(args) == 3 {
+			end = clampIndex(start+toInt(args[2]), len(runes))
+		}
+		return string(runes[start:end]), nil
+	case "split":
+		if err := arity(2); err != nil {
+			return nil, err
+		}
+		parts := strings.Split(stringify(args[0]), stringify(args[1]))
+		out := make([]any, len(parts))
+		for i, p := range parts {
+			out[i] = p
+		}
+		return out, nil
+	case "join":
+		if err := arity(2); err != nil {
+			return nil, err
+		}
+		list, ok := args[0].([]any)
+		if !ok {
+			return nil, fmt.Errorf("join expects a list as its first argument, got %T", args[0])
+		}
+		parts := make([]string, len(list))
+		for i, v := range list {
+			parts[i] = stringify(v)
+		}
+		return strings.Join(parts, stringify(args[1])), nil
+	}
+	return nil, fmt.Errorf("unknown function %q", c.Func)
+}
+
+// stringify renders a value for string builtins: strings pass through, whole
+// numbers drop their fractional part (so concat("v", 3) → "v3"), everything
+// else uses default formatting.
+func stringify(v any) string {
+	switch n := v.(type) {
+	case string:
+		return n
+	case float64:
+		if n == float64(int64(n)) {
+			return strconv.FormatInt(int64(n), 10)
+		}
+		return strconv.FormatFloat(n, 'g', -1, 64)
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func toInt(v any) int {
+	if f, ok := toFloat(v); ok {
+		return int(f)
+	}
+	return 0
+}
+
+// clampIndex bounds a rune index to [0, n] so substring never panics.
+func clampIndex(i, n int) int {
+	if i < 0 {
+		return 0
+	}
+	if i > n {
+		return n
+	}
+	return i
 }
 
 func compare(l any, op string, r any) (bool, error) {

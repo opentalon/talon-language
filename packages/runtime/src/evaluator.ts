@@ -67,6 +67,45 @@ export function resolveExpr(expr: Expr, ctx: EvalContext): any {
       return evalBinary(expr.left, expr.op, expr.right, ctx)
     case "list":
       return expr.elements.map((el) => resolveExpr(el, ctx))
+    case "call":
+      return evalCall(expr.func, expr.args.map((a) => resolveExpr(a, ctx)))
+  }
+}
+
+// evalCall dispatches the string builtins. Kept behaviourally in sync with
+// the Go evaluator (internal/constraints): whole numbers stringify without a
+// fractional part, substring is code-unit safe, split → array, join ← array.
+function evalCall(func: string, args: any[]): any {
+  const s = (v: any) =>
+    typeof v === "number" && Number.isInteger(v) ? String(v) : v == null ? "" : String(v)
+  switch (func) {
+    case "upper":
+      return s(args[0]).toUpperCase()
+    case "lower":
+      return s(args[0]).toLowerCase()
+    case "trim":
+      return s(args[0]).trim()
+    case "length":
+      return [...s(args[0])].length
+    case "replace":
+      return s(args[0]).split(s(args[1])).join(s(args[2])) // replace-all
+    case "concat":
+      return args.map(s).join("")
+    case "substring": {
+      const chars = [...s(args[0])]
+      const start = Math.max(0, Math.min(Number(args[1]) | 0, chars.length))
+      const end =
+        args.length >= 3
+          ? Math.max(start, Math.min(start + (Number(args[2]) | 0), chars.length))
+          : chars.length
+      return chars.slice(start, end).join("")
+    }
+    case "split":
+      return s(args[0]).split(s(args[1]))
+    case "join":
+      return (Array.isArray(args[0]) ? args[0] : []).map(s).join(s(args[1]))
+    default:
+      return ""
   }
 }
 

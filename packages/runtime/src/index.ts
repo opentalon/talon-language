@@ -15,8 +15,9 @@ export type {
   LiteralExpr,
   BinaryExpr,
   ListExpr,
+  CallExpr,
 } from "./ast"
-export { DEFAULT_WHILE_MAX_ITER } from "./ast"
+export { DEFAULT_WHILE_MAX_ITER, STRING_BUILTINS } from "./ast"
 export { lex } from "./lexer"
 export { parse } from "./parser"
 export { evaluate, resolveExpr, resolvePath } from "./evaluator"

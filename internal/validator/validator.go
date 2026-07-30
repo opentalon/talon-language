@@ -201,6 +201,10 @@ func walkExprThresholdRefs(e ast.Expr, fn func(string)) {
 		for _, el := range ex.Elements {
 			walkExprThresholdRefs(el, fn)
 		}
+	case *ast.CallExpr:
+		for _, a := range ex.Args {
+			walkExprThresholdRefs(a, fn)
+		}
 	}
 }
 
