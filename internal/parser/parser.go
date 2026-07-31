@@ -1574,7 +1574,7 @@ func (p *parser) parseFittedTree() []ast.TreeNode {
 	}
 	var out []ast.TreeNode
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
-		if !(p.at(lexer.TokenIdent) && p.peek().Value == "node") {
+		if !p.at(lexer.TokenIdent) || p.peek().Value != "node" {
 			p.errorf("expected 'node' in fitted tree, got %q", p.peek().Value)
 			p.synchronizeInBlock()
 			break
