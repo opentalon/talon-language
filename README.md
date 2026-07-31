@@ -220,7 +220,7 @@ graph TB
 3. **Rules evaluate** — the runtime queries the FactStore, runs ML primitives, and produces detections, predictions, and recommendations.
 4. **Results go out** — detections surface as chat alerts, scheduled reports, dashboard widgets, or policy blocks.
 
-## The Six Block Types
+## Block Types
 
 | Block | Purpose | Question it answers |
 |-------|---------|-------------------|
@@ -229,7 +229,12 @@ graph TB
 | `recommend` | Suggest actions | "What should I do about it?" |
 | `combine` | Find optimal combinations | "What's the best mix?" |
 | `define` | Reusable conditions | (helper, used by other blocks) |
+| `derive` | Derived facts (Datalog rules) | "What follows from what I know?" |
 | `workflow` | Multi-step MCP orchestration | "Do these steps in order." |
+| `model` | A trained ML model with inline fitted params | "Classify/predict from a pinned model." |
+| `module` | Namespace + export reusable blocks | "Package this and import it elsewhere." |
+
+Plus `forecast`, `cluster`, `classify`, `predict`, `find similar`, `find related`, `on` (reactive), `constraint`, `enrich`, `collect`, and cached `threshold`.
 
 ## ML Primitives
 
@@ -241,11 +246,65 @@ Talon has built-in ML keywords. Not heavyweight neural nets — lightweight stat
 | `is anomaly` | Flag statistical outliers | Z-score, IQR, or MAD |
 | `cluster by` | Group similar records | DBSCAN |
 | `predict` | Likelihood of an outcome | Decision tree (interpretable) |
-| `classify` | Categorize text | kNN over embeddings |
+| `classify` | Categorize records | kNN over feature vectors |
 | `forecast` | When will a value hit a threshold? | Exponential smoothing |
 | `find similar` | Records resembling a given one | Cosine similarity, or HNSW vector index via talon-db |
 
 Every prediction is explainable. A decision tree says "this item is at risk because operating_hours > 2000 AND repair_count > 3." The user can read the reasoning.
+
+### ML modules — train once, reference many
+
+`predict` and `classify` can train inline (`trained_on records where …`) or draw from a **pre-fitted `model`** — the model analog of a cached `threshold`. A model carries its fitted params inline (version-pinned in source with `computed_from` / `valid_until`), so there is no per-run training. Package models under a `module` namespace and import them by name across files:
+
+```talon
+// fleet_ml.talon
+module "fleet.ml" {
+  export model "failure_risk" {
+    classify knn k 3
+    features [attr "km", attr "age"]
+    fitted {
+      example [50000, 8] label "high"
+      example [10000, 2] label "low"
+    }
+    computed_from "1204 labeled vehicles"  valid_until "2026-12-31"
+  }
+}
+
+// app.talon
+import "fleet.ml"                        // by module name, not file path
+classify "Vehicle failure risk" {
+  for records where type == "vehicle" and status == "open"
+  using model "fleet.ml.failure_risk"
+  confidence >= 0.9
+}
+```
+
+kNN models store their labeled examples (lazy); decision-tree models store the fitted tree itself (`fitted tree { node … }`, eager). Models resolve from **two providers under the same qualified name** — Talon `model` blocks *and* models a host registers in Go — so an embedding host can serve production models Talon source references transparently.
+
+## Control flow and string functions
+
+Talon stays declarative where it counts, but action bodies (today: `remediate`) support imperative control flow — `if/else`, `for each`, and a bounded `while` — branching on the same condition grammar the rest of the language uses:
+
+```talon
+remediate {
+  if attr "priority" == "CRITICAL" {
+    mcp "ops" "page_oncall" { vehicle attr "id" }
+  } else {
+    mcp "ops" "open_ticket" { vehicle attr "id" }
+  }
+  for each channel in ["fleet-ops", "maintenance"] {
+    mcp "slack" "notify" { channel channel text "Vehicle {item.id} overdue" }
+  }
+}
+```
+
+Expressions have a string toolkit usable anywhere a value is — `upper`, `lower`, `trim`, `length`, `substring`, `replace`, `concat`, `split`, `join`:
+
+```talon
+for records where upper(substring(attr "vin", 0, 3)) == "1FT"
+```
+
+Both are mirrored in the JavaScript reactive runtime (`packages/runtime`) — the client-side engine for reactive rules stays in step with the Go compiler.
 
 ## Expert-in-the-Loop
 
@@ -515,7 +574,7 @@ will work across both editors; tracked in
   - [Query Planner + Emitter](https://github.com/opentalon/talon-language/issues/10)
   - [ML Primitives Runtime](https://github.com/opentalon/talon-language/issues/11)
   - [Metaprogramming](https://github.com/opentalon/talon-language/issues/12) — Go generates `.talon` rules from data
-  - [Self-hosting](https://github.com/opentalon/talon-language/issues/13) — Talon compiler in Talon (v2+)
+  - [Self-hosting](https://github.com/opentalon/talon-language/issues/13) — Talon compiler in Talon (v2+). Groundwork landed: imperative control flow, string builtins, and an importable ML-module system. Remaining language gaps: first-class maps/trees, functions with return values, and a pure `source → code` entry point (file I/O stays a host responsibility, by design).
 
 ### Ecosystem
 
