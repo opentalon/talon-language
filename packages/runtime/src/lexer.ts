@@ -7,6 +7,11 @@ export enum TokenType {
   // Delimiters
   LBrace,
   RBrace,
+  LBracket,
+  RBracket,
+  LParen,
+  RParen,
+  Comma,
 
   // Operators
   Eq,    // ==
@@ -38,6 +43,20 @@ export enum TokenType {
   True,
   False,
 
+  // Control flow
+  If,
+  Else,
+  While,
+  For,
+  Each,
+  In,
+
+  // Modules: `module "ns" { export rule ... }`. `model` is recognised only so
+  // its (Go-only ML) block can be skipped cleanly by the reactive runtime.
+  Module,
+  Export,
+  Model,
+
   // Special
   Ident,
   EOF,
@@ -67,6 +86,15 @@ const keywords: Record<string, TokenType> = {
   max: TokenType.Max,
   true: TokenType.True,
   false: TokenType.False,
+  if: TokenType.If,
+  else: TokenType.Else,
+  while: TokenType.While,
+  for: TokenType.For,
+  each: TokenType.Each,
+  in: TokenType.In,
+  module: TokenType.Module,
+  export: TokenType.Export,
+  model: TokenType.Model,
 }
 
 export function lex(source: string): Token[] {
@@ -170,6 +198,21 @@ export function lex(source: string): Token[] {
         break
       case "}":
         tokens.push({ type: TokenType.RBrace, value: ch, line: startLine, col: startCol })
+        break
+      case "[":
+        tokens.push({ type: TokenType.LBracket, value: ch, line: startLine, col: startCol })
+        break
+      case "]":
+        tokens.push({ type: TokenType.RBracket, value: ch, line: startLine, col: startCol })
+        break
+      case "(":
+        tokens.push({ type: TokenType.LParen, value: ch, line: startLine, col: startCol })
+        break
+      case ")":
+        tokens.push({ type: TokenType.RParen, value: ch, line: startLine, col: startCol })
+        break
+      case ",":
+        tokens.push({ type: TokenType.Comma, value: ch, line: startLine, col: startCol })
         break
       case "+":
         tokens.push({ type: TokenType.Plus, value: ch, line: startLine, col: startCol })

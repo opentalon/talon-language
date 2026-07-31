@@ -121,8 +121,61 @@ type RemediateClause struct {
 	Mode  string // "auto" | "propose" (default) | "approve" | "queue"
 	Role  string // required approver role, for Mode == "approve"
 	Batch string // queue name, for Mode == "queue"
-	Calls []*MCPCall
+	Body  []Action
 }
+
+// Action is a statement in an imperative action body. Today that body is a
+// `remediate` block; `on` reactive rules and workflow steps adopt the same
+// grammar as their runtimes gain execution paths. Leaf actions perform an
+// effect (an MCP call); the control-flow actions (IfAction, ForEachAction,
+// WhileAction) nest further actions and branch/iterate over the row context.
+// This is the language-level groundwork for self-hosting (issue #13): the
+// imperative control flow a compiler needs, evaluated against the existing
+// Condition grammar (no new expression language).
+type Action interface{ actionNode() }
+
+// MCPAction is a leaf action wrapping a single MCP side-effect call.
+type MCPAction struct{ Call *MCPCall }
+
+// IfAction branches on Cond (evaluated against the current row) and runs
+// Then, otherwise Else (nil when there is no `else`). `else if` desugars to
+// a single IfAction in Else.
+type IfAction struct {
+	Pos  Pos
+	Cond Condition
+	Then []Action
+	Else []Action
+}
+
+// ForEachAction binds Variable to each element of Over (which must evaluate
+// to a list — a `[...]` literal or a list-valued `attr "x"`) and runs Body
+// once per element. Bounded by construction: the collection is finite.
+type ForEachAction struct {
+	Pos      Pos
+	Variable string
+	Over     Expr
+	Body     []Action
+}
+
+// WhileAction runs Body while Cond holds, re-evaluating after each iteration.
+// MaxIter is a hard safety cap: because the current per-row context has no
+// mutable loop state, a stateless condition would otherwise spin forever, so
+// the runtime errors once MaxIter is reached rather than looping unbounded.
+type WhileAction struct {
+	Pos     Pos
+	Cond    Condition
+	Body    []Action
+	MaxIter int
+}
+
+// DefaultWhileMaxIter caps a `while` action's iterations when the source
+// gives no explicit bound. Reaching it is a runtime error (see WhileAction).
+const DefaultWhileMaxIter = 10000
+
+func (*MCPAction) actionNode()     {}
+func (*IfAction) actionNode()      {}
+func (*ForEachAction) actionNode() {}
+func (*WhileAction) actionNode()   {}
 
 type CombineBlock struct {
 	Pos         Pos
@@ -169,6 +222,7 @@ type PredictBlock struct {
 	Selector   Selector
 	Features   []Expr
 	TrainedOn  *TrainedOnClause // labeled examples the tree trains on
+	UsingModel string           // qualified model name; alternative to TrainedOn — the model's inline fitted tree drives prediction
 	LabelAttr  string           // attribute on training rows holding the target class
 	Confidence *float64         // minimum leaf purity to keep a prediction
 	Label      *Template
@@ -209,6 +263,7 @@ type ClassifyBlock struct {
 	Selector   Selector
 	Features   []Expr
 	TrainedOn  *TrainedOnClause // labeled examples the kNN vote draws from
+	UsingModel string           // qualified model name (e.g. "fleet.ml.failure_risk"); alternative to TrainedOn — the model's inline fitted examples supply the training set
 	LabelAttr  string           // attribute on training rows holding the class
 	Confidence *float64         // minimum vote-ratio to keep a prediction
 	Label      *Template
@@ -413,6 +468,8 @@ func (*EnrichBlock) blockNode()        {}
 func (*CollectBlock) blockNode()       {}
 func (*ThresholdBlock) blockNode()     {}
 func (*DeriveBlock) blockNode()        {}
+func (*ModelBlock) blockNode()         {}
+func (*ModuleBlock) blockNode()        {}
 
 func (b *DetectBlock) BlockName() string     { return b.Name }
 func (b *RuleBlock) BlockName() string       { return b.Name }
@@ -433,6 +490,60 @@ func (b *EnrichBlock) BlockName() string        { return b.Name }
 func (b *CollectBlock) BlockName() string       { return b.Name }
 func (b *ThresholdBlock) BlockName() string     { return b.Name }
 func (b *DeriveBlock) BlockName() string        { return b.Name }
+func (b *ModelBlock) BlockName() string         { return b.Name }
+func (b *ModuleBlock) BlockName() string        { return "module " + b.Namespace }
+
+// ModelBlock is a named ML model carrying inline fitted params (issue #13
+// ML-module system). v1 is a lazy kNN classifier: the "fitted" params are
+// the labeled examples themselves. A classify/predict block references it
+// via `using model "<qualified name>"` instead of training inline.
+type ModelBlock struct {
+	Pos          Pos
+	Name         string
+	Algo         string   // "classify_knn" | "predict_decision_tree"
+	K            int      // neighbours, for kNN
+	Features     []Expr   // ordered feature attr references
+	Examples     []FittedExample // kNN: the labeled points (lazy — this IS the model)
+	Tree         []TreeNode      // decision tree: the fitted splits + leaves
+	ComputedFrom string // optional provenance (mirrors ThresholdBlock)
+	ValidUntil   string // optional expiry hint
+}
+
+// FittedExample is one labeled point in a model's inline fitted set: a
+// feature vector (positionally aligned with the model's Features) and a class.
+type FittedExample struct {
+	Features []float64
+	Label    string
+}
+
+// TreeNode is one node of an inline `fitted tree { ... }` decision tree. Nodes
+// are flat and index-referenced (root = index 0). An internal node names a
+// feature + threshold and its Left/Right child indices (feature ≤ threshold
+// goes Left); a leaf carries a class and optional purity.
+type TreeNode struct {
+	Index     int
+	Leaf      bool
+	Class     string
+	Purity    float64
+	Feature   string
+	Threshold float64
+	Left      int
+	Right     int
+}
+
+// ModuleBlock namespaces a set of exported members. An exported member named
+// "m" inside `module "fleet.ml"` is referenceable as "fleet.ml.m". Members
+// are the blocks declared with `export` in the module body.
+type ModuleBlock struct {
+	Pos       Pos
+	Namespace string
+	Members   []Block
+}
+
+// QualifiedName returns a module member's fully-qualified name.
+func (b *ModuleBlock) QualifiedName(member string) string {
+	return b.Namespace + "." + member
+}
 
 // CollectBlock is scheduled, host-driven MCP fact ingestion: on the
 // declared Schedule, fetch a batch from an MCP tool and assert the
@@ -579,6 +690,37 @@ type LearnedThresholdExpr struct {
 	Window  Duration
 }
 
+// CallExpr is a builtin function call in expression position, e.g.
+// `upper(attr "code")`, `substring(attr "sku", 0, 2)`, `concat(a, "-", b)`.
+// v1 is the string-builtin toolkit (issue #13 groundwork: a lexer/compiler
+// is mostly string work). Func is one of the names in StringBuiltins.
+type CallExpr struct {
+	Func string
+	Args []Expr
+}
+
+// stringBuiltins are the builtin string-valued functions callable as
+// `name(args...)`. Kept as a set so the parser can tell a function call
+// apart from a derived-predicate call (`overdue(v)`), and the evaluator
+// can dispatch on the name.
+//
+//	upper(s) lower(s) trim(s)         → string
+//	length(s)                         → number (rune count)
+//	substring(s, start [, len])       → string (rune-safe)
+//	replace(s, old, new)              → string (replace all)
+//	concat(a, b, ...)                 → string (stringify + join)
+//	split(s, sep)                     → list
+//	join(list, sep)                   → string
+var stringBuiltins = map[string]bool{
+	"upper": true, "lower": true, "trim": true, "length": true,
+	"substring": true, "replace": true, "concat": true,
+	"split": true, "join": true,
+}
+
+// IsStringBuiltin reports whether name is a builtin string function, so
+// `name(` parses as a CallExpr rather than a derived-predicate call.
+func IsStringBuiltin(name string) bool { return stringBuiltins[name] }
+
 func (*AttrExpr) exprNode()             {}
 func (*LiteralExpr) exprNode()          {}
 func (*IdentExpr) exprNode()            {}
@@ -592,6 +734,7 @@ func (*TodayExpr) exprNode()            {}
 func (*ThresholdRefExpr) exprNode()     {}
 func (*MapExpr) exprNode()              {}
 func (*LearnedThresholdExpr) exprNode() {}
+func (*CallExpr) exprNode()             {}
 
 // ─── Conditions ───────────────────────────────────────────────────────────────
 

@@ -143,6 +143,10 @@ func (p *printer) block(b ast.Block) {
 		p.threshold(b)
 	case *ast.DeriveBlock:
 		p.derive(b)
+	case *ast.ModelBlock:
+		p.model(b)
+	case *ast.ModuleBlock:
+		p.module(b)
 	case *ast.TestBlock:
 		p.test(b)
 	default:
@@ -399,6 +403,9 @@ func (p *printer) predict(b *ast.PredictBlock) {
 	if b.TrainedOn != nil {
 		p.line("trained_on records where " + condStr(b.TrainedOn.Conditions[0]))
 	}
+	if b.UsingModel != "" {
+		p.line("using model " + quote(b.UsingModel))
+	}
 	if b.LabelAttr != "" {
 		p.line("label_attr " + quote(b.LabelAttr))
 	}
@@ -455,6 +462,9 @@ func (p *printer) classify(b *ast.ClassifyBlock) {
 	if b.TrainedOn != nil {
 		p.line("trained_on records where " + condStr(b.TrainedOn.Conditions[0]))
 	}
+	if b.UsingModel != "" {
+		p.line("using model " + quote(b.UsingModel))
+	}
 	if b.LabelAttr != "" {
 		p.line("label_attr " + quote(b.LabelAttr))
 	}
@@ -466,6 +476,60 @@ func (p *printer) classify(b *ast.ClassifyBlock) {
 	}
 	if b.Priority != nil {
 		p.line("priority " + priorityStr(*b.Priority))
+	}
+	p.close()
+}
+
+// model prints a `model "name" { ... }` block with inline fitted params.
+func (p *printer) model(b *ast.ModelBlock) {
+	p.open("model " + quote(b.Name))
+	switch b.Algo {
+	case "classify_knn":
+		p.line(fmt.Sprintf("classify knn k %d", b.K))
+	case "predict_decision_tree":
+		p.line("predict tree")
+	}
+	if len(b.Features) > 0 {
+		p.line("features [" + exprListStr(b.Features) + "]")
+	}
+	if len(b.Examples) > 0 {
+		p.open("fitted")
+		for _, ex := range b.Examples {
+			nums := make([]string, len(ex.Features))
+			for i, f := range ex.Features {
+				nums[i] = numStr(f)
+			}
+			p.line("example [" + strings.Join(nums, ", ") + "] label " + quote(ex.Label))
+		}
+		p.close()
+	}
+	if len(b.Tree) > 0 {
+		p.open("fitted tree")
+		for _, n := range b.Tree {
+			if n.Leaf {
+				p.line(fmt.Sprintf("node %d leaf %s %s", n.Index, quote(n.Class), numStr(n.Purity)))
+			} else {
+				p.line(fmt.Sprintf("node %d split %s %s left %d right %d",
+					n.Index, quote(n.Feature), numStr(n.Threshold), n.Left, n.Right))
+			}
+		}
+		p.close()
+	}
+	if b.ComputedFrom != "" {
+		p.line("computed_from " + quote(b.ComputedFrom))
+	}
+	if b.ValidUntil != "" {
+		p.line("valid_until " + quote(b.ValidUntil))
+	}
+	p.close()
+}
+
+// module prints a `module "ns" { export <block> ... }` block.
+func (p *printer) module(b *ast.ModuleBlock) {
+	p.open("module " + quote(b.Namespace))
+	for _, mem := range b.Members {
+		p.line("export")
+		p.block(mem)
 	}
 	p.close()
 }
@@ -786,10 +850,36 @@ func (p *printer) remediate(r *ast.RemediateClause) {
 	if r.Batch != "" {
 		p.line("batch " + quote(r.Batch))
 	}
-	for _, c := range r.Calls {
-		p.mcpCall(c)
-	}
+	p.actionBody(r.Body)
 	p.close()
+}
+
+// actionBody prints an imperative action body: MCP calls plus the
+// control-flow forms (if/else, for-each, while), round-tripping the source.
+func (p *printer) actionBody(actions []ast.Action) {
+	for _, a := range actions {
+		switch act := a.(type) {
+		case *ast.MCPAction:
+			p.mcpCall(act.Call)
+		case *ast.IfAction:
+			p.open("if " + condStr(act.Cond))
+			p.actionBody(act.Then)
+			p.close()
+			if len(act.Else) > 0 {
+				p.open("else")
+				p.actionBody(act.Else)
+				p.close()
+			}
+		case *ast.ForEachAction:
+			p.open("for each " + act.Variable + " in " + exprStr(act.Over))
+			p.actionBody(act.Body)
+			p.close()
+		case *ast.WhileAction:
+			p.open("while " + condStr(act.Cond))
+			p.actionBody(act.Body)
+			p.close()
+		}
+	}
 }
 
 func (p *printer) mcpCall(c *ast.MCPCall) {
@@ -1102,6 +1192,8 @@ func exprStr(e ast.Expr) string {
 			return e.Fn + "(records)"
 		}
 		return e.Fn + "(" + exprStr(e.Arg) + ")"
+	case *ast.CallExpr:
+		return e.Func + "(" + exprListStr(e.Args) + ")"
 	default:
 		return fmt.Sprintf("/* unsupported expr %T */", e)
 	}

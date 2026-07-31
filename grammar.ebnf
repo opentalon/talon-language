@@ -25,6 +25,8 @@ Block     = DetectBlock
           | CollectBlock
           | ThresholdBlock
           | DeriveBlock
+          | ModelBlock
+          | ModuleBlock
 
 (* ─── collect ────────────────────────────────────────────────────────────────── *)
 
@@ -89,6 +91,49 @@ DeriveBlock = "derive" IDENT "(" IDENT ")" "{"
 
 PredicateCall = IDENT "(" IDENT ")"   (* reference to a derived predicate *)
 
+(* ─── ML modules (issue #13) ─────────────────────────────────────────────────────
+   A `model` block is a named ML model carrying inline `fitted` params — the
+   model analog of a cached `threshold` (train-once, reference-many). v1 is a
+   lazy kNN classifier, so the fitted params ARE the labeled examples. A
+   `module` namespaces its `export`ed members; an exported model "m" inside
+   `module "ns"` is referenceable as "ns.m".
+
+   Models resolve from two providers under the same qualified name: Talon
+   `model` blocks (in-source, possibly imported) and host-registered Go models
+   (planner.PlanWithModels). A classify block draws its training set from one
+   via `using model "<qualified name>"` instead of `trained_on`.
+
+   Import-by-module-name: `import "ns"` (no path separator / .talon suffix)
+   resolves by module identity — the project tree is searched for the file
+   declaring `module "ns"`. A Go-registered module needs no import (it is
+   resolvable by qualified name at plan time). File-path imports still work. *)
+ModuleBlock = "module" STRING "{" { "export" Block } "}"
+
+ModelBlock  = "model" STRING "{"
+                ModelAlgo
+                FeaturesClause
+                FittedClause
+                [ "computed_from" STRING ]
+                [ "valid_until" STRING ]
+              "}"
+ModelAlgo    = "classify" "knn" [ "k" NUMBER ]   (* lazy: fitted = examples *)
+             | "predict" "tree"                  (* eager: fitted = the tree *)
+FittedClause = "fitted" "{" { FittedExample } "}"          (* kNN *)
+             | "fitted" "tree" "{" { TreeNode } "}"        (* decision tree *)
+FittedExample = "example" "[" NUMBER { "," NUMBER } "]" "label" STRING
+
+(* A flat, index-referenced decision-tree node (root = node 0). A split sends
+   `feature <= threshold` to the Left child index, else Right; a leaf carries a
+   class and optional purity. *)
+TreeNode     = "node" NUMBER
+               ( "leaf" STRING [ NUMBER ]
+               | "split" STRING NUMBER "left" NUMBER "right" NUMBER )
+
+(* On a classify OR predict block, `using model "..."` replaces the features /
+   trained_on / label_attr clauses — they come from the resolved model. classify
+   → kNN model (inline examples); predict → decision-tree model (inline tree). *)
+UsingModelClause = "using" "model" STRING
+
 (* ─── detect ─────────────────────────────────────────────────────────────────── *)
 
 DetectBlock = "detect" STRING "{" DetectBody "}"
@@ -126,9 +171,36 @@ DetectBody  = Selector
 RemediateClause = "remediate" [ RemediateMode ] "{"
                     [ "requires" "role" STRING ]
                     [ "batch" STRING ]
-                    { MCPCall }
+                    { ActionStmt }
                   "}"
 RemediateMode   = "auto" | "propose" | "approve" | "queue"
+
+(* ─── Imperative control flow (issue #13 groundwork) ─────────────────────────────
+   An ActionStmt body is an ordered list of side effects with branching and
+   iteration. It reuses the existing Condition and Expr grammar wholesale — an
+   `if`/`while` guard is any Condition, evaluated per flagged row against that
+   row's entity via the same evaluator `when` / `having` use, so no new
+   expression language is introduced. Today ActionStmt bodies appear inside
+   `remediate`; `on` reactive rules and workflow steps adopt the same grammar
+   as their runtimes gain execution paths.
+
+   `for each` iterates a finite collection (a list literal or a list-valued
+   attr), so it is bounded by construction. `while` re-tests its guard after
+   each pass; because the current per-row context has no mutable loop state, a
+   `while` is capped (ast.DefaultWhileMaxIter) and the runtime errors on
+   overrun rather than spinning — full `while` semantics arrive with mutable
+   loop bindings (a follow-up). *)
+ActionStmt  = MCPCall
+            | IfStmt
+            | ForEachStmt
+            | WhileStmt
+
+IfStmt      = "if" Condition "{" { ActionStmt } "}"
+              [ "else" ( IfStmt | "{" { ActionStmt } "}" ) ]
+
+ForEachStmt = "for" "each" IDENT "in" Expr "{" { ActionStmt } "}"
+
+WhileStmt   = "while" Condition "{" { ActionStmt } "}"
 
 (* ScoreAnnotation declares the rule's self-asserted confidence, intended
    for auto-discovered rules ("mined from data with score 0.82").
@@ -489,11 +561,27 @@ PrimaryExpr = AttrRef
             | ContextRef
             | StepRef
             | CategoryTreeExpr
+            | CallExpr
             | "threshold" STRING       (* cached-threshold reference *)
             | "today"
             | Literal
             | IDENT
             | "(" Expr ")"
+
+(* CallExpr is a builtin string-valued function (issue #13 groundwork — a
+   lexer/compiler is mostly string work). The function name is an IDENT that
+   is one of the reserved string builtins, which is what disambiguates it from
+   a derived-predicate call (`overdue(v)`); any other IDENT "(" stays a
+   predicate call in condition position.
+     upper(s) lower(s) trim(s)     → string
+     length(s)                     → number (rune count)
+     substring(s, start [, len])   → string (rune-safe)
+     replace(s, old, new)          → string (replace all)
+     concat(a, b, ...)             → string
+     split(s, sep)                 → list        join(list, sep) → string *)
+CallExpr    = StringBuiltin "(" [ Expr { "," Expr } ] ")"
+StringBuiltin = "upper" | "lower" | "trim" | "length" | "substring"
+              | "replace" | "concat" | "split" | "join"
 
 AttrRef     = "attr" STRING
 

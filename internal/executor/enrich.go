@@ -50,7 +50,7 @@ func (e *Executor) execEnrich(ctx context.Context, gc *planner.GoComputation, va
 	fresh, hasFreshness := e.Client.(factstore.Freshness)
 	cutoff := durationValue(staleAfter)
 	now := time.Now()
-	attrsByID := e.fetchEntityAttrs(ctx, ids, referencedAttrs([]*ast.MCPCall{call}))
+	attrsByID := e.fetchEntityAttrs(ctx, ids, referencedAttrs([]ast.Action{&ast.MCPAction{Call: call}}))
 
 	refreshed := 0
 	for _, id := range ids {

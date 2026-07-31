@@ -201,6 +201,10 @@ func walkExprThresholdRefs(e ast.Expr, fn func(string)) {
 		for _, el := range ex.Elements {
 			walkExprThresholdRefs(el, fn)
 		}
+	case *ast.CallExpr:
+		for _, a := range ex.Args {
+			walkExprThresholdRefs(a, fn)
+		}
 	}
 }
 
@@ -392,27 +396,44 @@ func (v *validator) checkCompleteness() {
 				v.errAt(bb.Pos, fmt.Sprintf("collect %q requires a 'store results as <type>' clause", bb.Name), "")
 			}
 		case *ast.PredictBlock:
-			if len(bb.Features) == 0 {
-				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause", bb.Name), "")
-			}
-			if bb.TrainedOn == nil {
-				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'trained_on records where ...' clause naming the labeled examples", bb.Name), "")
-			}
-			if bb.LabelAttr == "" {
-				v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'label_attr \"<name>\"' clause naming the target column on training rows", bb.Name), "")
+			// A `using model "..."` block drives prediction from the model's
+			// inline fitted tree, so the inline training clauses aren't needed.
+			if bb.UsingModel != "" {
+				if bb.TrainedOn != nil {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q: `using model` and `trained_on` are mutually exclusive", bb.Name), "")
+				}
+			} else {
+				if len(bb.Features) == 0 {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'features' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.TrainedOn == nil {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'trained_on records where ...' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.LabelAttr == "" {
+					v.errAt(bb.Pos, fmt.Sprintf("predict %q requires a 'label_attr \"<name>\"' clause naming the target column on training rows", bb.Name), "")
+				}
 			}
 			if bb.Confidence != nil && (*bb.Confidence < 0 || *bb.Confidence > 1) {
 				v.errAt(bb.Pos, fmt.Sprintf("predict %q: confidence must be in [0, 1], got %v", bb.Name, *bb.Confidence), "")
 			}
 		case *ast.ClassifyBlock:
-			if len(bb.Features) == 0 {
-				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'features' clause", bb.Name), "")
-			}
-			if bb.TrainedOn == nil {
-				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'trained_on records where ...' clause naming the labeled examples", bb.Name), "")
-			}
-			if bb.LabelAttr == "" {
-				v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'label_attr \"<name>\"' clause naming the class column on training rows", bb.Name), "")
+			// A `using model "..."` block draws features, labels, and the
+			// training set from the referenced model, so the inline clauses
+			// are not required (and are mutually exclusive with trained_on).
+			if bb.UsingModel != "" {
+				if bb.TrainedOn != nil {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q: `using model` and `trained_on` are mutually exclusive", bb.Name), "")
+				}
+			} else {
+				if len(bb.Features) == 0 {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'features' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.TrainedOn == nil {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'trained_on records where ...' clause (or `using model \"...\"`)", bb.Name), "")
+				}
+				if bb.LabelAttr == "" {
+					v.errAt(bb.Pos, fmt.Sprintf("classify %q requires a 'label_attr \"<name>\"' clause naming the class column on training rows", bb.Name), "")
+				}
 			}
 			if bb.Confidence != nil && (*bb.Confidence < 0 || *bb.Confidence > 1) {
 				v.errAt(bb.Pos, fmt.Sprintf("classify %q: confidence must be in [0, 1], got %v", bb.Name, *bb.Confidence), "")
@@ -524,13 +545,42 @@ func (v *validator) checkRemediate(blockName string, r *ast.RemediateClause) {
 	if r == nil {
 		return
 	}
-	if len(r.Calls) == 0 {
+	if len(r.Body) == 0 {
 		v.errAt(r.Pos, fmt.Sprintf("%q: remediate block requires at least one mcp call", blockName), "")
 		return
 	}
-	for _, c := range r.Calls {
-		if c.Server == "" || c.Tool == "" {
-			v.errAt(r.Pos, fmt.Sprintf("%q: remediate mcp call requires a server and tool name", blockName), "")
+	calls := 0
+	v.walkActions(blockName, r.Pos, r.Body, &calls)
+	if calls == 0 {
+		v.errAt(r.Pos, fmt.Sprintf("%q: remediate block requires at least one mcp call", blockName), "")
+	}
+}
+
+// walkActions validates an imperative action body: every leaf MCP call needs
+// a server and tool, for-each needs a loop variable, and while must carry a
+// positive iteration cap. It tallies the reachable MCP calls so an all
+// control-flow body with no effect is rejected.
+func (v *validator) walkActions(blockName string, pos ast.Pos, actions []ast.Action, calls *int) {
+	for _, a := range actions {
+		switch act := a.(type) {
+		case *ast.MCPAction:
+			*calls++
+			if act.Call.Server == "" || act.Call.Tool == "" {
+				v.errAt(pos, fmt.Sprintf("%q: remediate mcp call requires a server and tool name", blockName), "")
+			}
+		case *ast.IfAction:
+			v.walkActions(blockName, act.Pos, act.Then, calls)
+			v.walkActions(blockName, act.Pos, act.Else, calls)
+		case *ast.ForEachAction:
+			if act.Variable == "" {
+				v.errAt(act.Pos, fmt.Sprintf("%q: for each requires a loop variable", blockName), "")
+			}
+			v.walkActions(blockName, act.Pos, act.Body, calls)
+		case *ast.WhileAction:
+			if act.MaxIter <= 0 {
+				v.errAt(act.Pos, fmt.Sprintf("%q: while loop needs a positive iteration bound", blockName), "")
+			}
+			v.walkActions(blockName, act.Pos, act.Body, calls)
 		}
 	}
 }

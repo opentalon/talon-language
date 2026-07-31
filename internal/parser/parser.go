@@ -109,6 +109,10 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseThresholdBlock()
 	case lexer.TokenDerive:
 		return p.parseDeriveBlock()
+	case lexer.TokenModel:
+		return p.parseModelBlock()
+	case lexer.TokenModule:
+		return p.parseModuleBlock()
 	case lexer.TokenTest:
 		return p.parseTestBlock()
 	default:
@@ -227,10 +231,6 @@ func (p *parser) parseRemediateClause() *ast.RemediateClause {
 	}
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
 		switch {
-		case p.at(lexer.TokenMcp):
-			if call := p.parseMCPCall(); call != nil {
-				rc.Calls = append(rc.Calls, call)
-			}
 		case p.at(lexer.TokenRequires):
 			// `requires role "manager"` — approver role for approve mode.
 			p.advance()
@@ -243,12 +243,92 @@ func (p *parser) parseRemediateClause() *ast.RemediateClause {
 			p.advance()
 			rc.Batch = p.expectString()
 		default:
-			p.errorf("unexpected token %q inside remediate block (expected mcp / requires role / batch)", p.peek().Value)
-			p.advance()
+			if act := p.parseActionStmt(); act != nil {
+				rc.Body = append(rc.Body, act)
+			}
 		}
 	}
 	p.expect(lexer.TokenRBrace)
 	return rc
+}
+
+// parseActionStmt parses one statement of an imperative action body: an MCP
+// call, or one of the control-flow forms (if/else, for-each, while). Shared
+// by remediate today; on / workflow bodies will reuse it. On an
+// unrecognised token it reports an error and advances to guarantee progress.
+func (p *parser) parseActionStmt() ast.Action {
+	switch {
+	case p.at(lexer.TokenIf):
+		return p.parseIfAction()
+	case p.at(lexer.TokenWhile):
+		return p.parseWhileAction()
+	case p.at(lexer.TokenFor) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenEach:
+		return p.parseForEachAction()
+	case p.at(lexer.TokenMcp):
+		if call := p.parseMCPCall(); call != nil {
+			return &ast.MCPAction{Call: call}
+		}
+		return nil
+	default:
+		p.errorf("unexpected token %q inside action body (expected mcp / if / for each / while / requires role / batch)", p.peek().Value)
+		p.advance()
+		return nil
+	}
+}
+
+// parseActionBody parses a `{ ActionStmt* }` block into an action list.
+func (p *parser) parseActionBody() []ast.Action {
+	if !p.expect(lexer.TokenLBrace) {
+		return nil
+	}
+	var body []ast.Action
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if act := p.parseActionStmt(); act != nil {
+			body = append(body, act)
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return body
+}
+
+// parseIfAction parses `if <condition> { ... } [ else { ... } | else if ... ]`.
+func (p *parser) parseIfAction() ast.Action {
+	tok := p.advance() // if
+	node := &ast.IfAction{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	node.Cond = p.parseOrCondition()
+	node.Then = p.parseActionBody()
+	if p.at(lexer.TokenElse) {
+		p.advance() // else
+		if p.at(lexer.TokenIf) {
+			// `else if` chains as a single nested IfAction.
+			node.Else = []ast.Action{p.parseIfAction()}
+		} else {
+			node.Else = p.parseActionBody()
+		}
+	}
+	return node
+}
+
+// parseForEachAction parses `for each <ident> in <expr> { ... }`. Unlike the
+// define-block ForEachClause (whose body is conditions), this iterates an
+// action body and its collection is any Expr, not just a bare identifier.
+func (p *parser) parseForEachAction() ast.Action {
+	tok := p.advance() // for
+	p.advance()        // each
+	variable := p.expectIdent()
+	p.expect(lexer.TokenIn)
+	over := p.parseExpr()
+	body := p.parseActionBody()
+	return &ast.ForEachAction{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}, Variable: variable, Over: over, Body: body}
+}
+
+// parseWhileAction parses `while <condition> { ... }`. The iteration cap is
+// implicit (ast.DefaultWhileMaxIter) — the runtime errors if it is hit.
+func (p *parser) parseWhileAction() ast.Action {
+	tok := p.advance() // while
+	cond := p.parseOrCondition()
+	body := p.parseActionBody()
+	return &ast.WhileAction{Pos: ast.Pos{Line: tok.Line, Col: tok.Col}, Cond: cond, Body: body, MaxIter: ast.DefaultWhileMaxIter}
 }
 
 // atLoggerStatement reports whether the parser is positioned at a
@@ -1245,6 +1325,16 @@ func (p *parser) parsePredictBlock() *ast.PredictBlock {
 			b.Features = p.parseFeaturesClause()
 		case lexer.TokenTrainedOn:
 			b.TrainedOn = p.parseTrainedOnClause()
+		case lexer.TokenUsing:
+			// `using model "ns.name"` — predict from a model's inline fitted
+			// tree instead of training on a trained_on query.
+			p.advance() // using
+			if p.at(lexer.TokenModel) {
+				p.advance()
+			} else {
+				p.errorf("expected 'model' after 'using', got %q", p.peek().Value)
+			}
+			b.UsingModel = p.expectString()
 		case lexer.TokenLabelAttr:
 			p.advance() // label_attr
 			b.LabelAttr = p.expectString()
@@ -1350,6 +1440,16 @@ func (p *parser) parseClassifyBlock() *ast.ClassifyBlock {
 			b.Features = p.parseFeaturesClause()
 		case lexer.TokenTrainedOn:
 			b.TrainedOn = p.parseTrainedOnClause()
+		case lexer.TokenUsing:
+			// `using model "ns.name"` — draw the training set from a named
+			// model's inline fitted examples instead of trained_on.
+			p.advance() // using
+			if p.at(lexer.TokenModel) {
+				p.advance()
+			} else {
+				p.errorf("expected 'model' after 'using', got %q", p.peek().Value)
+			}
+			b.UsingModel = p.expectString()
 		case lexer.TokenLabelAttr:
 			p.advance() // label_attr
 			b.LabelAttr = p.expectString()
@@ -1364,6 +1464,175 @@ func (p *parser) parseClassifyBlock() *ast.ClassifyBlock {
 		default:
 			p.errorf("unexpected token %q inside classify block", p.peek().Value)
 			p.synchronizeInBlock()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseModelBlock reads a `model "name" { ... }` block with inline fitted
+// params. v1 supports the kNN classifier: `classify knn [k N]`, a features
+// list, and a `fitted { example [...] label "..." }` set.
+func (p *parser) parseModelBlock() *ast.ModelBlock {
+	tok := p.advance() // model
+	name := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.ModelBlock{Name: name, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}, K: 5}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch {
+		case p.at(lexer.TokenClassify):
+			p.advance() // classify
+			algo := p.expectIdent()
+			if algo != "knn" {
+				p.errorf("unsupported classify algorithm %q (supports: knn)", algo)
+			}
+			b.Algo = "classify_knn"
+			if p.at(lexer.TokenIdent) && p.peek().Value == "k" {
+				p.advance()
+				n, _ := strconv.Atoi(p.expectNumberStr())
+				b.K = n
+			}
+		case p.at(lexer.TokenPredict):
+			p.advance() // predict
+			algo := p.expectIdent()
+			if algo != "tree" {
+				p.errorf("unsupported predict algorithm %q (supports: tree)", algo)
+			}
+			b.Algo = "predict_decision_tree"
+		case p.at(lexer.TokenFeatures):
+			b.Features = p.parseFeaturesClause()
+		case p.at(lexer.TokenFitted):
+			// `fitted tree { node ... }` (decision tree) vs `fitted { example
+			// ... }` (kNN labeled points).
+			if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenIdent && p.tokens[p.pos+1].Value == "tree" {
+				b.Tree = p.parseFittedTree()
+			} else {
+				b.Examples = p.parseFittedClause()
+			}
+		case p.at(lexer.TokenComputedFrom):
+			p.advance()
+			b.ComputedFrom = p.expectString()
+		case p.at(lexer.TokenValidUntil):
+			p.advance()
+			b.ValidUntil = p.expectString()
+		default:
+			p.errorf("unexpected token %q inside model block", p.peek().Value)
+			p.synchronizeInBlock()
+		}
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseFittedClause reads `fitted { example [n, n, ...] label "x" ... }`.
+func (p *parser) parseFittedClause() []ast.FittedExample {
+	p.advance() // fitted
+	if !p.expect(lexer.TokenLBrace) {
+		return nil
+	}
+	var out []ast.FittedExample
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !p.at(lexer.TokenExample) {
+			p.errorf("expected 'example' inside fitted block, got %q", p.peek().Value)
+			p.synchronizeInBlock()
+			break
+		}
+		p.advance() // example
+		p.expect(lexer.TokenLBracket)
+		var feats []float64
+		for !p.at(lexer.TokenRBracket) && !p.at(lexer.TokenEOF) {
+			n, _ := strconv.ParseFloat(p.expectNumberStr(), 64)
+			feats = append(feats, n)
+			if p.at(lexer.TokenComma) {
+				p.advance()
+			}
+		}
+		p.expect(lexer.TokenRBracket)
+		label := ""
+		if p.at(lexer.TokenLabel) {
+			p.advance()
+			label = p.expectString()
+		} else {
+			p.errorf("fitted example requires a `label \"...\"`")
+		}
+		out = append(out, ast.FittedExample{Features: feats, Label: label})
+	}
+	p.expect(lexer.TokenRBrace)
+	return out
+}
+
+// parseFittedTree reads `fitted tree { node N (leaf "C" [P] | split "F" T
+// left L right R) ... }` — the inline serialised decision tree.
+func (p *parser) parseFittedTree() []ast.TreeNode {
+	p.advance() // fitted
+	p.advance() // tree
+	if !p.expect(lexer.TokenLBrace) {
+		return nil
+	}
+	var out []ast.TreeNode
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !p.at(lexer.TokenIdent) || p.peek().Value != "node" {
+			p.errorf("expected 'node' in fitted tree, got %q", p.peek().Value)
+			p.synchronizeInBlock()
+			break
+		}
+		p.advance() // node
+		idx, _ := strconv.Atoi(p.expectNumberStr())
+		n := ast.TreeNode{Index: idx}
+		switch {
+		case p.at(lexer.TokenIdent) && p.peek().Value == "leaf":
+			p.advance()
+			n.Leaf = true
+			n.Class = p.expectString()
+			if p.at(lexer.TokenNumber) {
+				n.Purity, _ = strconv.ParseFloat(p.advance().Value, 64)
+			} else {
+				n.Purity = 1.0
+			}
+		case p.at(lexer.TokenIdent) && p.peek().Value == "split":
+			p.advance()
+			n.Feature = p.expectString()
+			n.Threshold, _ = strconv.ParseFloat(p.expectNumberStr(), 64)
+			if p.at(lexer.TokenIdent) && p.peek().Value == "left" {
+				p.advance()
+			}
+			n.Left, _ = strconv.Atoi(p.expectNumberStr())
+			if p.at(lexer.TokenIdent) && p.peek().Value == "right" {
+				p.advance()
+			}
+			n.Right, _ = strconv.Atoi(p.expectNumberStr())
+		default:
+			p.errorf("expected 'leaf' or 'split' after node %d, got %q", idx, p.peek().Value)
+		}
+		out = append(out, n)
+	}
+	p.expect(lexer.TokenRBrace)
+	return out
+}
+
+// parseModuleBlock reads `module "ns" { export <block> ... }`. Each exported
+// member is namespaced under ns (see ast.ModuleBlock.QualifiedName).
+func (p *parser) parseModuleBlock() *ast.ModuleBlock {
+	tok := p.advance() // module
+	ns := p.expectString()
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.ModuleBlock{Namespace: ns, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		if !p.at(lexer.TokenExport) {
+			p.errorf("module body only contains `export <block>`, got %q", p.peek().Value)
+			p.synchronizeInBlock()
+			continue
+		}
+		p.advance() // export
+		member := p.parseBlock()
+		if member != nil {
+			b.Members = append(b.Members, member)
 		}
 	}
 	p.expect(lexer.TokenRBrace)
@@ -2032,9 +2301,13 @@ func (p *parser) parseAtomCondition() ast.Condition {
 	default:
 		// `name(var)` — a derived-predicate call. An IDENT immediately
 		// followed by `(` matches no other condition form (aggregates and
-		// category_tree use dedicated keyword tokens), so it's unambiguous.
+		// category_tree use dedicated keyword tokens), so it's unambiguous —
+		// except for the string builtins (`upper(...)`, `substring(...)`),
+		// which are function-valued expressions used inside a comparison.
 		if p.at(lexer.TokenIdent) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenLParen {
-			return p.parsePredicateCall()
+			if !ast.IsStringBuiltin(p.peek().Value) {
+				return p.parsePredicateCall()
+			}
 		}
 		return p.parseExprCondition()
 	}
@@ -2485,6 +2758,10 @@ func (p *parser) parsePrimary() ast.Expr {
 	case lexer.TokenStatus, lexer.TokenCategory, lexer.TokenTypeKw,
 		lexer.TokenIdent, lexer.TokenRecords:
 		name := p.advance().Value
+		// `name(args...)` — a builtin function call (upper/substring/…).
+		if p.at(lexer.TokenLParen) {
+			return p.parseCallExpr(name)
+		}
 		// handle "tool_arg STRING" → treat as attr expr
 		if name == "tool_arg" && p.at(lexer.TokenString) {
 			argName := p.advance().Value
@@ -2496,6 +2773,21 @@ func (p *parser) parsePrimary() ast.Expr {
 		p.errorf("expected expression, got %q", p.peek().Value)
 		return &ast.LiteralExpr{Value: nil}
 	}
+}
+
+// parseCallExpr reads `name(arg, arg, ...)` — a builtin function call. The
+// opening `(` is the current token. Args are comma-separated expressions.
+func (p *parser) parseCallExpr(name string) ast.Expr {
+	p.expect(lexer.TokenLParen)
+	var args []ast.Expr
+	for !p.at(lexer.TokenRParen) && !p.at(lexer.TokenEOF) {
+		args = append(args, p.parseExpr())
+		if p.at(lexer.TokenComma) {
+			p.advance()
+		}
+	}
+	p.expect(lexer.TokenRParen)
+	return &ast.CallExpr{Func: name, Args: args}
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -1,11 +1,13 @@
 import { Token, TokenType } from "./lexer"
-import type {
-  Program,
-  Rule,
-  Define,
-  Action,
-  Condition,
-  Expr,
+import {
+  DEFAULT_WHILE_MAX_ITER,
+  STRING_BUILTINS,
+  type Program,
+  type Rule,
+  type Define,
+  type Action,
+  type Condition,
+  type Expr,
 } from "./ast"
 
 class Parser {
@@ -25,12 +27,59 @@ class Parser {
         rules.push(this.parseRule())
       } else if (this.at(TokenType.Define)) {
         defines.push(this.parseDefine())
+      } else if (this.at(TokenType.Module)) {
+        this.parseModule(rules, defines)
+      } else if (this.at(TokenType.Model)) {
+        // ML models are Go-only (the reactive runtime has no ML) — skip the
+        // whole block so a shared source file still loads.
+        this.skipBlock()
       } else {
         this.advance() // skip unknown
       }
     }
 
     return { rules, defines }
+  }
+
+  // parseModule flattens `module "ns" { export rule/define ... }` into the
+  // program's rules/defines with namespaced names (ns.name), mirroring the Go
+  // side. Exported `model` blocks are skipped (ML is Go-only). References use
+  // the fully-qualified name, e.g. `is "ns.helper"`.
+  private parseModule(rules: Rule[], defines: Define[]): void {
+    this.advance() // module
+    const ns = this.expectString()
+    this.expect(TokenType.LBrace)
+    while (!this.at(TokenType.RBrace) && !this.at(TokenType.EOF)) {
+      if (this.at(TokenType.Export)) this.advance()
+      if (this.at(TokenType.Rule)) {
+        const r = this.parseRule()
+        r.name = `${ns}.${r.name}`
+        rules.push(r)
+      } else if (this.at(TokenType.Define)) {
+        const d = this.parseDefine()
+        d.name = `${ns}.${d.name}`
+        defines.push(d)
+      } else if (this.at(TokenType.Model)) {
+        this.skipBlock()
+      } else {
+        this.advance()
+      }
+    }
+    this.expect(TokenType.RBrace)
+  }
+
+  // skipBlock consumes a block head (`model "x"`) and its balanced `{ ... }`
+  // body without interpreting it.
+  private skipBlock(): void {
+    this.advance() // block keyword
+    while (!this.at(TokenType.LBrace) && !this.at(TokenType.EOF)) this.advance()
+    if (this.at(TokenType.EOF)) return
+    let depth = 0
+    do {
+      if (this.at(TokenType.LBrace)) depth++
+      else if (this.at(TokenType.RBrace)) depth--
+      this.advance()
+    } while (depth > 0 && !this.at(TokenType.EOF))
   }
 
   private parseRule(): Rule {
@@ -45,16 +94,73 @@ class Parser {
       if (this.at(TokenType.When)) {
         this.advance()
         when = this.parseOrCondition()
-      } else if (this.at(TokenType.Do)) {
-        this.advance()
-        actions.push(this.parseAction())
       } else {
-        this.advance() // skip unknown
+        const action = this.parseActionStmt()
+        if (action) actions.push(action)
       }
     }
     this.expect(TokenType.RBrace)
 
     return { name, when, actions }
+  }
+
+  // ─── Action bodies (control flow) ────────────────────────
+
+  // parseActionStmt parses one statement of a rule/control-flow body: a leaf
+  // `do VERB args`, or an if/else, for-each, or while form. Returns null on
+  // an unrecognised token (after advancing) so the caller keeps progress.
+  private parseActionStmt(): Action | null {
+    if (this.at(TokenType.Do)) {
+      this.advance()
+      return this.parseAction()
+    }
+    if (this.at(TokenType.If)) return this.parseIfAction()
+    if (this.at(TokenType.For)) return this.parseForEachAction()
+    if (this.at(TokenType.While)) return this.parseWhileAction()
+    this.advance() // skip unknown
+    return null
+  }
+
+  // parseActionBody parses a `{ actionStmt* }` block.
+  private parseActionBody(): Action[] {
+    this.expect(TokenType.LBrace)
+    const body: Action[] = []
+    while (!this.at(TokenType.RBrace) && !this.at(TokenType.EOF)) {
+      const action = this.parseActionStmt()
+      if (action) body.push(action)
+    }
+    this.expect(TokenType.RBrace)
+    return body
+  }
+
+  private parseIfAction(): Action {
+    this.advance() // if
+    const cond = this.parseOrCondition()
+    const then = this.parseActionBody()
+    let els: Action[] = []
+    if (this.at(TokenType.Else)) {
+      this.advance()
+      // `else if` chains as a single nested IfAction.
+      els = this.at(TokenType.If) ? [this.parseIfAction()] : this.parseActionBody()
+    }
+    return { type: "if", cond, then, else: els }
+  }
+
+  private parseForEachAction(): Action {
+    this.advance() // for
+    this.expect(TokenType.Each)
+    const variable = this.advance().value
+    this.expect(TokenType.In)
+    const over = this.parseExpr()
+    const body = this.parseActionBody()
+    return { type: "forEach", variable, over, body }
+  }
+
+  private parseWhileAction(): Action {
+    this.advance() // while
+    const cond = this.parseOrCondition()
+    const body = this.parseActionBody()
+    return { type: "while", cond, body, maxIter: DEFAULT_WHILE_MAX_ITER }
   }
 
   private parseDefine(): Define {
@@ -72,7 +178,7 @@ class Parser {
   }
 
   private parseAction(): Action {
-    // VERB args... (until next `do` or `}`)
+    // VERB args... (until the next statement boundary)
     const verb = this.advance().value
     const args: Expr[] = []
 
@@ -80,6 +186,10 @@ class Parser {
       !this.at(TokenType.Do) &&
       !this.at(TokenType.RBrace) &&
       !this.at(TokenType.When) &&
+      !this.at(TokenType.If) &&
+      !this.at(TokenType.For) &&
+      !this.at(TokenType.While) &&
+      !this.at(TokenType.Else) &&
       !this.at(TokenType.EOF)
     ) {
       // Special: `to` separates target from expression in `set "X" to EXPR`
@@ -111,7 +221,7 @@ class Parser {
       args.push(this.parseExpr())
     }
 
-    return { verb, args }
+    return { type: "verb", verb, args }
   }
 
   // ─── Conditions ──────────────────────────────────────────
@@ -206,6 +316,18 @@ class Parser {
   private parsePrimary(): Expr {
     const tok = this.peek()
 
+    // List literal: [ e, e, ... ] — the collection for `for each`.
+    if (tok.type === TokenType.LBracket) {
+      this.advance()
+      const elements: Expr[] = []
+      while (!this.at(TokenType.RBracket) && !this.at(TokenType.EOF)) {
+        elements.push(this.parseExpr())
+        if (this.at(TokenType.Comma)) this.advance()
+      }
+      this.expect(TokenType.RBracket)
+      return { type: "list", elements }
+    }
+
     if (tok.type === TokenType.String) {
       this.advance()
       // Strings in condition/expression context are path references
@@ -224,12 +346,27 @@ class Parser {
 
     if (tok.type === TokenType.Ident) {
       this.advance()
+      // `name(args...)` — a builtin string function call.
+      if (this.at(TokenType.LParen) && STRING_BUILTINS.has(tok.value)) {
+        return this.parseCallArgs(tok.value)
+      }
       return { type: "path", value: tok.value }
     }
 
     // Fallback
     this.advance()
     return { type: "literal", value: tok.value }
+  }
+
+  private parseCallArgs(func: string): Expr {
+    this.expect(TokenType.LParen)
+    const args: Expr[] = []
+    while (!this.at(TokenType.RParen) && !this.at(TokenType.EOF)) {
+      args.push(this.parseExpr())
+      if (this.at(TokenType.Comma)) this.advance()
+    }
+    this.expect(TokenType.RParen)
+    return { type: "call", func, args }
   }
 
   // ─── Helpers ─────────────────────────────────────────────

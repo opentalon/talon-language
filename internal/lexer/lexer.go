@@ -116,6 +116,21 @@ const (
 	TokenMcp
 	TokenInvoke
 
+	// Keywords — control flow (issue #13 groundwork): imperative if/else,
+	// for-each, and bounded while inside action bodies (remediate today).
+	TokenIf
+	TokenElse
+	TokenWhile
+
+	// Keywords — ML modules: a `module` namespaces `export`ed members; a
+	// `model` block carries inline `fitted` examples; classify/predict
+	// reference one via `using model "ns.name"`.
+	TokenModule
+	TokenModel
+	TokenExport
+	TokenFitted
+	TokenExample
+
 	// Keywords — ML
 	TokenAnomaly
 	TokenCorrelatesWith
@@ -291,6 +306,14 @@ var keywords = map[string]TokenType{
 	"depends_on":        TokenDepends,
 	"mcp":               TokenMcp,
 	"invoke":            TokenInvoke,
+	"if":                TokenIf,
+	"else":              TokenElse,
+	"while":             TokenWhile,
+	"module":            TokenModule,
+	"model":             TokenModel,
+	"export":            TokenExport,
+	"fitted":            TokenFitted,
+	"example":           TokenExample,
 	"anomaly":           TokenAnomaly,
 	"correlates_with":   TokenCorrelatesWith,
 	"using":             TokenUsing,

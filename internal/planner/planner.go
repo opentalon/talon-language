@@ -7,6 +7,7 @@ import (
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/diagnostic"
 	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/talon-language/internal/mlmodel"
 )
 
 // GoComputation function names.
@@ -261,6 +262,14 @@ func QueryOf(q *FactQuery) factstore.Query {
 // Plan compiles a validated AST into per-block QueryPlans.
 // define blocks are inlined at compile time and produce no plan of their own.
 func Plan(prog *ast.Program) (map[string]*QueryPlan, diagnostic.List) {
+	return PlanWithModels(prog, nil)
+}
+
+// PlanWithModels is Plan with an optional registry of Go-provided ML models.
+// `using model "name"` references resolve against Talon `model`/`module`
+// blocks first, then this registry — so a host can serve models it built in
+// Go under the same qualified names Talon source uses.
+func PlanWithModels(prog *ast.Program, goModels *mlmodel.Registry) (map[string]*QueryPlan, diagnostic.List) {
 	// Inline cached `threshold "name"` references to their literal value before
 	// planning, so the query builder and Go condition evaluator only ever see
 	// plain numbers — the resolution is a single lookup, not a per-eval series
@@ -270,8 +279,32 @@ func Plan(prog *ast.Program) (map[string]*QueryPlan, diagnostic.List) {
 		prog:    prog,
 		defines: collectDefines(prog),
 		derives: collectDerives(prog),
+		models:  mlmodel.NewResolver(collectModels(prog), goModels),
 	}
 	return p.planAll()
+}
+
+// collectModels indexes every Talon `model` block by the name a reference
+// uses: top-level models by bare name, and `module "ns"` members by their
+// qualified `ns.name`.
+func collectModels(prog *ast.Program) map[string]*mlmodel.Model {
+	m := map[string]*mlmodel.Model{}
+	add := func(name string, b *ast.ModelBlock) {
+		m[name] = mlmodel.FromAST(b, attrVarName)
+	}
+	for _, b := range prog.Blocks {
+		switch bb := b.(type) {
+		case *ast.ModelBlock:
+			add(bb.Name, bb)
+		case *ast.ModuleBlock:
+			for _, mem := range bb.Members {
+				if mb, ok := mem.(*ast.ModelBlock); ok {
+					add(bb.QualifiedName(mb.Name), mb)
+				}
+			}
+		}
+	}
+	return m
 }
 
 // collectThresholds indexes cached threshold blocks by name → value.
@@ -463,6 +496,7 @@ type planner struct {
 	prog    *ast.Program
 	defines map[string]*ast.DefineBlock
 	derives map[string]*ast.DeriveBlock
+	models  *mlmodel.Resolver
 	diags   diagnostic.List
 }
 
@@ -731,7 +765,7 @@ func (p *planner) planDetect(b *ast.DetectBlock) *QueryPlan {
 			Function: FuncRemediateMCP,
 			Input:    last,
 			Params: map[string]any{
-				"calls":      b.Remediate.Calls,
+				"body":       b.Remediate.Body,
 				"block_name": b.Name,
 				"mode":       b.Remediate.Mode,
 				"role":       b.Remediate.Role,
@@ -842,7 +876,7 @@ func (p *planner) planRecommend(b *ast.RecommendBlock) *QueryPlan {
 			Function: FuncRemediateMCP,
 			Input:    "matches",
 			Params: map[string]any{
-				"calls":      b.Remediate.Calls,
+				"body":       b.Remediate.Body,
 				"block_name": b.Name,
 				"mode":       b.Remediate.Mode,
 				"role":       b.Remediate.Role,
@@ -863,10 +897,35 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 		BindVars: qb.bindVars(),
 		Into:     "candidates",
 	})
-	// The CART tree trains on a second, labeled query — the same supervised
-	// shape classify uses (ADR-0006 / ADR-0007). Auxiliary keeps these rows
-	// out of the candidate stream; the runtime binds them into Input.Training.
-	if b.TrainedOn != nil {
+	params := map[string]any{
+		"features":         b.Features,
+		"feature_names":    exprListToAttrNames(b.Features),
+		"label_attr":       b.LabelAttr,
+		"training_var":     "training",
+		"max_depth":        defaultMaxDepth,
+		"min_samples_leaf": defaultMinSamplesLeaf,
+	}
+
+	switch {
+	case b.UsingModel != "":
+		// `using model "ns.name"` — walk the model's inline fitted tree; no
+		// training query. Resolved from Talon or Go providers.
+		model, provider, ok := p.models.Resolve(b.UsingModel)
+		if !ok {
+			p.diags.AddError("", b.Pos.Line, b.Pos.Col,
+				fmt.Sprintf("predict %q: unknown model %q (no Talon `model` block or registered Go model)", b.Name, b.UsingModel), "")
+			break
+		}
+		params["feature_names"] = model.Features
+		params["fitted_tree"] = model.Tree
+		params["model_name"] = b.UsingModel
+		params["model_provider"] = provider
+
+	case b.TrainedOn != nil:
+		// The CART tree trains on a second, labeled query — the same
+		// supervised shape classify uses (ADR-0006 / ADR-0007). Auxiliary
+		// keeps these rows out of the candidate stream; the runtime binds
+		// them into Input.Training.
 		tqb := p.newQueryBuilder()
 		tqb.addSelector(ast.Selector{Target: "records", Conditions: b.TrainedOn.Conditions})
 		plan.Steps = append(plan.Steps, &FactQuery{
@@ -877,14 +936,6 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 		})
 	}
 
-	params := map[string]any{
-		"features":         b.Features,
-		"feature_names":    exprListToAttrNames(b.Features),
-		"label_attr":       b.LabelAttr,
-		"training_var":     "training",
-		"max_depth":        defaultMaxDepth,
-		"min_samples_leaf": defaultMinSamplesLeaf,
-	}
 	if b.Confidence != nil {
 		params["confidence"] = *b.Confidence
 	}
@@ -981,11 +1032,35 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 		Into:     "candidates",
 	})
 
-	// Supervised primitives need a second query: the labeled training set the
-	// vote draws from. It depends on the candidate query only in ordering
-	// (candidates first so it owns the flagged stream); the runtime resolves
-	// "training" into Input.Training before the MLComputation runs.
-	if b.TrainedOn != nil {
+	params := map[string]any{
+		"features":      b.Features,
+		"feature_names": exprListToAttrNames(b.Features),
+		"label_attr":    b.LabelAttr,
+		"training_var":  "training",
+		"k":             defaultKNN,
+	}
+
+	switch {
+	case b.UsingModel != "":
+		// `using model "ns.name"` — the model's inline fitted examples are the
+		// training set, resolved at plan time from Talon or Go providers. No
+		// training query is emitted; the fitted rows ride in the params.
+		model, provider, ok := p.models.Resolve(b.UsingModel)
+		if !ok {
+			p.diags.AddError("", b.Pos.Line, b.Pos.Col,
+				fmt.Sprintf("classify %q: unknown model %q (no Talon `model` block or registered Go model)", b.Name, b.UsingModel), "")
+			break
+		}
+		params["feature_names"] = model.Features
+		params["k"] = model.K
+		params["fitted_rows"] = model.TrainingRows()
+		params["model_name"] = b.UsingModel
+		params["model_provider"] = provider
+
+	case b.TrainedOn != nil:
+		// Supervised primitives need a second query: the labeled training set
+		// the vote draws from. The runtime resolves "training" into
+		// Input.Training before the MLComputation runs.
 		tqb := p.newQueryBuilder()
 		tqb.addSelector(ast.Selector{Target: "records", Conditions: b.TrainedOn.Conditions})
 		plan.Steps = append(plan.Steps, &FactQuery{
@@ -996,13 +1071,6 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 		})
 	}
 
-	params := map[string]any{
-		"features":      b.Features,
-		"feature_names": exprListToAttrNames(b.Features),
-		"label_attr":    b.LabelAttr,
-		"training_var":  "training",
-		"k":             defaultKNN,
-	}
 	if b.Confidence != nil {
 		params["confidence"] = *b.Confidence
 	}
@@ -1490,6 +1558,10 @@ func walkExprAttrs(e ast.Expr, add func(string)) {
 	case *ast.BinaryExpr:
 		walkExprAttrs(ee.Left, add)
 		walkExprAttrs(ee.Right, add)
+	case *ast.CallExpr:
+		for _, a := range ee.Args {
+			walkExprAttrs(a, add)
+		}
 	}
 }
 
