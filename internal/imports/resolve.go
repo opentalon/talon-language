@@ -47,7 +47,8 @@ func Resolve(prog *ast.Program, basePath string) (*ast.Program, diagnostic.List)
 		return prog, nil
 	}
 	r := &resolver{
-		seen: map[string]bool{},
+		seen:   map[string]bool{},
+		origin: map[ast.Block]string{},
 	}
 	if abs, err := filepath.Abs(basePath); err == nil {
 		r.seen[abs] = true
@@ -57,10 +58,11 @@ func Resolve(prog *ast.Program, basePath string) (*ast.Program, diagnostic.List)
 	diags = append(diags, importDiags...)
 
 	// Caller blocks shadow imported ones on name conflict — the file
-	// the user is actually editing wins. Conflicts among imports are
-	// flagged so the user notices.
+	// the user is actually editing wins — but the shadowing is an error,
+	// same as a duplicate block name within one file. Conflicts among
+	// imports are flagged as warnings so the user notices.
 	merged := &ast.Program{
-		Blocks: dedupeByName(importedBlocks, prog.Blocks, &diags, basePath),
+		Blocks: dedupeByName(importedBlocks, prog.Blocks, &diags, basePath, r.origin),
 	}
 	return merged, diags
 }
@@ -70,6 +72,9 @@ type resolver struct {
 	// regardless of how a path is spelled (relative vs absolute,
 	// `./a.talon` vs `a.talon`).
 	seen map[string]bool
+	// origin maps each imported block back to the file that declared
+	// it, so a name-collision diagnostic can point at both sides.
+	origin map[ast.Block]string
 }
 
 // walk loads each import recursively. `fromPath` is the file that
@@ -140,6 +145,9 @@ func (r *resolver) walk(imports []ast.ImportStatement, fromPath string) ([]ast.B
 			diags = append(diags, nestedDiags...)
 			out = append(out, nested...)
 		}
+		for _, b := range subProg.Blocks {
+			r.origin[b] = fileLabel
+		}
 		out = append(out, subProg.Blocks...)
 	}
 	return out, diags
@@ -190,11 +198,14 @@ func findModuleFile(baseDir, moduleName string) (string, bool) {
 	return found, found != ""
 }
 
-// dedupeByName resolves block-name collisions. Caller blocks always
-// win (the file the user is editing is authoritative). Conflicts
-// between two imports surface as warnings so the user can decide
-// whether to rename or remove.
-func dedupeByName(imported, caller []ast.Block, diags *diagnostic.List, basePath string) []ast.Block {
+// dedupeByName resolves block-name collisions. A caller block that
+// redefines an imported name is an error — silently replacing an
+// imported block is how a `strict` rule gets deleted without a
+// diagnostic, and a duplicate name within one file is already a hard
+// error. The caller block still wins so later phases see one block per
+// name. Conflicts between two imports surface as warnings so the user
+// can decide whether to rename or remove.
+func dedupeByName(imported, caller []ast.Block, diags *diagnostic.List, basePath string, origin map[ast.Block]string) []ast.Block {
 	byName := map[string]ast.Block{}
 	for _, b := range imported {
 		name := b.BlockName()
@@ -208,9 +219,21 @@ func dedupeByName(imported, caller []ast.Block, diags *diagnostic.List, basePath
 		}
 		byName[name] = b
 	}
-	// Caller blocks shadow imports.
+	// Caller blocks shadow imports — flag each one, then let it win.
 	for _, b := range caller {
-		byName[b.BlockName()] = b
+		name := b.BlockName()
+		if shadowed, ok := byName[name]; ok {
+			pos := blockPos(b)
+			from := origin[shadowed]
+			if from == "" {
+				from = "an imported file"
+			}
+			diags.AddError(basePath, pos.Line, pos.Col,
+				fmt.Sprintf("duplicate block name %q (already defined in imported file %s at line %d)",
+					name, from, blockPos(shadowed).Line),
+				"rename this block — redefining an imported name would silently replace it")
+		}
+		byName[name] = b
 	}
 
 	// Preserve order: imports first (in walk order), then caller

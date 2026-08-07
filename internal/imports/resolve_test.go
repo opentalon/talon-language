@@ -194,12 +194,85 @@ detect "X" {
 `)
 	prog := parseFile(t, mainPath)
 	merged, diags := Resolve(prog, mainPath)
-	if diags.HasErrors() {
-		t.Fatalf("Resolve errors: %v", diags)
+	if !diags.HasErrors() {
+		t.Fatalf("want an error for a caller block redefining an imported name, got %v", diags)
 	}
-	// Exactly 2 blocks (the caller's "active" wins, plus its detect).
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, `duplicate block name "active"`) && strings.Contains(d.Message, "shared.talon") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("want a duplicate-name diagnostic naming the imported file, got %v", diags)
+	}
+	// The caller's block still wins so downstream phases see one "active".
 	if len(merged.Blocks) != 2 {
 		t.Fatalf("want 2 blocks after shadowing, got %d", len(merged.Blocks))
+	}
+}
+
+// A caller must not be able to delete an imported strict rule by
+// redefining its name — `overrides` against a strict rule is already a
+// compile error, and this is the same defeat by another route.
+func TestResolveCallerCannotShadowStrictRule(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "base.talon", `
+strict rule "no direct prod writes" {
+  for records where type == "deploy" and attr "target" == "prod"
+  block "apply"
+  reason "prod writes need review"
+}
+`)
+	mainPath := writeFile(t, dir, "tenant.talon", `
+import "./base.talon"
+
+rule "no direct prod writes" {
+  for records where type == "deploy" and attr "target" == "nonexistent"
+  allow "apply"
+}
+`)
+	prog := parseFile(t, mainPath)
+	_, diags := Resolve(prog, mainPath)
+	if !diags.HasErrors() {
+		t.Fatalf("want an error for a caller rule redefining an imported strict rule, got %v", diags)
+	}
+	for _, d := range diags {
+		if strings.Contains(d.Message, `duplicate block name "no direct prod writes"`) {
+			return
+		}
+	}
+	t.Errorf("want a duplicate-name diagnostic, got %v", diags)
+}
+
+// Distinct names across an import boundary stay clean — no false
+// positives from the shadowing check.
+func TestResolveNoShadowNoDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "shared.talon", `
+define "active" {
+  status == "active"
+}
+`)
+	mainPath := writeFile(t, dir, "main.talon", `
+import "./shared.talon"
+
+define "idle" {
+  status == "idle"
+}
+
+detect "X" {
+  for records where is "active"
+  flag matching items
+}
+`)
+	prog := parseFile(t, mainPath)
+	merged, diags := Resolve(prog, mainPath)
+	if len(diags) != 0 {
+		t.Fatalf("want no diagnostics, got %v", diags)
+	}
+	if len(merged.Blocks) != 3 {
+		t.Fatalf("want 3 blocks, got %d", len(merged.Blocks))
 	}
 }
 
