@@ -59,8 +59,11 @@ detect "Logs mentioning fuel pump" {
 	if ft == nil {
 		t.Fatalf("expected FullText clause, got: %+v", q.Query.Where)
 	}
-	if ft.Query != "" {
-		t.Errorf("FullText.Query should be empty for phrase form, got %q", ft.Query)
+	// Expr drives the Datalevin wire form; Query carries the same phrase as
+	// plain text so backends without a structured search expression
+	// (MemoryStore, talon-db) can still evaluate the clause.
+	if ft.Query != "fuel pump" {
+		t.Errorf("FullText.Query = %q, want the phrase text as fallback", ft.Query)
 	}
 	if !strings.Contains(ft.Expr, `:phrase`) || !strings.Contains(ft.Expr, "fuel pump") {
 		t.Errorf("FullText.Expr missing :phrase / payload, got %q", ft.Expr)

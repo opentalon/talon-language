@@ -205,7 +205,11 @@ type Not struct {
 // Expr, when non-empty, replaces the quoted Query literal with a raw
 // Datalog query expression (e.g. `[:and {:phrase "little lamb"}
 // "fleece"]`). The caller owns the syntax; the renderer drops it in
-// verbatim. Mutually exclusive with Query — set one or the other.
+// verbatim, and it wins over Query on the Datalevin path. Backends
+// that can't interpret Expr (MemoryStore, talon-db) fall back to
+// Query, so callers emitting an Expr should also set Query to the
+// plain text it approximates — otherwise the clause matches nothing
+// there.
 type FullText struct {
 	Entity    Term
 	Query     string

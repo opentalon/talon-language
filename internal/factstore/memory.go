@@ -617,25 +617,45 @@ func matchOneWithRules(c Clause, attrs map[string]any, bindings map[string]any, 
 // matchFullText is MemoryStore's naive fallback for Datalevin's
 // `(fulltext $ "query")` predicate: it scans every string-valued
 // attribute on the entity and reports a match if any value contains
-// the query as a case-insensitive substring. A backend with real
-// FTS indices (Datalevin's `:db/fulltext true`) will out-perform
-// this trivially, but the fallback is enough for the REPL and
-// MemoryStore-backed tests.
+// the query as a case-insensitive substring. List-valued attributes
+// are scanned element by element. When Attribute is set the search is
+// scoped to that attribute. A backend with real FTS indices
+// (Datalevin's `:db/fulltext true`) will out-perform this trivially,
+// but the fallback is enough for the REPL and MemoryStore-backed
+// tests.
 func matchFullText(f *FullText, attrs map[string]any) bool {
 	if f.Query == "" {
 		return false
 	}
 	needle := strings.ToLower(f.Query)
-	for _, v := range attrs {
-		s, ok := v.(string)
+	if f.Attribute != "" {
+		v, ok := attrs[f.Attribute]
 		if !ok {
-			continue
+			return false
 		}
-		if strings.Contains(strings.ToLower(s), needle) {
+		return fullTextValueMatches(v, needle)
+	}
+	for _, v := range attrs {
+		if fullTextValueMatches(v, needle) {
 			return true
 		}
 	}
 	return false
+}
+
+// fullTextValueMatches reports whether one attribute value contains the
+// (already lower-cased) needle, quantifying over list elements.
+func fullTextValueMatches(v any, needle string) bool {
+	if elems, ok := stringElements(v); ok {
+		for _, e := range elems {
+			if strings.Contains(strings.ToLower(e), needle) {
+				return true
+			}
+		}
+		return false
+	}
+	s, ok := v.(string)
+	return ok && strings.Contains(strings.ToLower(s), needle)
 }
 
 // matchRuleCall resolves a RuleCall lazily: it asks the ruleCtx for
@@ -810,13 +830,47 @@ func compareNumbers(op string, a, b any) bool {
 	return false
 }
 
+// stringPredicate applies op to two string operands. When the left operand
+// is a list, the predicate quantifies existentially over its elements: it
+// holds if any element satisfies op. Non-string elements are skipped.
 func stringPredicate(a, b any, op func(string, string) bool) bool {
-	as, aok := a.(string)
 	bs, bok := b.(string)
-	if !aok || !bok {
+	if !bok {
+		return false
+	}
+	if elems, ok := stringElements(a); ok {
+		for _, e := range elems {
+			if op(e, bs) {
+				return true
+			}
+		}
+		return false
+	}
+	as, aok := a.(string)
+	if !aok {
 		return false
 	}
 	return op(as, bs)
+}
+
+// stringElements reports the string elements of a list-valued attribute.
+// The second result distinguishes "not a list" from "a list with no string
+// elements" — the latter matches nothing rather than falling back to the
+// scalar path.
+func stringElements(v any) ([]string, bool) {
+	switch list := v.(type) {
+	case []string:
+		return list, true
+	case []any:
+		out := make([]string, 0, len(list))
+		for _, e := range list {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 func toFloat(v any) (float64, bool) {

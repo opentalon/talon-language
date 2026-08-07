@@ -131,9 +131,10 @@ func matchNotWithRules(n *factstore.Not, attrs map[string]any, bindings map[stri
 }
 
 // matchFullText scans the document's string-valued attributes for the
-// query substring (case-insensitive). When Attribute is set, only that
-// attribute is searched. Expr (raw Datalog query) is not interpreted —
-// it's a Datalevin-specific escape hatch.
+// query substring (case-insensitive). List-valued attributes are scanned
+// element by element. When Attribute is set, only that attribute is
+// searched. Expr (raw Datalog query) is not interpreted — it's a
+// Datalevin-specific escape hatch.
 func matchFullText(f *factstore.FullText, attrs map[string]any) bool {
 	if f.Query == "" {
 		return false
@@ -144,16 +145,37 @@ func matchFullText(f *factstore.FullText, attrs map[string]any) bool {
 		if !ok {
 			return false
 		}
-		s, ok := v.(string)
-		return ok && strings.Contains(strings.ToLower(s), needle)
+		return fullTextValueMatches(v, needle)
 	}
 	for _, v := range attrs {
-		s, ok := v.(string)
-		if !ok {
-			continue
-		}
-		if strings.Contains(strings.ToLower(s), needle) {
+		if fullTextValueMatches(v, needle) {
 			return true
+		}
+	}
+	return false
+}
+
+// fullTextValueMatches reports whether one attribute value contains the
+// (already lower-cased) needle, quantifying over list elements.
+func fullTextValueMatches(v any, needle string) bool {
+	switch val := v.(type) {
+	case string:
+		return strings.Contains(strings.ToLower(val), needle)
+	case []string:
+		for _, e := range val {
+			if strings.Contains(strings.ToLower(e), needle) {
+				return true
+			}
+		}
+	case []any:
+		for _, e := range val {
+			s, ok := e.(string)
+			if !ok {
+				continue
+			}
+			if strings.Contains(strings.ToLower(s), needle) {
+				return true
+			}
 		}
 	}
 	return false

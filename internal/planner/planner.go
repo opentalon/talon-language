@@ -2103,6 +2103,12 @@ func (b *queryBuilder) addStringMatch(c *ast.StringMatchCondition) {
 			// escaped today because the lexer's STRING strips them and
 			// we re-wrap.
 			ft.Expr = fmt.Sprintf(`[:and {:phrase %q}]`, c.Value)
+			// Backends without structured search expressions
+			// (MemoryStore, talon-db) evaluate Query instead — a
+			// contiguous case-insensitive substring scan, which is the
+			// phrase semantics they can express. Without this the
+			// clause silently matched nothing there.
+			ft.Query = c.Value
 		} else {
 			ft.Query = c.Value
 		}

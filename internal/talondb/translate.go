@@ -108,19 +108,45 @@ func evalPredicate(op string, left, right any) bool {
 			return l >= r
 		}
 	case "starts_with":
-		ls, lok := left.(string)
-		rs, rok := right.(string)
-		return lok && rok && strings.HasPrefix(ls, rs)
+		return stringPredicate(left, right, strings.HasPrefix)
 	case "ends_with":
-		ls, lok := left.(string)
-		rs, rok := right.(string)
-		return lok && rok && strings.HasSuffix(ls, rs)
+		return stringPredicate(left, right, strings.HasSuffix)
 	case "contains":
-		ls, lok := left.(string)
-		rs, rok := right.(string)
-		return lok && rok && strings.Contains(ls, rs)
+		return stringPredicate(left, right, strings.Contains)
 	}
 	return false
+}
+
+// stringPredicate applies op to two string operands. A list-valued left
+// operand quantifies existentially — the predicate holds if any element
+// satisfies op. Non-string elements are skipped.
+func stringPredicate(left, right any, op func(string, string) bool) bool {
+	rs, rok := right.(string)
+	if !rok {
+		return false
+	}
+	switch list := left.(type) {
+	case []string:
+		for _, e := range list {
+			if op(e, rs) {
+				return true
+			}
+		}
+		return false
+	case []any:
+		for _, e := range list {
+			s, ok := e.(string)
+			if !ok {
+				continue
+			}
+			if op(s, rs) {
+				return true
+			}
+		}
+		return false
+	}
+	ls, lok := left.(string)
+	return lok && op(ls, rs)
 }
 
 func equalAny(a, b any) bool {

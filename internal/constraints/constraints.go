@@ -158,10 +158,20 @@ func evalConditionAt(c ast.Condition, record map[string]any, now time.Time) (boo
 		}
 		return cc.Negated, nil
 	case *ast.StringMatchCondition:
-		// contains/starts_with/ends_with against a string attribute.
+		// contains/starts_with/ends_with against a string attribute. A
+		// list-valued subject quantifies existentially: the condition holds
+		// if any element matches.
 		v, err := evalExpr(cc.Subject, record, now)
 		if err != nil {
 			return false, err
+		}
+		if elems, ok := stringElements(v); ok {
+			for _, e := range elems {
+				if stringMatch(e, cc.Op, cc.Value) {
+					return true, nil
+				}
+			}
+			return false, nil
 		}
 		s, ok := v.(string)
 		if !ok {
@@ -560,12 +570,39 @@ func stringMatch(s, op, needle string) bool {
 	switch op {
 	case "contains":
 		return contains(s, needle)
+	case "matches", "matches_phrase":
+		// Full text without an index: the same case-insensitive
+		// substring scan MemoryStore and talon-db use as their fallback.
+		if needle == "" {
+			return false
+		}
+		return contains(strings.ToLower(s), strings.ToLower(needle))
 	case "starts_with":
 		return len(s) >= len(needle) && s[:len(needle)] == needle
 	case "ends_with":
 		return len(s) >= len(needle) && s[len(s)-len(needle):] == needle
 	}
 	return false
+}
+
+// stringElements reports the string elements of a list-valued attribute.
+// The second result distinguishes "not a list" from "a list with no string
+// elements" — the latter matches nothing rather than falling back to the
+// scalar path.
+func stringElements(v any) ([]string, bool) {
+	switch list := v.(type) {
+	case []string:
+		return list, true
+	case []any:
+		out := make([]string, 0, len(list))
+		for _, e := range list {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 func contains(s, needle string) bool {
