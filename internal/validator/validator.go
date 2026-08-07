@@ -363,8 +363,8 @@ func (v *validator) checkCompleteness() {
 			v.checkRemediate(bb.Name, bb.Remediate)
 			v.checkDetectTune(bb)
 		case *ast.RuleBlock:
-			if bb.Block == nil && bb.Requires == nil && bb.Allow == nil {
-				v.errAt(bb.Pos, fmt.Sprintf("rule %q requires 'block', 'allow', or 'requires' clause", bb.Name), "")
+			if bb.Block == nil && bb.Requires == nil && bb.Allow == nil && len(bb.Do) == 0 {
+				v.errAt(bb.Pos, fmt.Sprintf("rule %q requires a 'block', 'allow', 'requires', or 'do' clause", bb.Name), "")
 			}
 		case *ast.RecommendBlock:
 			if bb.Suggest == nil {

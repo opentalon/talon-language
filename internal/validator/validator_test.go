@@ -140,7 +140,17 @@ func TestValidateRuleMissingAction(t *testing.T) {
 rule "No assign" {
   for records where type == "item"
   reason "Cannot assign"
-}`, "requires 'block'")
+}`, "requires a 'block', 'allow', 'requires', or 'do' clause")
+}
+
+// A `do` clause alone satisfies the rule-needs-an-action check: a rule that
+// hands the host actions has an outcome, even without a verdict clause.
+func TestValidateRuleDoOnlyIsEnough(t *testing.T) {
+	mustClean(t, `
+rule "Comment only" {
+  for records where type == "pr"
+  do comment "pr" "noted"
+}`)
 }
 
 func TestValidateRecommendMissingSuggest(t *testing.T) {

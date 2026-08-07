@@ -396,6 +396,20 @@ func runOneTuned(
 		}
 	}
 
+	// `do` actions: resolve the evaluated rule's action clauses against each
+	// flagged row and check the did / did_not assertions. Talon executes
+	// nothing here — the host does — so this asserts on the action payload the
+	// engine would hand back.
+	if len(tb.Actions) > 0 {
+		if b, ok := progBlocks[tb.WhenBlock]; ok {
+			fired := FireBlockActions(b, flagged, entities, time.Now().UTC())
+			result.Errors = append(result.Errors, checkActionAssertions(tb.Actions, fired)...)
+		} else {
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("did/did_not assertion on block %q, which has no source block", tb.WhenBlock))
+		}
+	}
+
 	// MCP mocking: when a test stubs or asserts MCP calls, run the block
 	// through the real executor (with a recording caller seeded from the
 	// mocks) so remediate / enrich / workflow mcp steps actually fire,

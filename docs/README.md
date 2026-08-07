@@ -13,6 +13,8 @@
   execution.
 - **[Optimizers](./optimizers/README.md)** — when to use Pareto vs GA vs
   ILP vs ACO; worked examples; combine block reference.
+- **[Actions](./actions.md)** — `do <verb> <args>` clauses on rules: what the
+  engine hands the host to carry out, and the `did` / `did_not` test assertions.
 - **[Defeasible reasoning](./defeasible.md)** — `strict` rules,
   `overrides`, priority-based conflict resolution.
 - **[Reactive rules](./reactive.md)** — `on change` / `on assert` /

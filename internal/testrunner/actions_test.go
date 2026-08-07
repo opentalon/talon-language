@@ -1,0 +1,241 @@
+package testrunner
+
+import (
+	"strings"
+	"testing"
+)
+
+// The ruleset every test here runs against: one rule with three actions,
+// covering a plain literal argument, an attr-valued argument, and an
+// interpolated one.
+const actionRules = `
+rule "Critical path" {
+  for records where type == "pr"
+    and attr "pr.changed_files" contains "internal/auth/"
+  requires "review.senior"
+  do require "review.senior"
+  do assign "pr" attr "user.owner"
+  do comment "pr" "Owned by {attr.user.owner}, {attr.pr.files_changed} files"
+}
+`
+
+func TestActionAssertionsPass(t *testing.T) {
+	testSrc := `
+test "critical path fires all three actions" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/session.go"]
+    attr 1 "pr.files_changed" 2
+    attr 1 "user.owner" "@alice"
+  }
+  when rule "Critical path"
+  expect {
+    flagged 1
+    did 1 require "review.senior"
+    did 1 assign "pr" "@alice"
+    did 1 comment "pr" contains "Owned by @alice"
+    did 1 comment "pr" contains "2 files"
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if len(results) != 1 {
+		t.Fatalf("want 1 result, got %d", len(results))
+	}
+	if !results[0].Passed {
+		t.Fatalf("assertions failed: %v", results[0].Errors)
+	}
+}
+
+// A row the rule never matched fires nothing, so did_not holds and did fails.
+func TestActionAssertionsUnmatchedRow(t *testing.T) {
+	testSrc := `
+test "off the critical path" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["README.md"]
+    attr 1 "user.owner" "@alice"
+  }
+  when rule "Critical path"
+  expect {
+    not flagged 1
+    did_not 1 require "review.senior"
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if !results[0].Passed {
+		t.Fatalf("assertions failed: %v", results[0].Errors)
+	}
+}
+
+func TestActionAssertionFailsOnWrongArgument(t *testing.T) {
+	testSrc := `
+test "wrong owner" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/session.go"]
+    attr 1 "user.owner" "@alice"
+  }
+  when rule "Critical path"
+  expect {
+    did 1 assign "pr" "@carol"
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if results[0].Passed {
+		t.Fatal("expected a failure: the rule assigned @alice, not @carol")
+	}
+	joined := strings.Join(results[0].Errors, "\n")
+	// The failure has to name what actually fired, or a red test tells you
+	// nothing about which of several actions went wrong.
+	if !strings.Contains(joined, "@alice") {
+		t.Errorf("failure should report the actual arguments, got: %s", joined)
+	}
+}
+
+func TestActionAssertionFailsOnUnfiredVerb(t *testing.T) {
+	testSrc := `
+test "verb never fired" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/session.go"]
+    attr 1 "user.owner" "@alice"
+  }
+  when rule "Critical path"
+  expect {
+    did 1 approve "pr"
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if results[0].Passed {
+		t.Fatal("expected a failure: the rule never fires `approve`")
+	}
+}
+
+// did_not is the assertion that catches an over-firing rule, so it has to fail
+// when the action did happen.
+func TestNegatedActionAssertionFailsWhenActionFired(t *testing.T) {
+	testSrc := `
+test "did_not on an action that fired" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/session.go"]
+    attr 1 "user.owner" "@alice"
+  }
+  when rule "Critical path"
+  expect {
+    did_not 1 require "review.senior"
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if results[0].Passed {
+		t.Fatal("expected a failure: `require` did fire for row 1")
+	}
+	if !strings.Contains(strings.Join(results[0].Errors, "\n"), "NOT") {
+		t.Errorf("failure should say the action was not expected, got: %v", results[0].Errors)
+	}
+}
+
+// Fewer matchers than arguments is a prefix match: asserting the verb and its
+// target should not require restating an interpolated comment body.
+func TestActionAssertionPrefixMatch(t *testing.T) {
+	testSrc := `
+test "prefix match on args" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/session.go"]
+    attr 1 "pr.files_changed" 2
+    attr 1 "user.owner" "@alice"
+  }
+  when rule "Critical path"
+  expect {
+    did 1 comment "pr"
+    did 1 comment
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if !results[0].Passed {
+		t.Fatalf("assertions failed: %v", results[0].Errors)
+	}
+}
+
+// More matchers than the action carries can never match — otherwise a typo'd
+// extra argument would pass silently.
+func TestActionAssertionRejectsExtraArgument(t *testing.T) {
+	testSrc := `
+test "too many args" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/session.go"]
+    attr 1 "user.owner" "@alice"
+  }
+  when rule "Critical path"
+  expect {
+    did 1 assign "pr" "@alice" "extra"
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if results[0].Passed {
+		t.Fatal("expected a failure: `assign` takes two arguments, not three")
+	}
+}
+
+// An attr argument the row does not carry resolves to nil rather than "", so
+// the action still fires and the host can tell the fact was missing.
+func TestActionArgumentFromMissingAttr(t *testing.T) {
+	testSrc := `
+test "missing owner" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/session.go"]
+  }
+  when rule "Critical path"
+  expect {
+    flagged 1
+    did 1 require "review.senior"
+    did_not 1 assign "pr" ""
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if !results[0].Passed {
+		t.Fatalf("assertions failed: %v", results[0].Errors)
+	}
+}
+
+// Every matched row gets its own copy of the actions, with its own arguments.
+func TestActionsFirePerMatchedRow(t *testing.T) {
+	testSrc := `
+test "two matched rows" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/a.go"]
+    attr 1 "user.owner" "@alice"
+    record 2 type "pr"
+    attr 2 "pr.changed_files" ["internal/auth/b.go"]
+    attr 2 "user.owner" "@bob"
+    record 3 type "pr"
+    attr 3 "pr.changed_files" ["docs/readme.md"]
+    attr 3 "user.owner" "@carol"
+  }
+  when rule "Critical path"
+  expect {
+    count == 2
+    did 1 assign "pr" "@alice"
+    did 2 assign "pr" "@bob"
+    did_not 1 assign "pr" "@bob"
+    did_not 3 assign "pr" "@carol"
+  }
+}
+`
+	results := runResults(t, actionRules, testSrc)
+	if !results[0].Passed {
+		t.Fatalf("assertions failed: %v", results[0].Errors)
+	}
+}

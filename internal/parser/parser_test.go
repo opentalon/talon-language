@@ -1597,3 +1597,134 @@ detect "C" {
 		t.Errorf("want 1 having condition, got %d", len(b.Having))
 	}
 }
+
+// ─── do clauses ────────────────────────────────────────────────────────────────
+
+func TestParseRuleWithDoActions(t *testing.T) {
+	prog := mustParse(t, `
+rule "Critical path" {
+  for records where type == "pr"
+  requires "review.senior"
+  do require "review.senior"
+  do assign "pr" attr "user.owner"
+  do comment "pr" "Owned by {attr.user.owner}"
+  reason "touches a critical path"
+  priority HIGH
+}`)
+	b := block[*ast.RuleBlock](t, prog, 0)
+	if len(b.Do) != 3 {
+		t.Fatalf("Do: got %d actions, want 3", len(b.Do))
+	}
+	if b.Do[0].Verb != "require" || len(b.Do[0].Args) != 1 {
+		t.Errorf("Do[0]: got %q with %d args", b.Do[0].Verb, len(b.Do[0].Args))
+	}
+	// The argument list stops at the next clause keyword, not at a newline.
+	if b.Do[2].Verb != "comment" || len(b.Do[2].Args) != 2 {
+		t.Errorf("Do[2]: got %q with %d args", b.Do[2].Verb, len(b.Do[2].Args))
+	}
+	if b.Reason == nil || b.Reason.Raw != "touches a critical path" {
+		t.Errorf("Reason: got %v — the do argument list swallowed it", b.Reason)
+	}
+	if b.Priority == nil || *b.Priority != ast.PriorityHigh {
+		t.Errorf("Priority: got %v", b.Priority)
+	}
+}
+
+// `block` is both a clause keyword and a plausible verb. The verb position
+// takes whatever token follows `do`, so `do block "pr.merge"` is an action and
+// not an empty verb followed by a stray verdict clause.
+func TestParseRuleDoBlockVerb(t *testing.T) {
+	prog := mustParse(t, `
+rule "Conflicts" {
+  for records where type == "pr"
+  do block "pr.merge"
+}`)
+	b := block[*ast.RuleBlock](t, prog, 0)
+	if len(b.Do) != 1 || b.Do[0].Verb != "block" {
+		t.Fatalf("Do: got %+v", b.Do)
+	}
+	if b.Block != nil {
+		t.Errorf("Block clause: got %v, want nil — `do block` is not a verdict", *b.Block)
+	}
+}
+
+func TestParseRuleDoRejectsQuotedVerb(t *testing.T) {
+	tokens, ld := lexer.Lex("t.talon", `
+rule "Quoted" {
+  for records where type == "pr"
+  do "approve" "pr"
+}`)
+	if ld.HasErrors() {
+		t.Fatalf("lex: %v", ld)
+	}
+	_, pd := Parse("t.talon", tokens)
+	if !pd.HasErrors() {
+		t.Fatal("expected a parse error for a quoted action verb")
+	}
+	found := false
+	for _, d := range pd {
+		if strings.Contains(d.Message, "must not be quoted") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected the quoted-verb diagnostic, got:\n%v", pd)
+	}
+}
+
+func TestParseRuleDoRequiresVerb(t *testing.T) {
+	tokens, ld := lexer.Lex("t.talon", `
+rule "Empty" {
+  for records where type == "pr"
+  do
+}`)
+	if ld.HasErrors() {
+		t.Fatalf("lex: %v", ld)
+	}
+	if _, pd := Parse("t.talon", tokens); !pd.HasErrors() {
+		t.Fatal("expected a parse error for `do` with no verb")
+	}
+}
+
+func TestParseTestListAttrAndActionAssertions(t *testing.T) {
+	prog := mustParse(t, `
+test "lists and actions" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/a.go", "README.md"]
+    attr 2 "pr.changed_files" []
+  }
+  when rule "R"
+  expect {
+    flagged 1
+    count == 1
+    did 1 approve "pr"
+    did 1 comment "pr" contains "owned by"
+    did_not 2 approve "pr"
+  }
+}`)
+	tb := block[*ast.TestBlock](t, prog, 0)
+	files, ok := tb.Given[1].Fields["pr.changed_files"].([]any)
+	if !ok || len(files) != 2 || files[0] != "internal/auth/a.go" {
+		t.Fatalf("list attr: got %#v", tb.Given[1].Fields["pr.changed_files"])
+	}
+	// An empty list is a value, not an absent attribute — the two differ to
+	// the evaluator and the test file has to be able to say which it means.
+	empty, ok := tb.Given[2].Fields["pr.changed_files"].([]any)
+	if !ok || len(empty) != 0 {
+		t.Fatalf("empty list attr: got %#v", tb.Given[2].Fields["pr.changed_files"])
+	}
+	if len(tb.Expect) != 2 {
+		t.Fatalf("Expect: got %d, want flagged + count", len(tb.Expect))
+	}
+	if len(tb.Actions) != 3 {
+		t.Fatalf("Actions: got %d, want 3", len(tb.Actions))
+	}
+	if !tb.Actions[1].Args[1].Contains {
+		t.Errorf("Actions[1] arg 1: want a contains matcher, got %+v", tb.Actions[1].Args[1])
+	}
+	if !tb.Actions[2].Negate {
+		t.Errorf("Actions[2]: want did_not")
+	}
+}

@@ -257,6 +257,9 @@ func (p *printer) rule(b *ast.RuleBlock) {
 	case b.Requires != nil:
 		p.line(requiresStr(b.Requires))
 	}
+	for _, do := range b.Do {
+		p.line(doStr(do))
+	}
 	if b.Reason != nil {
 		p.line("reason " + template(b.Reason))
 	}
@@ -745,10 +748,13 @@ func (p *printer) test(b *ast.TestBlock) {
 	for _, m := range b.Mocks {
 		p.mock(m)
 	}
-	if len(b.Expect) > 0 || len(b.MCPCalls) > 0 {
+	if len(b.Expect) > 0 || len(b.MCPCalls) > 0 || len(b.Actions) > 0 {
 		p.open("expect")
 		for _, a := range b.Expect {
 			p.line(testAssertionStr(a))
+		}
+		for _, a := range b.Actions {
+			p.line(actionAssertionStr(a))
 		}
 		for _, c := range b.MCPCalls {
 			p.line(mcpCalledStr(c))
@@ -793,6 +799,22 @@ func testAssertionStr(a ast.TestAssertion) string {
 	default:
 		return a.Kind + " " + a.Op + " " + a.Value
 	}
+}
+
+func actionAssertionStr(a ast.ActionAssertion) string {
+	s := "did"
+	if a.Negate {
+		s = "did_not"
+	}
+	s += fmt.Sprintf(" %d %s", a.ID, a.Verb)
+	for _, arg := range a.Args {
+		if arg.Contains {
+			s += " contains " + valueStr(arg.Value)
+			continue
+		}
+		s += " " + valueStr(arg.Value)
+	}
+	return s
 }
 
 func (p *printer) mock(m ast.MockClause) {
@@ -952,6 +974,14 @@ func requiresStr(r *ast.RequiresClause) string {
 		return "requires approval from role " + quote(r.Approval.Role)
 	}
 	return "requires " + quote(r.What)
+}
+
+func doStr(d *ast.DoAction) string {
+	s := "do " + d.Verb
+	for _, a := range d.Args {
+		s += " " + exprStr(a)
+	}
+	return s
 }
 
 func loggerStr(l *ast.LoggerAction) string {
@@ -1260,6 +1290,12 @@ func valueStr(v any) string {
 		return strconv.Itoa(v)
 	case int64:
 		return strconv.FormatInt(v, 10)
+	case []any:
+		parts := make([]string, len(v))
+		for i, e := range v {
+			parts[i] = valueStr(e)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
 	default:
 		return fmt.Sprintf("%v", v)
 	}
