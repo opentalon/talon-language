@@ -377,15 +377,17 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 		}
 		return nil, false
 	}
-	if tvd := testrunner.Validate(testProg, plans); tvd.HasErrors() {
+	// Validate against the merged program: checking a did / did_not verb needs
+	// the rule blocks, which the test program alone does not carry.
+	merged := *rulesProg
+	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
+	if tvd := testrunner.Validate(&merged, plans); tvd.HasErrors() {
 		for _, d := range tvd {
 			fmt.Fprintf(os.Stderr, "error: %s\n", d)
 		}
 		return nil, false
 	}
 
-	merged := *rulesProg
-	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
 	results := testrunner.Run(&merged, plans)
 	filtered := testrunner.FilterByName(results, filter)
 	fmt.Printf("==> %s: %d test(s)\n", testFile, len(filtered))
@@ -607,18 +609,19 @@ func runTrace() {
 		}
 		os.Exit(diagnostic.ExitError)
 	}
-	if tvd := testrunner.Validate(testProg, plans); tvd.HasErrors() {
-		for _, d := range tvd {
-			fmt.Fprintf(os.Stderr, "error: %s\n", d)
-		}
-		os.Exit(diagnostic.ExitError)
-	}
-
 	// Re-parse the rules so trace sees `tune against test` clauses.
 	rulesTokens, _ := lexer.Lex(rulesFile, string(rulesSrc))
 	rulesProg, _ := parser.Parse(rulesFile, rulesTokens)
 	mergedTrace := *rulesProg
 	mergedTrace.Blocks = append(mergedTrace.Blocks, testProg.Blocks...)
+	// Validate against the merged program: checking a did / did_not verb needs
+	// the rule blocks, which the test program alone does not carry.
+	if tvd := testrunner.Validate(&mergedTrace, plans); tvd.HasErrors() {
+		for _, d := range tvd {
+			fmt.Fprintf(os.Stderr, "error: %s\n", d)
+		}
+		os.Exit(diagnostic.ExitError)
+	}
 	traces := testrunner.Trace(&mergedTrace, plans)
 	if wantTest != "" {
 		filtered := traces[:0]

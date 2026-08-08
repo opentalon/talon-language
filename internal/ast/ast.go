@@ -81,10 +81,10 @@ type RuleBlock struct {
 	Do        []*DoAction // host-executed verbs, in source order
 	Reason    *Template
 	Priority  *Priority
-	Strict    bool     // strict rules cannot be overridden
-	Overrides []string // names of rules this rule defeats when both match
-	Score     *float64 // provenance annotation — the rule's own confidence
-	Source    *string  // provenance annotation — where the rule came from
+	Strict    bool            // strict rules cannot be overridden
+	Overrides []string        // names of rules this rule defeats when both match
+	Score     *float64        // provenance annotation — the rule's own confidence
+	Source    *string         // provenance annotation — where the rule came from
 	Loggers   []*LoggerAction // logger statements fired per matched row
 }
 
@@ -1081,6 +1081,9 @@ type ApprovalExpr struct {
 // execute it and does not know what any verb means — the host does. The
 // engine's job is to decide *which* actions fire, resolve their arguments
 // against the matched row, and hand them back as data.
+//
+// Actions are resolved in the test runner today (see testrunner.FireBlockActions);
+// the engine's decision trace does not carry them yet.
 //
 // The verb vocabulary is therefore deliberately open. A host that understands
 // `approve` / `block` / `comment` validates those names itself; the language

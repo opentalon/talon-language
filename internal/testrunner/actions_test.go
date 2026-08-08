@@ -3,6 +3,9 @@ package testrunner
 import (
 	"strings"
 	"testing"
+
+	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/talon-language/internal/planner"
 )
 
 // The ruleset every test here runs against: one rule with three actions,
@@ -238,4 +241,59 @@ test "two matched rows" {
 	if !results[0].Passed {
 		t.Fatalf("assertions failed: %v", results[0].Errors)
 	}
+}
+
+// A typo'd verb in a negated assertion would otherwise pass vacuously: the
+// misspelled verb never fires, so `did_not` always holds and the assertion that
+// exists to catch over-firing green-lights it. Validate rejects it instead.
+func TestValidateRejectsUnknownActionVerb(t *testing.T) {
+	testSrc := `
+test "typo" {
+  given {
+    record 1 type "pr"
+    attr 1 "pr.changed_files" ["internal/auth/a.go"]
+  }
+  when rule "Critical path"
+  expect {
+    did_not 1 aprove "pr"
+  }
+}
+`
+	diags := validateSrc(t, actionRules, testSrc)
+	if !diags.HasErrors() {
+		t.Fatal("expected a diagnostic for a verb the rule never does")
+	}
+	if !strings.Contains(diags[0].Message, "aprove") {
+		t.Errorf("diagnostic should name the verb, got: %v", diags[0].Message)
+	}
+}
+
+// The verbs the rule does actually carry validate clean, in both forms.
+func TestValidateAcceptsKnownActionVerbs(t *testing.T) {
+	testSrc := `
+test "known verbs" {
+  given { record 1 type "pr" }
+  when rule "Critical path"
+  expect {
+    did 1 comment "pr"
+    did_not 1 assign "pr"
+  }
+}
+`
+	if diags := validateSrc(t, actionRules, testSrc); diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+}
+
+func validateSrc(t *testing.T, rulesSrc, testSrc string) diagnostic.List {
+	t.Helper()
+	rulesProg := mustParse(t, "rules.talon", rulesSrc)
+	testProg := mustParse(t, "tests.talon.test", testSrc)
+	plans, pd := planner.Plan(rulesProg)
+	if pd.HasErrors() {
+		t.Fatalf("plan: %v", pd)
+	}
+	merged := *rulesProg
+	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
+	return Validate(&merged, plans)
 }

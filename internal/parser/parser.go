@@ -2049,7 +2049,16 @@ func (p *parser) parseDoClause() *ast.DoAction {
 	a := &ast.DoAction{Verb: verb, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
 	for !p.atRuleClauseBoundary() {
 		before := p.pos
-		a.Args = append(a.Args, p.parseExpr())
+		arg := p.parseExpr()
+		// Only the forms the action resolver understands are accepted. Anything
+		// else (arithmetic, list literals, negation) would resolve to nothing at
+		// run time and hand the host an empty argument with no diagnostic.
+		switch arg.(type) {
+		case *ast.AttrExpr, *ast.LiteralExpr, *ast.IdentExpr:
+			a.Args = append(a.Args, arg)
+		default:
+			p.errorf("unsupported argument to `do %s` — an action argument must be `attr \"name\"`, a literal, or a bare name", verb)
+		}
 		if p.pos == before {
 			// parseExpr consumed nothing — bail rather than spin.
 			p.errorf("unexpected token %q in arguments to `do %s`", p.peek().Value, verb)
@@ -3113,15 +3122,10 @@ func (p *parser) parseLiteralValue() any {
 	switch p.peek().Type {
 	case lexer.TokenString:
 		return p.expectString()
+	case lexer.TokenBool:
+		return p.advance().Value == "true"
 	case lexer.TokenIdent:
-		v := p.advance().Value
-		switch v {
-		case "true":
-			return true
-		case "false":
-			return false
-		}
-		return v
+		return p.advance().Value
 	default:
 		s := p.expectNumberStr()
 		if n, err := strconv.Atoi(s); err == nil {
@@ -3225,6 +3229,13 @@ func (p *parser) parseActionAssertion() ast.ActionAssertion {
 		Pos:    ast.Pos{Line: tok.Line, Col: tok.Col},
 	}
 	a.ID, _ = strconv.Atoi(p.expectNumberStr())
+	// The verb is required. Without this guard a `did 1` with the verb omitted
+	// eats the expect block's closing brace, which desyncs brace matching for
+	// everything after this test.
+	if p.at(lexer.TokenRBrace) || p.at(lexer.TokenEOF) || p.atTestAssertionBoundary() {
+		p.errorf("expected an action verb after `%s %d`", tok.Value, a.ID)
+		return a
+	}
 	a.Verb = p.advance().Value
 	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) && !p.atTestAssertionBoundary() {
 		if p.at(lexer.TokenContains) {
@@ -3232,7 +3243,15 @@ func (p *parser) parseActionAssertion() ast.ActionAssertion {
 			a.Args = append(a.Args, ast.ActionArgMatch{Contains: true, Value: p.expectString()})
 			continue
 		}
+		before := p.pos
 		a.Args = append(a.Args, ast.ActionArgMatch{Value: p.parseLiteralValue()})
+		if p.pos == before {
+			// parseLiteralValue consumed nothing — bail rather than spin.
+			p.errorf("unexpected token %q in arguments to `%s %d %s`",
+				p.peek().Value, tok.Value, a.ID, a.Verb)
+			p.advance()
+			break
+		}
 	}
 	return a
 }

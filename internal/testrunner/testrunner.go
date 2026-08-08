@@ -1212,6 +1212,44 @@ func Validate(prog *ast.Program, plans map[string]*planner.QueryPlan) diagnostic
 			diags.AddError("", tb.Pos.Line, tb.Pos.Col,
 				fmt.Sprintf("test %q references unknown block %q", tb.Name, tb.WhenBlock), "")
 		}
+		diags = append(diags, validateActionVerbs(prog, tb)...)
+	}
+	return diags
+}
+
+// validateActionVerbs rejects a did / did_not assertion naming a verb the block
+// under test never does. Without it a typo passes silently in the negated form:
+// `did_not 1 aprove "pr"` holds for the same reason a correct assertion would
+// fail, so the assertion that exists to catch over-firing green-lights it.
+func validateActionVerbs(prog *ast.Program, tb *ast.TestBlock) diagnostic.List {
+	var diags diagnostic.List
+	if len(tb.Actions) == 0 {
+		return diags
+	}
+	var rule *ast.RuleBlock
+	for _, b := range prog.Blocks {
+		if r, ok := b.(*ast.RuleBlock); ok && r.Name == tb.WhenBlock {
+			rule = r
+			break
+		}
+	}
+	if rule == nil {
+		// The rule source is not in this program (a caller that validates the
+		// test file alone, or a non-rule block under test). Nothing to check
+		// against — the unknown-block diagnostic already covers a real typo.
+		return diags
+	}
+	verbs := map[string]bool{}
+	for _, do := range rule.Do {
+		verbs[do.Verb] = true
+	}
+	for _, a := range tb.Actions {
+		if verbs[a.Verb] {
+			continue
+		}
+		diags.AddError("", a.Pos.Line, a.Pos.Col,
+			fmt.Sprintf("block %q has no `do %s` clause, so this assertion can never fail", tb.WhenBlock, a.Verb),
+			"check the verb spelling against the rule's `do` clauses")
 	}
 	return diags
 }

@@ -1,9 +1,10 @@
 package parser
 
 import (
-	"strings"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/opentalon/talon-language/internal/ast"
 	"github.com/opentalon/talon-language/internal/lexer"
@@ -1684,6 +1685,85 @@ rule "Empty" {
 	}
 	if _, pd := Parse("t.talon", tokens); !pd.HasErrors() {
 		t.Fatal("expected a parse error for `do` with no verb")
+	}
+}
+
+// An argument the action resolver cannot evaluate must be rejected here rather
+// than resolving to nothing at run time and handing the host a silently empty
+// payload.
+func TestParseRuleDoRejectsUnsupportedArgument(t *testing.T) {
+	for _, src := range []string{
+		`rule "R" { for records where type == "pr" do notify "chan" -1 }`,
+		`rule "R" { for records where type == "pr" do dispatch ["a", "b"] }`,
+		`rule "R" { for records where type == "pr" do x attr "n" + 1 }`,
+	} {
+		tokens, ld := lexer.Lex("t.talon", src)
+		if ld.HasErrors() {
+			t.Fatalf("lex %s: %v", src, ld)
+		}
+		if _, pd := Parse("t.talon", tokens); !pd.HasErrors() {
+			t.Errorf("expected a parse error for %s", src)
+		}
+	}
+}
+
+// A boolean argument used to hang the parser: `true` lexes as TokenBool, which
+// parseLiteralValue did not handle, so it fell through to a number parse that
+// errored without consuming the token.
+func TestParseActionAssertionBoolArgument(t *testing.T) {
+	done := make(chan *ast.Program, 1)
+	go func() {
+		done <- mustParse(t, `
+test "bool arg" {
+  given { record 1 type "pr" }
+  when rule "R"
+  expect { did 1 setflag "x" true }
+}`)
+	}()
+	select {
+	case prog := <-done:
+		b := block[*ast.TestBlock](t, prog, 0)
+		if len(b.Actions) != 1 || len(b.Actions[0].Args) != 2 {
+			t.Fatalf("Actions: got %+v", b.Actions)
+		}
+		if b.Actions[0].Args[1].Value != true {
+			t.Errorf("arg 1: got %#v, want true", b.Actions[0].Args[1].Value)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("parser hung on a boolean action-assertion argument")
+	}
+}
+
+// A `did` with the verb omitted must not eat the expect block's closing brace,
+// which would desync brace matching for the rest of the file.
+func TestParseActionAssertionRequiresVerb(t *testing.T) {
+	tokens, ld := lexer.Lex("t.talon", `
+test "no verb" {
+  given { record 1 type "pr" }
+  when rule "R"
+  expect { did 1 }
+}
+
+rule "Later" {
+  for records where type == "pr"
+  block "merge"
+}`)
+	if ld.HasErrors() {
+		t.Fatalf("lex: %v", ld)
+	}
+	prog, pd := Parse("t.talon", tokens)
+	if !pd.HasErrors() {
+		t.Fatal("expected a parse error for a did assertion with no verb")
+	}
+	// The rule after the malformed test must still parse.
+	var gotRule bool
+	for _, b := range prog.Blocks {
+		if r, ok := b.(*ast.RuleBlock); ok && r.Name == "Later" {
+			gotRule = true
+		}
+	}
+	if !gotRule {
+		t.Errorf("the block after the malformed assertion did not parse — brace matching desynced")
 	}
 }
 

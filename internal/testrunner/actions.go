@@ -124,27 +124,13 @@ func actionArgsMatch(want []ast.ActionArgMatch, got []any) bool {
 // Numbers are compared as float64 since the test parser and the fact store
 // disagree about int vs float for the same source text.
 func sameActionValue(want, got any) bool {
-	if wf, ok := actionNumeric(want); ok {
-		if gf, ok := actionNumeric(got); ok {
+	if wf, ok := numericValue(want); ok {
+		if gf, ok := numericValue(got); ok {
 			return wf == gf
 		}
 		return false
 	}
 	return want == got
-}
-
-func actionNumeric(v any) (float64, bool) {
-	switch n := v.(type) {
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	case float32:
-		return float64(n), true
-	case float64:
-		return n, true
-	}
-	return 0, false
 }
 
 func describeAssertion(a ast.ActionAssertion) string {

@@ -20,11 +20,14 @@ rule "Require human review for critical paths" {
 engine decides *which* actions fire, resolves their arguments against the
 matched row, and hands them back as data. Performing them is the host's job.
 
-That split is the point. A rule that fired and the action it produced are both
-in the trace whether or not the host ever carried it out, so "why did this
-happen?" has an exact answer that does not depend on the side effect having
-succeeded. It also means the same rule is testable with no host at all — see
-"Testing" below.
+That split is the point: an action is decided independently of whether it was
+carried out, so the same rule is testable with no host at all — see "Testing"
+below.
+
+> **Status.** Actions are resolved in the test runner only. `talon explain`,
+> `talon why` and `talon run` do not yet report them — `explain.Decision` has no
+> action field. Until that lands, `did` / `did_not` assertions are the only way
+> to observe what a rule does, and a decision trace does not record actions.
 
 ## Syntax
 
@@ -64,6 +67,10 @@ Arguments are ordinary expressions, resolved per matched row:
 | `"pr"` | the literal string |
 | `"Owned by {attr.user.owner}"` | the string with template refs interpolated |
 | `42`, `true` | the literal |
+
+Anything else — arithmetic (`attr "n" + 1`), negation (`-1`), a list literal —
+is a parse error, since the resolver would hand the host an empty argument with
+no diagnostic.
 
 An `attr` the row does not carry resolves to nothing rather than an empty
 string, so a host can tell a missing fact from a blank one. This matters more
