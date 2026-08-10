@@ -7,7 +7,7 @@ DuckDB, BigQuery, or any tool that reads CSV.
 ## Quick start
 
 ```sh
-talon explain rules.talon tests.talon.test --csv > decisions.csv
+talon explain rules.tln tests.tln.test --csv > decisions.csv
 ```
 
 In R:
@@ -35,7 +35,7 @@ One row per Decision, with these columns (stable order):
 
 | Column | Type | Description |
 |---|---|---|
-| `test` | text | Test block name the Decision came from (`.talon.test`) |
+| `test` | text | Test block name the Decision came from (`.tln.test`) |
 | `block` | text | Rule block name that produced the Decision |
 | `kind` | text | Block kind: `detect`, `forecast`, `rule`, etc. |
 | `entity_id` | integer | The entity the Decision applies to |

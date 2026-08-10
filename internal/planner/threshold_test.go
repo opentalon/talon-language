@@ -11,8 +11,8 @@ import (
 // TestPlanThresholdBlockNoPlan: a cached threshold block is data, not an
 // evaluable block — it produces no QueryPlan, and planning must not error.
 func TestPlanThresholdBlockNoPlan(t *testing.T) {
-	tokens, _ := lexer.Lex("t.talon", `threshold "gap" { value 18200 }`)
-	prog, pd := parser.Parse("t.talon", tokens)
+	tokens, _ := lexer.Lex("t.tln", `threshold "gap" { value 18200 }`)
+	prog, pd := parser.Parse("t.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}

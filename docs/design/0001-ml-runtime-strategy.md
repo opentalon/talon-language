@@ -246,7 +246,7 @@ These do not block the ADR but block individual milestones.
 2. **Model persistence.** `trained_on` implies a fit step. Where
    does a trained CART tree live? Options:
    (a) Datalevin as a blob attribute on a `:model` entity;
-   (b) side file under `~/.talon/models/`;
+   (b) side file under `~/.tln/models/`;
    (c) retrain every run (ok for small data, prohibitive at scale).
    Decision deferred to ADR-0003 (talon-db storage).
 3. **Re-train cadence.** Every run, scheduled, on demand?
@@ -260,7 +260,7 @@ These do not block the ADR but block individual milestones.
    (~400 LOC) — auditable, tests over the algorithm itself.
 6. **Testrunner ML support.** `testrunner.go:62` only evaluates the
    first `DatalevinQuery` step. To assert on predictions in
-   `.talon.test` files, `runOne` needs to walk the full step list
+   `.tln.test` files, `runOne` needs to walk the full step list
    through `mlruntime.Registry`. ~150 LOC. Counts toward M2 cost.
 
 ## Milestones (Tracking)

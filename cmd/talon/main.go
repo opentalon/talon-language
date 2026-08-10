@@ -87,7 +87,7 @@ func main() {
 
 func runBuild() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon build <file.talon>")
+		fmt.Fprintln(os.Stderr, "usage: talon build <file.tln>")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -109,7 +109,7 @@ func runBuild() {
 	prog, pd := parser.Parse(file, tokens)
 	allDiags = append(allDiags, pd...)
 
-	// Resolve `import "./other.talon"` directives by merging the named
+	// Resolve `import "./other.tln"` directives by merging the named
 	// files' blocks into the program before validation.
 	if len(prog.Imports) > 0 {
 		merged, importDiags := imports.Resolve(prog, path)
@@ -197,7 +197,7 @@ func runTest() {
 		os.Exit(diagnostic.ExitError)
 	}
 	if len(pairs) == 0 {
-		fmt.Fprintln(os.Stderr, "talon test: no .talon.test files found")
+		fmt.Fprintln(os.Stderr, "talon test: no .tln.test files found")
 		os.Exit(diagnostic.ExitError)
 	}
 
@@ -250,10 +250,10 @@ type testPair struct {
 }
 
 // resolveTestPairs maps the user-supplied paths to rules/test file pairs.
-// Two positional args of the form <rules.talon> <tests.talon.test> are paired
+// Two positional args of the form <rules.tln> <tests.tln.test> are paired
 // directly so the legacy CLI keeps working. Otherwise each path is treated as
-// a directory or `.talon.test` file; rules files are matched to tests by base
-// name (`foo.talon` ↔ `foo.talon.test`).
+// a directory or `.tln.test` file; rules files are matched to tests by base
+// name (`foo.tln` ↔ `foo.tln.test`).
 func resolveTestPairs(paths []string) ([]testPair, error) {
 	if len(paths) == 0 {
 		paths = []string{"."}
@@ -282,7 +282,7 @@ func resolveTestPairs(paths []string) ([]testPair, error) {
 			case "test":
 				testFiles = append(testFiles, p)
 			default:
-				return nil, fmt.Errorf("not a .talon or .talon.test file: %s", p)
+				return nil, fmt.Errorf("not a .tln or .tln.test file: %s", p)
 			}
 			continue
 		}
@@ -308,20 +308,20 @@ func resolveTestPairs(paths []string) ([]testPair, error) {
 
 	rulesByBase := map[string]string{}
 	for _, r := range rulesFiles {
-		base := strings.TrimSuffix(filepath.Base(r), ".talon")
+		base := strings.TrimSuffix(filepath.Base(r), ".tln")
 		rulesByBase[base] = r
 	}
 
 	var pairs []testPair
 	for _, t := range testFiles {
-		base := strings.TrimSuffix(filepath.Base(t), ".talon.test")
+		base := strings.TrimSuffix(filepath.Base(t), ".tln.test")
 		r, ok := rulesByBase[base]
 		if !ok {
 			sibling := strings.TrimSuffix(t, ".test")
 			if _, err := os.Stat(sibling); err == nil {
 				r = sibling
 			} else {
-				return nil, fmt.Errorf("no rules file found for %s (need %s.talon nearby)", t, base)
+				return nil, fmt.Errorf("no rules file found for %s (need %s.tln nearby)", t, base)
 			}
 		}
 		pairs = append(pairs, testPair{rules: r, test: t})
@@ -331,9 +331,9 @@ func resolveTestPairs(paths []string) ([]testPair, error) {
 
 func classifyTalonPath(p string) string {
 	switch {
-	case strings.HasSuffix(p, ".talon.test"):
+	case strings.HasSuffix(p, ".tln.test"):
 		return "test"
-	case strings.HasSuffix(p, ".talon"):
+	case strings.HasSuffix(p, ".tln"):
 		return "rules"
 	}
 	return ""
@@ -396,9 +396,9 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 }
 
 func runExecute() {
-	// Parse args: talon run <file.talon> [--store backend] [--datalevin URL] [--tenant NAME] [--seed file.talon.test]
+	// Parse args: talon run <file.tln> [--store backend] [--datalevin URL] [--tenant NAME] [--seed file.tln.test]
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon run <file.talon> [--store datalevin|memory|talon-db] [--datalevin URL] [--talondb unix:///path] [--tenant NAME] [--seed file.talon.test]")
+		fmt.Fprintln(os.Stderr, "usage: talon run <file.tln> [--store datalevin|memory|talon-db] [--datalevin URL] [--talondb unix:///path] [--tenant NAME] [--seed file.tln.test]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -484,7 +484,7 @@ func runExecute() {
 
 	exec := executor.NewExecutor(store)
 
-	// Seed from .talon.test file if requested
+	// Seed from .tln.test file if requested
 	if seedPath != "" {
 		seedSrc, err := os.ReadFile(seedPath)
 		if err != nil {
@@ -564,7 +564,7 @@ func runExecute() {
 
 func runTrace() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon trace <rules.talon> <tests.talon.test> [--test NAME]")
+		fmt.Fprintln(os.Stderr, "usage: talon trace <rules.tln> <tests.tln.test> [--test NAME]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -714,7 +714,7 @@ func printStep(num int, step planner.PlanStep) {
 // the given rules + tests files. See docs/design/0003-explainability.md.
 func runExplain() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon explain <rules.talon> <tests.talon.test> [--test NAME] [--json|--csv]")
+		fmt.Fprintln(os.Stderr, "usage: talon explain <rules.tln> <tests.tln.test> [--test NAME] [--json|--csv]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -836,10 +836,10 @@ func runExplain() {
 //
 // Usage:
 //
-//	talon why <rules.talon> <tests.talon.test> [--block NAME] [--entity ID] [--test NAME] [--json]
+//	talon why <rules.tln> <tests.tln.test> [--block NAME] [--entity ID] [--test NAME] [--json]
 func runWhy() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon why <rules.talon> <tests.talon.test> [--block NAME] [--entity ID] [--test NAME] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: talon why <rules.tln> <tests.tln.test> [--block NAME] [--entity ID] [--test NAME] [--json]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 

@@ -294,8 +294,8 @@ test "known verbs" {
 
 func validateSrc(t *testing.T, rulesSrc, testSrc string) diagnostic.List {
 	t.Helper()
-	rulesProg := mustParse(t, "rules.talon", rulesSrc)
-	testProg := mustParse(t, "tests.talon.test", testSrc)
+	rulesProg := mustParse(t, "rules.tln", rulesSrc)
+	testProg := mustParse(t, "tests.tln.test", testSrc)
 	plans, pd := planner.Plan(rulesProg)
 	if pd.HasErrors() {
 		t.Fatalf("plan: %v", pd)
@@ -326,7 +326,7 @@ rule "Critical path" {
 		{Kind: "attr", ID: 4, Fields: map[string]any{"files": 2.0}},
 	}
 
-	prog := mustParse(t, "rules.talon", rulesSrc)
+	prog := mustParse(t, "rules.tln", rulesSrc)
 	plans, pd := planner.Plan(prog)
 	if pd.HasErrors() {
 		t.Fatalf("plan: %v", pd)

@@ -14,7 +14,7 @@ import (
 
 // TestExecutor_OptimizePareto runs a 2-objective combine end-to-end against a
 // fake FactStore, exercising the parse → validate → plan → execute → frontier
-// pipeline. The fixture mirrors examples/fleet_dispatch.talon (cost vs urgency)
+// pipeline. The fixture mirrors examples/fleet_dispatch.tln (cost vs urgency)
 // so the test doubles as a sanity check on the example.
 func TestExecutor_OptimizePareto(t *testing.T) {
 	src := `
@@ -93,15 +93,15 @@ combine "Dispatch picks" {
 
 func mustPlan(t *testing.T, src, blockName string) *planner.QueryPlan {
 	t.Helper()
-	tokens, ld := lexer.Lex("test.talon", src)
+	tokens, ld := lexer.Lex("test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("test.talon", tokens)
+	prog, pd := parser.Parse("test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
-	if vd := validator.Validate("test.talon", prog); vd.HasErrors() {
+	if vd := validator.Validate("test.tln", prog); vd.HasErrors() {
 		t.Fatalf("validate: %v", vd)
 	}
 	plans, diags := planner.Plan(prog)

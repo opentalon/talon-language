@@ -17,15 +17,15 @@ import (
 // runs every block, returning the results keyed by block name.
 func runActionSrc(t *testing.T, src string, given []ast.TestDatum) map[string]*BlockResult {
 	t.Helper()
-	tokens, ld := lexer.Lex("actions.talon", src)
+	tokens, ld := lexer.Lex("actions.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("actions.talon", tokens)
+	prog, pd := parser.Parse("actions.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
-	if vd := validator.Validate("actions.talon", prog); vd.HasErrors() {
+	if vd := validator.Validate("actions.tln", prog); vd.HasErrors() {
 		t.Fatalf("validate: %v", vd)
 	}
 	plans, planDiags := planner.Plan(prog)

@@ -59,8 +59,8 @@ lands on an impure leaf (purity below `N`) is left **unflagged**.
 
 ## Worked example
 
-Files: [`examples/failure_risk.talon`](../examples/failure_risk.talon) and
-[`test/failure_risk.talon.test`](../test/failure_risk.talon.test).
+Files: [`examples/failure_risk.tln`](../examples/failure_risk.tln) and
+[`test/failure_risk.tln.test`](../test/failure_risk.tln.test).
 
 Ten retired machines are the training set, with a clean signal:
 
@@ -79,9 +79,9 @@ Two in-service machines are scored:
 Run it:
 
 ```
-./talon build   examples/failure_risk.talon
-./talon test    examples/failure_risk.talon test/failure_risk.talon.test
-./talon explain examples/failure_risk.talon test/failure_risk.talon.test
+./talon build   examples/failure_risk.tln
+./talon test    examples/failure_risk.tln test/failure_risk.tln.test
+./talon explain examples/failure_risk.tln test/failure_risk.tln.test
 ```
 
 `talon explain` shows the predicted class **and the split that produced it**:

@@ -1,0 +1,28 @@
+// Pick which spare parts to reorder this week. Multi-objective subset
+// selection with a budget constraint — the v2 GA path.
+//
+// Each stock_item has:
+//   - reorder_cost          cash to buy one unit (negative dimension)
+//   - days_until_stockout   urgency (small = urgent)
+//   - downstream_blast_radius   how many open work orders stall on a stockout
+//
+// Procurement gets a weekly budget. We want subsets of 3 parts that
+// minimize total cost AND minimize stockout risk (small days_until)
+// AND maximize blast-radius coverage — subject to staying within budget.
+//
+//   ./talon build examples/parts_reorder.tln
+//   ./talon test examples/parts_reorder.tln test/parts_reorder.tln.test
+//   ./talon explain examples/parts_reorder.tln test/parts_reorder.tln.test
+
+combine "Reorder picks" {
+  for records where type == "stock_item" and status == "active"
+  select 3 from records
+  minimize total(attr "reorder_cost")
+  minimize total(attr "days_until_stockout")
+  maximize total(attr "downstream_blast_radius")
+  subject_to total(attr "reorder_cost") <= 5000
+  return id, reorder_cost, days_until_stockout, downstream_blast_radius
+  label "Reorder {item.name}: cost ${attr.reorder_cost}, {attr.days_until_stockout}d to stockout, blocks {attr.downstream_blast_radius} jobs"
+  seed 42
+  priority HIGH
+}

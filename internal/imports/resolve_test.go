@@ -41,13 +41,13 @@ func parseFile(t *testing.T, path string) *ast.Program {
 
 func TestResolveSingleImport(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "shared.talon", `
+	writeFile(t, dir, "shared.tln", `
 define "active" {
   status == "active"
 }
 `)
-	mainPath := writeFile(t, dir, "main.talon", `
-import "./shared.talon"
+	mainPath := writeFile(t, dir, "main.tln", `
+import "./shared.tln"
 
 detect "Live" {
   for records where type == "item" and is "active"
@@ -71,20 +71,20 @@ detect "Live" {
 
 func TestResolveNestedImports(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "leaf.talon", `
+	writeFile(t, dir, "leaf.tln", `
 define "leaf_def" {
   type == "leaf"
 }
 `)
-	writeFile(t, dir, "middle.talon", `
-import "./leaf.talon"
+	writeFile(t, dir, "middle.tln", `
+import "./leaf.tln"
 
 define "middle_def" {
   is "leaf_def"
 }
 `)
-	mainPath := writeFile(t, dir, "main.talon", `
-import "./middle.talon"
+	mainPath := writeFile(t, dir, "main.tln", `
+import "./middle.tln"
 
 detect "All" {
   for records where is "middle_def"
@@ -111,22 +111,22 @@ detect "All" {
 
 func TestResolveDetectsCycle(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "a.talon", `
-import "./b.talon"
+	writeFile(t, dir, "a.tln", `
+import "./b.tln"
 
 define "a_def" {
   type == "a"
 }
 `)
-	writeFile(t, dir, "b.talon", `
-import "./a.talon"
+	writeFile(t, dir, "b.tln", `
+import "./a.tln"
 
 define "b_def" {
   type == "b"
 }
 `)
-	mainPath := writeFile(t, dir, "main.talon", `
-import "./a.talon"
+	mainPath := writeFile(t, dir, "main.tln", `
+import "./a.tln"
 
 detect "X" {
   for records where type == "x"
@@ -152,8 +152,8 @@ detect "X" {
 
 func TestResolveMissingFile(t *testing.T) {
 	dir := t.TempDir()
-	mainPath := writeFile(t, dir, "main.talon", `
-import "./nope.talon"
+	mainPath := writeFile(t, dir, "main.tln", `
+import "./nope.tln"
 
 detect "X" {
   for records where type == "item"
@@ -175,13 +175,13 @@ detect "X" {
 
 func TestResolveCallerShadowsImport(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "shared.talon", `
+	writeFile(t, dir, "shared.tln", `
 define "active" {
   status == "active"
 }
 `)
-	mainPath := writeFile(t, dir, "main.talon", `
-import "./shared.talon"
+	mainPath := writeFile(t, dir, "main.tln", `
+import "./shared.tln"
 
 define "active" {
   status == "running"
@@ -199,7 +199,7 @@ detect "X" {
 	}
 	found := false
 	for _, d := range diags {
-		if strings.Contains(d.Message, `duplicate block name "active"`) && strings.Contains(d.Message, "shared.talon") {
+		if strings.Contains(d.Message, `duplicate block name "active"`) && strings.Contains(d.Message, "shared.tln") {
 			found = true
 		}
 	}
@@ -217,15 +217,15 @@ detect "X" {
 // compile error, and this is the same defeat by another route.
 func TestResolveCallerCannotShadowStrictRule(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "base.talon", `
+	writeFile(t, dir, "base.tln", `
 strict rule "no direct prod writes" {
   for records where type == "deploy" and attr "target" == "prod"
   block "apply"
   reason "prod writes need review"
 }
 `)
-	mainPath := writeFile(t, dir, "tenant.talon", `
-import "./base.talon"
+	mainPath := writeFile(t, dir, "tenant.tln", `
+import "./base.tln"
 
 rule "no direct prod writes" {
   for records where type == "deploy" and attr "target" == "nonexistent"
@@ -249,13 +249,13 @@ rule "no direct prod writes" {
 // positives from the shadowing check.
 func TestResolveNoShadowNoDiagnostic(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "shared.talon", `
+	writeFile(t, dir, "shared.tln", `
 define "active" {
   status == "active"
 }
 `)
-	mainPath := writeFile(t, dir, "main.talon", `
-import "./shared.talon"
+	mainPath := writeFile(t, dir, "main.tln", `
+import "./shared.tln"
 
 define "idle" {
   status == "idle"
@@ -278,19 +278,19 @@ detect "X" {
 
 func TestResolveSiblingConflictWarns(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "left.talon", `
+	writeFile(t, dir, "left.tln", `
 define "shared" {
   type == "left"
 }
 `)
-	writeFile(t, dir, "right.talon", `
+	writeFile(t, dir, "right.tln", `
 define "shared" {
   type == "right"
 }
 `)
-	mainPath := writeFile(t, dir, "main.talon", `
-import "./left.talon"
-import "./right.talon"
+	mainPath := writeFile(t, dir, "main.tln", `
+import "./left.tln"
+import "./right.tln"
 
 detect "X" {
   for records where type == "item"
@@ -328,12 +328,12 @@ detect "X" {
   flag matching items
 }
 
-import "./other.talon"
+import "./other.tln"
 `
-	mainPath := writeFile(t, dir, "main.talon", src)
+	mainPath := writeFile(t, dir, "main.tln", src)
 	srcBytes, _ := os.ReadFile(mainPath)
-	tokens, _ := lexer.Lex("main.talon", string(srcBytes))
-	_, pd := parser.Parse("main.talon", tokens)
+	tokens, _ := lexer.Lex("main.tln", string(srcBytes))
+	_, pd := parser.Parse("main.tln", tokens)
 	if !pd.HasErrors() {
 		t.Fatal("expected parse error for late import")
 	}
@@ -355,9 +355,9 @@ detect "X" {
   flag matching items
 }
 `
-	tokens, _ := lexer.Lex("test.talon", src)
-	prog, _ := parser.Parse("test.talon", tokens)
-	merged, diags := Resolve(prog, "test.talon")
+	tokens, _ := lexer.Lex("test.tln", src)
+	prog, _ := parser.Parse("test.tln", tokens)
+	merged, diags := Resolve(prog, "test.tln")
 	if diags.HasErrors() {
 		t.Fatalf("no-import resolve should be clean: %v", diags)
 	}

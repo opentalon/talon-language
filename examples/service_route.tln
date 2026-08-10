@@ -1,0 +1,28 @@
+// Service-technician route planning. The garage has 6 vehicles overdue
+// for service scattered across a depot's yard. What visit order minimizes
+// the technician's walking distance?
+//
+// This is a routing/sequencing problem — fundamentally different from
+// "pick K from N" (combine + select) or "rank by trade-offs" (combine
+// without select). ACO is the right backend; combine + `sequence` opts
+// in. The technician visits every flagged vehicle exactly once.
+//
+//   ./talon build examples/service_route.tln
+//   ./talon test examples/service_route.tln test/service_route.tln.test
+//   ./talon explain examples/service_route.tln test/service_route.tln.test
+
+define "needs_service" {
+  type == "item"
+  and category == "Vehicles"
+  and status == "overdue"
+}
+
+combine "Service tour" {
+  for records where is "needs_service"
+  sequence
+  coordinates attr "yard_x", attr "yard_y"
+  return id, yard_x, yard_y
+  label "Stop {item.name} at ({attr.yard_x}, {attr.yard_y})"
+  seed 42
+  priority HIGH
+}

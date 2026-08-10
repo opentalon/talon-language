@@ -13,8 +13,8 @@ rule, or prototyping policy against fresh data.
 
 ## A worked example: insurance-claims auto-adjudication
 
-This walkthrough uses [`examples/insurance_claims.talon`](../examples/insurance_claims.talon)
-and [`test/insurance_claims.talon.test`](../test/insurance_claims.talon.test).
+This walkthrough uses [`examples/insurance_claims.tln`](../examples/insurance_claims.tln)
+and [`test/insurance_claims.tln.test`](../test/insurance_claims.tln.test).
 It's modelled on the worked example in
 [Code Mode for MCP](https://opakalex.github.io/posts/code-mode-for-mcp/) —
 an LLM extracts facts from claim invoices, Talon makes the deterministic
@@ -25,13 +25,13 @@ Load the rules and the test fixture's facts:
 ```
 $ talon repl
 talon dev — type :help for commands, :quit to exit
-talon> :load examples/insurance_claims.talon
-  loaded examples/insurance_claims.talon: 5 block(s), 0 fact(s)
-talon> :load test/insurance_claims.talon.test
-  loaded test/insurance_claims.talon.test: 0 block(s), 28 fact(s)
+talon> :load examples/insurance_claims.tln
+  loaded examples/insurance_claims.tln: 5 block(s), 0 fact(s)
+talon> :load test/insurance_claims.tln.test
+  loaded test/insurance_claims.tln.test: 0 block(s), 28 fact(s)
 ```
 
-Note `:load` of a `.talon.test` file pulls the `given { … }` facts into
+Note `:load` of a `.tln.test` file pulls the `given { … }` facts into
 the session — useful for replaying a known scenario interactively.
 
 See what's loaded:

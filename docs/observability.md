@@ -40,7 +40,7 @@ no log noise out of the box. Opt into operational visibility with
 ### Pipe runtime events to a log aggregator
 
 ```bash
-talon --log-format=json --log-level=info run rules.talon --seed fixtures.talon.test 2>events.jsonl
+talon --log-format=json --log-level=info run rules.tln --seed fixtures.tln.test 2>events.jsonl
 jq '.' events.jsonl
 ```
 
@@ -62,8 +62,8 @@ Each line decodes as:
 
 ```bash
 talon --log-level=info repl
-talon> :load examples/cement_explain.talon
-talon> :load test/cement_explain.talon.test
+talon> :load examples/cement_explain.tln
+talon> :load test/cement_explain.tln.test
 talon> :eval "Cement running low"
 time=… level=INFO msg=block_eval rule="Cement running low" type=detect matched=1 duration_ms=0
   "Cement running low": 1 detection(s) — records [808]

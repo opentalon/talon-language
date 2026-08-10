@@ -9,7 +9,7 @@ import (
 
 // ExampleDetect shows the printer's primary use: turning a structured Go spec
 // (here built by hand, but typically produced by a host-side discovery
-// algorithm) into canonical .talon source that is guaranteed to re-parse.
+// algorithm) into canonical .tln source that is guaranteed to re-parse.
 func ExampleDetect() {
 	high := ast.PriorityHigh
 	label := ast.ParseTemplate("{item.name}: {attr.days_idle} days idle")

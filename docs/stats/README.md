@@ -14,7 +14,7 @@ and analyst tooling:
 
 ## Reading order
 
-1. Try the example: `talon test examples/grubbs_consumption.talon test/grubbs_consumption.talon.test`
+1. Try the example: `talon test examples/grubbs_consumption.tln test/grubbs_consumption.tln.test`
 2. Read [grubbs.md](./grubbs.md) for the algorithm + when to prefer Grubbs over z-score
 3. Pipe the explain output to CSV: `talon explain ... --csv > out.csv`, then read in R / Python / SQL
 4. Read [csv-export.md](./csv-export.md) for the schema + comparison with `--json`

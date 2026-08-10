@@ -1,0 +1,70 @@
+// Fixture for examples/insurance_claims.tln. Four claims, one per outcome:
+//
+//   901 — blacklisted provider             → rejected (rule)
+//   902 — in-network, within cap           → auto-approved (rule)
+//   903 — in-network, OVER cap             → needs review (detect)
+//   904 — out-of-network                   → needs pre-auth (detect)
+
+test "blacklisted provider rejected" {
+  given {
+    record 901 type "claim"
+    attr 901 "provider_id" "clinic_zh_01"
+    attr 901 "provider_status" "blacklisted"
+    attr 901 "service_category" "outpatient"
+    attr 901 "amount_chf" 250
+    attr 901 "per_visit_cap" 500
+    attr 901 "holder_id" "P-882341"
+  }
+  when rule "Reject blacklisted provider"
+  expect {
+    flagged 901
+  }
+}
+
+test "in-network within cap auto-approved" {
+  given {
+    record 902 type "claim"
+    attr 902 "provider_id" "clinic_zh_02"
+    attr 902 "provider_status" "in_network"
+    attr 902 "service_category" "outpatient"
+    attr 902 "amount_chf" 240
+    attr 902 "per_visit_cap" 500
+    attr 902 "holder_id" "P-882342"
+  }
+  when rule "Auto-approve in-network routine"
+  expect {
+    flagged 902
+  }
+}
+
+test "claim over the per-visit cap flagged" {
+  given {
+    record 903 type "claim"
+    attr 903 "provider_id" "clinic_zh_03"
+    attr 903 "provider_status" "in_network"
+    attr 903 "service_category" "outpatient"
+    attr 903 "amount_chf" 1200
+    attr 903 "per_visit_cap" 500
+    attr 903 "holder_id" "P-882343"
+  }
+  when detect "Over the per-visit cap"
+  expect {
+    flagged 903
+  }
+}
+
+test "out-of-network claim flagged" {
+  given {
+    record 904 type "claim"
+    attr 904 "provider_id" "clinic_zh_other"
+    attr 904 "provider_status" "out_of_network"
+    attr 904 "service_category" "outpatient"
+    attr 904 "amount_chf" 800
+    attr 904 "per_visit_cap" 500
+    attr 904 "holder_id" "P-882344"
+  }
+  when detect "Out-of-network provider"
+  expect {
+    flagged 904
+  }
+}

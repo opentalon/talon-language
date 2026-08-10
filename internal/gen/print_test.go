@@ -83,12 +83,12 @@ var posType = reflect.TypeOf(ast.Pos{})
 // the real, validator-clean rules users write, so they are the highest-value
 // corpus for the "nothing dropped, nothing malformed" invariant.
 func TestRoundTripExamples(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.talon"))
+	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.tln"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(paths) == 0 {
-		t.Fatal("no example .talon files found")
+		t.Fatal("no example .tln files found")
 	}
 	for _, path := range paths {
 		path := path
@@ -102,19 +102,19 @@ func TestRoundTripExamples(t *testing.T) {
 	}
 }
 
-// TestRoundTripExampleTests round-trips the .talon.test files, exercising the
+// TestRoundTripExampleTests round-trips the .tln.test files, exercising the
 // test/given/expect/mock block shapes the example programs don't.
 func TestRoundTripExampleTests(t *testing.T) {
 	var paths []string
 	for _, dir := range []string{"examples", "test"} {
-		found, err := filepath.Glob(filepath.Join("..", "..", dir, "*.talon.test"))
+		found, err := filepath.Glob(filepath.Join("..", "..", dir, "*.tln.test"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		paths = append(paths, found...)
 	}
 	if len(paths) == 0 {
-		t.Fatal("no .talon.test files found")
+		t.Fatal("no .tln.test files found")
 	}
 	for _, path := range paths {
 		path := path
@@ -490,8 +490,8 @@ detect "Recall candidates" {
   flag matching items
   priority HIGH
 }`,
-		"import_header": `import "./shared.talon"
-import "./more.talon"
+		"import_header": `import "./shared.tln"
+import "./more.tln"
 
 detect "X" {
   for records where type == "item"

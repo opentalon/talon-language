@@ -58,8 +58,8 @@ labels every candidate and flags them all (it's informational, not a filter).
 
 ## Worked example
 
-Files: [`examples/incident_triage.talon`](../examples/incident_triage.talon)
-and [`test/incident_triage.talon.test`](../test/incident_triage.talon.test).
+Files: [`examples/incident_triage.tln`](../examples/incident_triage.tln)
+and [`test/incident_triage.tln.test`](../test/incident_triage.tln.test).
 
 The training set is ten resolved incidents with two clear signatures:
 
@@ -79,9 +79,9 @@ Three open incidents arrive to be classified:
 Run it:
 
 ```
-./talon build   examples/incident_triage.talon
-./talon test    examples/incident_triage.talon test/incident_triage.talon.test
-./talon explain examples/incident_triage.talon test/incident_triage.talon.test
+./talon build   examples/incident_triage.tln
+./talon test    examples/incident_triage.tln test/incident_triage.tln.test
+./talon explain examples/incident_triage.tln test/incident_triage.tln.test
 ```
 
 `talon test` confirms 100 and 101 are flagged and 102 is not. `talon explain`

@@ -62,15 +62,15 @@ forecast "Stock empty" {
   label "{item.name}: ~{days_until} days left"
   priority HIGH
 }`
-	tokens, ld := lexer.Lex("t.talon", src)
+	tokens, ld := lexer.Lex("t.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("t.talon", tokens)
+	prog, pd := parser.Parse("t.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
-	if vd := validator.Validate("t.talon", prog); vd.HasErrors() {
+	if vd := validator.Validate("t.tln", prog); vd.HasErrors() {
 		t.Fatalf("validate: %v", vd)
 	}
 	plans, planDiags := planner.Plan(prog)
@@ -132,15 +132,15 @@ test "ranks parts" {
 // the in-memory testrunner. Returns the TestResult slice for assertions.
 func runMLPipelineTest(t *testing.T, src string) []TestResult {
 	t.Helper()
-	tokens, ld := lexer.Lex("t.talon", src)
+	tokens, ld := lexer.Lex("t.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("t.talon", tokens)
+	prog, pd := parser.Parse("t.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
-	if vd := validator.Validate("t.talon", prog); vd.HasErrors() {
+	if vd := validator.Validate("t.tln", prog); vd.HasErrors() {
 		t.Fatalf("validate: %v", vd)
 	}
 	plans, planDiags := planner.Plan(prog)

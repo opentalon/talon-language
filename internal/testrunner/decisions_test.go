@@ -12,11 +12,11 @@ import (
 
 func compileDecisions(t *testing.T, rulesSrc, testSrc string) (map[string][]explain.Decision, []string) {
 	t.Helper()
-	rt, ld := lexer.Lex("rules.talon", rulesSrc)
+	rt, ld := lexer.Lex("rules.tln", rulesSrc)
 	if ld.HasErrors() {
 		t.Fatalf("lex rules: %v", ld)
 	}
-	prog, pd := parser.Parse("rules.talon", rt)
+	prog, pd := parser.Parse("rules.tln", rt)
 	if pd.HasErrors() {
 		t.Fatalf("parse rules: %v", pd)
 	}
@@ -25,11 +25,11 @@ func compileDecisions(t *testing.T, rulesSrc, testSrc string) (map[string][]expl
 		t.Fatalf("plan: %v", planDiags)
 	}
 
-	tt, tld := lexer.Lex("t.talon.test", testSrc)
+	tt, tld := lexer.Lex("t.tln.test", testSrc)
 	if tld.HasErrors() {
 		t.Fatalf("lex test: %v", tld)
 	}
-	tProg, tpd := parser.Parse("t.talon.test", tt)
+	tProg, tpd := parser.Parse("t.tln.test", tt)
 	if tpd.HasErrors() {
 		t.Fatalf("parse test: %v", tpd)
 	}

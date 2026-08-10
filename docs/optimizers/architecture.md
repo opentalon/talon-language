@@ -37,7 +37,7 @@ internal/planner/         Plan emission
 A combine block goes through this pipeline:
 
 ```
-.talon source
+.tln source
    ↓ lexer       (recognizes tokens: select, subject_to, sequence, solver, ...)
    ↓ parser      (builds *ast.CombineBlock with Optimize, Constraints, Select, Solver, ...)
    ↓ validator   (rejects multi-objective ILP, missing coordinates in sequence mode, etc.)
@@ -72,7 +72,7 @@ The pattern is well-trodden. To add (say) Simulated Annealing:
    in-memory `entity` store. Decision evidence + "why" lines.
 9. **Tests.** Unit tests on the algorithm with known optima; planner
    test asserting the right dispatch; executor test against a fake
-   `FactStore`; `examples/<name>.talon` + `test/<name>.talon.test`.
+   `FactStore`; `examples/<name>.tln` + `test/<name>.tln.test`.
 10. **Docs.** A `docs/optimizers/<name>.md` worked example following the
     pattern of `pareto-ranking.md`.
 

@@ -212,7 +212,7 @@ whichever labeled cluster it is numerically nearest.
 - `internal/planner/classify_test.go` — assert the two-FactQuery shape.
 - `internal/testrunner` end-to-end — `classify` flags/labels a candidate by
   its neighbours; `confidence >=` drops a borderline one.
-- `examples/…​.talon(.test)` — a runnable classify example.
+- `examples/…​.tln(.test)` — a runnable classify example.
 - Round-trips for free through `internal/gen` once the AST fields land
   (add a `label_attr`/`trained_on` snippet to `print_test.go`).
 

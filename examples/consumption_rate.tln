@@ -1,0 +1,35 @@
+// `calculate` reduces a series of records to a single scalar bound to a
+// variable name, then `having` filters candidates on it (a post-aggregation
+// filter) and labels interpolate it with `{var}`.
+//
+// Methods: `average` (the default once a value column is named), `sum`,
+// `count`, and `weighted_moving_average` — the recency-weighted "current
+// rate" case where recent observations weigh more (see grammar.ebnf).
+//
+// Run the companion suite:
+//   go build ./cmd/talon
+//   ./talon test examples/consumption_rate.tln examples/consumption_rate.tln.test
+detect "High average consumption" {
+  for records where type == "depot"
+  calculate avg_use from records where type == "usage" of attr "amount" average
+  having avg_use > 100
+  flag matching items
+  label "fleet averaging {avg_use} units/day — review restock policy"
+  priority HIGH
+}
+
+// weighted_moving_average form — recent readings weigh more (newest heaviest),
+// so a spike last week shifts the rate more than usage from 30 days ago. The
+// series is the value column of the matching records, ordered oldest→newest
+// by record id.
+detect "Recent consumption spiking" {
+  for records where type == "depot"
+  calculate daily_rate from records
+    where type == "usage"
+    of attr "amount"
+    weighted_moving_average
+  having daily_rate > 100
+  flag matching items
+  label "recent daily rate ~{daily_rate} — trending up"
+  priority MEDIUM
+}

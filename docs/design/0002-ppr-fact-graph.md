@@ -194,7 +194,7 @@ Tested in `internal/mlruntime/ppr_test.go::TestPPRDeterministic*`.
   `resolveMLParams`, float-aware `extractFlaggedIDs`.
 - `internal/testrunner/testrunner.go` — in-memory `runPPR`,
   `buildGraphFromEntities`.
-- `examples/related_parts.talon`, `test/related_parts.talon.test` — E2E example.
+- `examples/related_parts.tln`, `test/related_parts.tln.test` — E2E example.
 
 ## References
 

@@ -14,11 +14,11 @@ import (
 func evalStr(t *testing.T, expr string, row map[string]any) any {
 	t.Helper()
 	src := `detect "T" { for records where ` + expr + ` == "SENTINEL" }`
-	tokens, ld := lexer.Lex("t.talon", src)
+	tokens, ld := lexer.Lex("t.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex %q: %v", expr, ld)
 	}
-	prog, pd := parser.Parse("t.talon", tokens)
+	prog, pd := parser.Parse("t.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse %q: %v", expr, pd)
 	}

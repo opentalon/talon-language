@@ -63,7 +63,7 @@ short-circuit clause matching. No serialisation, no network, no JVM.
 ### `talon run --store memory`
 
 ```bash
-talon run examples/cement_explain.talon --store memory --seed test/cement_explain.talon.test
+talon run examples/cement_explain.tln --store memory --seed test/cement_explain.tln.test
 # → 2 entities seeded, "Cement running low" matches 1 row, no Datalevin sidecar required.
 ```
 

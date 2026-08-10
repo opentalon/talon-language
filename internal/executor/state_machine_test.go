@@ -15,11 +15,11 @@ import (
 // returns the plan map keyed by block name.
 func compileSrc(t *testing.T, src string) map[string]*planner.QueryPlan {
 	t.Helper()
-	tokens, ld := lexer.Lex("sm_test.talon", src)
+	tokens, ld := lexer.Lex("sm_test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("sm_test.talon", tokens)
+	prog, pd := parser.Parse("sm_test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}

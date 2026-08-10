@@ -1,0 +1,25 @@
+// Per-tenant adaptive anomaly threshold. The default z-score threshold of
+// 2.5 (≈ p99 under a normal distribution) is a reasonable starting point
+// for *some* tenants, but inventory consumption distributions are rarely
+// normal — heavy tails, weekday/weekend cycles, supplier seasonality all
+// shift where "anomalous" actually starts. A z-threshold that fires
+// usefully for one warehouse will flood another with false positives.
+//
+// `tune against test "..."` solves this: ABC searches the threshold space
+// against a labeled fixture (entities the tenant marked as "really
+// anomalous" vs "fine"), picks the value that maximizes F1 on their data,
+// and surfaces the choice in `talon explain` so auditors can see the
+// provenance.
+//
+//   ./talon build examples/tuned_consumption.tln
+//   ./talon test examples/tuned_consumption.tln test/tuned_consumption.tln.test
+//   ./talon explain examples/tuned_consumption.tln test/tuned_consumption.tln.test
+
+detect "Tuned consumption anomaly" {
+  for records where type == "stock_item"
+    and attr "weekly_consumption" is anomaly compared_to last 12 weeks
+  tune against test "labeled_consumption_history"
+  flag matching items
+  label "{item.name}: {attr.weekly_consumption} this week — anomalous on tenant-tuned baseline"
+  priority HIGH
+}

@@ -4,7 +4,7 @@ Tracks: opentalon/talon-language#11 (ML Primitives Runtime) and adjacent prerequ
 
 ## 1. Dogfood Setup (macOS)
 
-The fleet example exercises `detect` and `rule` blocks against a live Datalevin sidecar. End-to-end smoke target: `talon run examples/fleet_maintenance.talon --seed test/fleet_maintenance.talon.test` returns 2 overdue vehicles.
+The fleet example exercises `detect` and `rule` blocks against a live Datalevin sidecar. End-to-end smoke target: `talon run examples/fleet_maintenance.tln --seed test/fleet_maintenance.tln.test` returns 2 overdue vehicles.
 
 ### 1a. Prerequisites
 
@@ -17,12 +17,12 @@ brew install --cask temurin  # JDK 21 — matches CI (.github/workflows/ci.yml:7
 brew install clojure/tools/clojure
 ```
 
-Note: `brew install datalevin` does **not** exist. The README mentions `brew install datalevin` near `examples/fleet_maintenance.talon:8` but Homebrew has no such formula. The two real paths are:
+Note: `brew install datalevin` does **not** exist. The README mentions `brew install datalevin` near `examples/fleet_maintenance.tln:8` but Homebrew has no such formula. The two real paths are:
 
 - **JVM server (what `talon run` actually uses)** — `datalevin-server/` is a Clojure ring app pulling `datalevin/datalevin 0.10.7` from Maven (`datalevin-server/deps.edn:3`). No separate install — `clj -M:run` pulls deps.
 - **Native `dtlv` CLI (only needed for ad-hoc REPL via `examples/test_datalevin.clj`)** — download release zip manually, as CI does (`.github/workflows/ci.yml:53-58`).
 
-Action: update the `fleet_maintenance.talon` comment block — the brew instruction is misleading.
+Action: update the `fleet_maintenance.tln` comment block — the brew instruction is misleading.
 
 ### 1b. Boot the sidecar
 
@@ -46,11 +46,11 @@ cd /Users/zh/dev/projects/opentalon-ai/talon-language
 go build -o talon ./cmd/talon
 
 # Compile-only sanity
-./talon build examples/fleet_maintenance.talon
+./talon build examples/fleet_maintenance.tln
 
 # Seeded end-to-end run
-./talon run examples/fleet_maintenance.talon \
-  --seed test/fleet_maintenance.talon.test
+./talon run examples/fleet_maintenance.tln \
+  --seed test/fleet_maintenance.tln.test
 ```
 
 ### 1d. Expected output
@@ -249,16 +249,16 @@ internal/ast/
                               LearnedThresholdClause; could need ~100 LOC in parser/ast.
 
 examples/
-  fleet_maintenance.talon  MOD  add a predict block exercising the new path
+  fleet_maintenance.tln  MOD  add a predict block exercising the new path
 test/
-  fleet_maintenance.talon.test  MOD  add cases for new predict block
+  fleet_maintenance.tln.test  MOD  add cases for new predict block
 ```
 
 The `learned_threshold` gap is worth confirming day 1. Token exists; AST/parser may not have a clause node.
 
 ### 3d. Test-first checklist
 
-Each row = one `.talon.test` case. Happy + edge + explanation assertion. Testrunner already handles `flagged` / `not flagged` (`testrunner.go:341-358`); extend to assert on explanation fields.
+Each row = one `.tln.test` case. Happy + edge + explanation assertion. Testrunner already handles `flagged` / `not flagged` (`testrunner.go:341-358`); extend to assert on explanation fields.
 
 **`learned_threshold`**
 - p95 over 100 samples returns correct value
@@ -321,7 +321,7 @@ Land each behind a feature gate or commit-by-primitive — they're independent.
 | **M0 — Dogfood** | `talon run` end-to-end against live Datalevin, 2 overdue vehicles, README brew note fixed | (none, do tomorrow) |
 | **M1 — Design doc merged** | ADR-0001 reviewed, decision recorded, `Explanation` interface frozen | M2 |
 | **M2 — Planner: `MLComputation` step** | New step type emits for all 7 ML blocks, `planner_test.go` covers each | M3 |
-| **M3 — `learned_threshold` + `is anomaly`** | Both keywords compute real values + explanations; `.talon.test` cases pass | M4 |
+| **M3 — `learned_threshold` + `is anomaly`** | Both keywords compute real values + explanations; `.tln.test` cases pass | M4 |
 | **M4 — `forecast`** | Stock-out example produces a real `days_until`, CI assertion strengthened | M5 |
 | **M5 — `predict`** | Failure-risk example produces a real probability + decision path | M6 |
 | **M6 — `classify` + `find similar`** | Text classification example (e.g. ticket categorisation) ships | M7 |
@@ -370,7 +370,7 @@ Talon source remains `predict "X" { ... }`; planner picks backend based on tenan
 ### 5c. Other named risks
 
 - **Model persistence undefined.** `trained_on` implies a fit step. Where the trained tree lives is open — `FactStore` blob? Side file? Single biggest unanswered question in design doc.
-- **`testrunner` only evaluates first `DatalevinQuery`** (`testrunner.go:62`). Does not run `GoComputation` steps. Without extending it, `.talon.test` files cannot assert on predictions — lose TDD for ML. Plan: extend `testrunner.runOne` to walk full step list using same `mlruntime.Registry`. ~150 LOC.
+- **`testrunner` only evaluates first `DatalevinQuery`** (`testrunner.go:62`). Does not run `GoComputation` steps. Without extending it, `.tln.test` files cannot assert on predictions — lose TDD for ML. Plan: extend `testrunner.runOne` to walk full step list using same `mlruntime.Registry`. ~150 LOC.
 - **Determinism.** k-NN with ties, DBSCAN with equal-distance neighbours, decision tree feature-split ties — all need documented tiebreak rules. "Deterministic" is in pitch (README.md:21); easy to break in ML code without discipline.
 - **Datalevin schema drift on re-seed.** `/schema` closes and reopens the DB (`server.clj:52-54`). If types change between runs, on-disk DB silently misbehaves. Document `rm -rf /tmp/talon-datalevin` in dogfood loop.
 - **README ↔ reality drift.** Two examples found: `brew install datalevin` line and unimplemented `talon trace` / `talon repl` (`main.go:36-43`). Worth one cleanup PR before #11 ships.

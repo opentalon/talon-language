@@ -1,0 +1,37 @@
+// Test suite for fleet_risk.tln — classify via an imported ML model.
+//
+// The fitted model (fleet.ml.failure_risk, k=3) has two well-separated
+// clusters: high ≈ (50k km, age 8) and low ≈ (10k km, age 2). A candidate
+// sitting inside a cluster votes 3/3 and clears the confidence >= 0.9 gate; a
+// candidate on the boundary splits its vote and is dropped.
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/fleet_risk.tln test/fleet_risk.tln.test
+
+test "kNN model (imported) classifies open vehicles by risk" {
+  given {
+    // Deep in the "high" cluster → unanimous → flagged.
+    record 1 type "vehicle" status "open"
+    attr 1 "km" 51000
+    attr 1 "age" 8
+
+    // Deep in the "low" cluster → unanimous → flagged.
+    record 2 type "vehicle" status "open"
+    attr 2 "km" 9000
+    attr 2 "age" 1
+
+    // On the boundary between clusters → split vote → below 0.9 → dropped.
+    record 3 type "vehicle" status "open"
+    attr 3 "km" 30000
+    attr 3 "age" 5
+  }
+
+  when classify "Vehicle failure risk"
+
+  expect {
+    flagged 1
+    flagged 2
+    not flagged 3
+  }
+}

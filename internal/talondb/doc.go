@@ -4,7 +4,7 @@
 // + an Adapter that implements factstore.FactStore.
 //
 // Today the adapter supports the subset of Query clauses that the
-// fleet_maintenance.talon example exercises (Pattern + Predicate).
+// fleet_maintenance.tln example exercises (Pattern + Predicate).
 // Unsupported clauses (Or, Not, FullText, RuleCall, Aggregate,
 // PullSpec) return errors.ErrUnsupported; the planner audit confirms
 // fleet_maintenance does not emit them.

@@ -70,8 +70,8 @@ WHY
 
 ## Worked example
 
-Files: [`examples/vehicle_recall.talon`](../examples/vehicle_recall.talon) and
-[`test/vehicle_recall.talon.test`](../test/vehicle_recall.talon.test).
+Files: [`examples/vehicle_recall.tln`](../examples/vehicle_recall.tln) and
+[`test/vehicle_recall.tln.test`](../test/vehicle_recall.tln.test).
 
 A two-step chain runs with no host glue: `derive overdue → detect "Recall
 candidates" → recommend "Book recall service"`.
@@ -83,9 +83,9 @@ candidates" → recommend "Book recall service"`.
 | Van 3 | 70000 | 55000 | Sprinter | no | yes | no |
 
 ```
-./talon build   examples/vehicle_recall.talon
-./talon test    examples/vehicle_recall.talon test/vehicle_recall.talon.test
-./talon explain examples/vehicle_recall.talon test/vehicle_recall.talon.test
+./talon build   examples/vehicle_recall.tln
+./talon test    examples/vehicle_recall.tln test/vehicle_recall.tln.test
+./talon explain examples/vehicle_recall.tln test/vehicle_recall.tln.test
 ```
 
 ## Scope (v1) and follow-ups

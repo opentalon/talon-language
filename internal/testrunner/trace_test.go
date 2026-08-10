@@ -45,8 +45,8 @@ test "outlier flagged" {
   }
 }
 `
-	rulesProg := mustParse(t, "rules.talon", rulesSrc)
-	testProg := mustParse(t, "tests.talon.test", testSrc)
+	rulesProg := mustParse(t, "rules.tln", rulesSrc)
+	testProg := mustParse(t, "tests.tln.test", testSrc)
 	plans, pd := planner.Plan(rulesProg)
 	if pd.HasErrors() {
 		t.Fatalf("plan errors: %v", pd)
@@ -161,8 +161,8 @@ test "top mileage flagged" {
   }
 }
 `
-	rulesProg := mustParse(t, "rules.talon", rulesSrc)
-	testProg := mustParse(t, "tests.talon.test", testSrc)
+	rulesProg := mustParse(t, "rules.tln", rulesSrc)
+	testProg := mustParse(t, "tests.tln.test", testSrc)
 	plans, pd := planner.Plan(rulesProg)
 	if pd.HasErrors() {
 		t.Fatalf("plan errors: %v", pd)

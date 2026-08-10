@@ -5,7 +5,7 @@ against a real **talon-db** backend. It flags machines that are **defective
 now** but were **certified 90 days ago** — a regression an agent should
 investigate.
 
-`certification.talon` holds the program:
+`certification.tln` holds the program:
 
 ```talon
 detect "Certification regressed" {

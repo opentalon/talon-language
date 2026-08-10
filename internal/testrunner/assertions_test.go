@@ -128,8 +128,8 @@ test "no ml" {
 
 func runResults(t *testing.T, rulesSrc, testSrc string) []TestResult {
 	t.Helper()
-	rulesProg := mustParse(t, "rules.talon", rulesSrc)
-	testProg := mustParse(t, "tests.talon.test", testSrc)
+	rulesProg := mustParse(t, "rules.tln", rulesSrc)
+	testProg := mustParse(t, "tests.tln.test", testSrc)
 	plans, pd := planner.Plan(rulesProg)
 	if pd.HasErrors() {
 		t.Fatalf("plan: %v", pd)

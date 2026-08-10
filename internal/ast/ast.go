@@ -6,7 +6,7 @@ type Pos struct {
 	Col  int
 }
 
-// Program is the top-level AST node for a .talon file.
+// Program is the top-level AST node for a .tln file.
 //
 // Imports, when present, must appear before any block in the source.
 // The resolver in internal/imports walks them, recursively lex+parses
@@ -579,7 +579,7 @@ type DeriveBlock struct {
 
 // ThresholdBlock is a host-precomputed, cached threshold — the layer-2
 // counterpart to the compute-on-demand `learned_threshold` expression. The
-// host's discovery job writes it into a generated .talon file with provenance
+// host's discovery job writes it into a generated .tln file with provenance
 // (ComputedFrom) and an expiry (ValidUntil); the runtime resolves a
 // `threshold "name"` reference to Value at plan time (a single lookup, no
 // per-eval series walk). See docs/thresholds.md and issue #74.
@@ -1083,7 +1083,7 @@ type ApprovalExpr struct {
 // against the matched row, and hand them back as data.
 //
 // Resolution lives in internal/actions, shared by the runtime (the fired
-// actions land on executor.BlockResult.Actions) and the .talon.test runner,
+// actions land on executor.BlockResult.Actions) and the .tln.test runner,
 // so an assertion and a host see the same payload. The engine's decision
 // trace does not carry them yet.
 //
@@ -1239,7 +1239,7 @@ func (*FailAction) errorActionNode()     {}
 
 // ─── Test types ──────────────────────────────────────────────────────────────
 
-// TestBlock is a single test case in a .talon.test file.
+// TestBlock is a single test case in a .tln.test file.
 type TestBlock struct {
 	Pos       Pos
 	Name      string

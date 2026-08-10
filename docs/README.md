@@ -58,14 +58,14 @@
 
 ## Reading order for new contributors
 
-1. `examples/fleet_maintenance.talon` — every block type except combine.
-2. `examples/cement_explain.talon` + the explainability ADR.
-3. `examples/fleet_dispatch.talon` — Pareto ranking, simplest combine.
+1. `examples/fleet_maintenance.tln` — every block type except combine.
+2. `examples/cement_explain.tln` + the explainability ADR.
+3. `examples/fleet_dispatch.tln` — Pareto ranking, simplest combine.
 4. `docs/optimizers/README.md` — the optimizer family map.
-5. `examples/parts_reorder.talon` (GA), `examples/parts_reorder_exact.talon`
-   (ILP), `examples/service_route.talon` (ACO),
-   `examples/tuned_consumption.talon` (ABC tuning, anomaly z-threshold),
-   `examples/tuned_high_mileage.talon` (ABC tuning, learned percentile)
+5. `examples/parts_reorder.tln` (GA), `examples/parts_reorder_exact.tln`
+   (ILP), `examples/service_route.tln` (ACO),
+   `examples/tuned_consumption.tln` (ABC tuning, anomaly z-threshold),
+   `examples/tuned_high_mileage.tln` (ABC tuning, learned percentile)
    — one example per backend.
 6. `docs/optimizers/architecture.md` — code layout if you want to add
    another optimizer.
