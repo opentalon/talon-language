@@ -98,8 +98,8 @@ func TestUsingModelGo(t *testing.T) {
   for records where type == "vehicle"
   using model "vendor.ml.failure_risk"
 }`
-	tokens, _ := lexer.Lex("t.talon", src)
-	prog, pd := parser.Parse("t.talon", tokens)
+	tokens, _ := lexer.Lex("t.tln", src)
+	prog, pd := parser.Parse("t.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
@@ -135,8 +135,8 @@ func TestUsingUnknownModelErrors(t *testing.T) {
   for records where type == "vehicle"
   using model "nope.nope"
 }`
-	tokens, _ := lexer.Lex("t.talon", src)
-	prog, _ := parser.Parse("t.talon", tokens)
+	tokens, _ := lexer.Lex("t.tln", src)
+	prog, _ := parser.Parse("t.tln", tokens)
 	_, diags := Plan(prog)
 	if !diags.HasErrors() {
 		t.Fatal("expected an error for an unknown model reference")

@@ -283,11 +283,11 @@ func TestRunWorkflow_CompileError_Parse(t *testing.T) {
 
 func TestRunWorkflow_FilenameOption(t *testing.T) {
 	src := `workflow "broken" { step "s1" {`
-	_, err := talon.RunWorkflow(context.Background(), src, talon.WithFilename("myfile.talon"))
+	_, err := talon.RunWorkflow(context.Background(), src, talon.WithFilename("myfile.tln"))
 	if err == nil {
 		t.Fatal("expected compile error")
 	}
-	if !strings.Contains(err.Error(), "myfile.talon") {
+	if !strings.Contains(err.Error(), "myfile.tln") {
 		t.Errorf("error should reference filename: %v", err)
 	}
 }

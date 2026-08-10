@@ -111,7 +111,7 @@ every run: blocks by name, rows in flagged-set order within a block, and a
 rule's `do` clauses in source order within a row.
 
 Firing lives in `internal/actions` and is shared by the runtime and the
-`.talon.test` runner, so a `did` assertion that passes is an assertion about
+`.tln.test` runner, so a `did` assertion that passes is an assertion about
 what the host will actually receive.
 
 ### Defeated rules fire nothing
@@ -145,7 +145,7 @@ declared with `overrides`.
 
 ## Testing
 
-`.talon.test` asserts on the actions a rule produced, with no host involved:
+`.tln.test` asserts on the actions a rule produced, with no host involved:
 
 ```talon
 test "critical path tags the owner" {
@@ -208,6 +208,6 @@ succeed.
 
 ## Worked example
 
-`examples/talooner_review.talon` is a full deterministic GitHub PR review policy
-built on `do` actions, with `examples/talooner_review.talon.test` covering the
+`examples/talooner_review.tln` is a full deterministic GitHub PR review policy
+built on `do` actions, with `examples/talooner_review.tln.test` covering the
 cases where rules must *not* fire.

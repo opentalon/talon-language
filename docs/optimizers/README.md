@@ -250,5 +250,5 @@ The roadmap, with v2.1 + v3 already shipped:
   temporal constraints.
 
 If you have a real problem one of these would solve, open an issue with
-the `.talon` snippet you'd want to write — the language surface drives
+the `.tln` snippet you'd want to write — the language surface drives
 the backend selection, not the other way around.

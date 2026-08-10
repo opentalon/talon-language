@@ -28,15 +28,15 @@ detect "Cement low" {
   label "{item.name} low"
   priority HIGH
 }`
-	tokens, ld := lexer.Lex("test.talon", src)
+	tokens, ld := lexer.Lex("test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("test.talon", tokens)
+	prog, pd := parser.Parse("test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
-	if vd := validator.Validate("test.talon", prog); vd.HasErrors() {
+	if vd := validator.Validate("test.tln", prog); vd.HasErrors() {
 		t.Fatalf("validate: %v", vd)
 	}
 	plans, planDiags := planner.Plan(prog)
@@ -110,15 +110,15 @@ detect "Active items" {
 
 func mustParseProg(t *testing.T, src string) *ast.Program {
 	t.Helper()
-	tokens, ld := lexer.Lex("t.talon", src)
+	tokens, ld := lexer.Lex("t.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("t.talon", tokens)
+	prog, pd := parser.Parse("t.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
-	if vd := validator.Validate("t.talon", prog); vd.HasErrors() {
+	if vd := validator.Validate("t.tln", prog); vd.HasErrors() {
 		var msgs []string
 		for _, d := range vd {
 			msgs = append(msgs, d.Message)

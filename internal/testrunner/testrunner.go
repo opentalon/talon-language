@@ -832,7 +832,7 @@ func FilterByName(results []TestResult, pattern string) []TestResult {
 	return out
 }
 
-// JUnitSuite groups the results for one .talon.test file.
+// JUnitSuite groups the results for one .tln.test file.
 type JUnitSuite struct {
 	File    string
 	Results []TestResult

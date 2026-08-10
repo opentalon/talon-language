@@ -10,7 +10,7 @@ Two entry points cover different parts of the language:
 
 - **`RunWorkflow(ctx, src, opts...)`** — workflow-only programs (`workflow "..." { step "..." { mcp "..." "..." { ... } } }`). No fact-store dependency. Returns `ErrRequiresFactStore` if the program contains `detect` / query blocks.
 - **`Run(ctx, src, opts...)`** — the full language: `detect`, queries, ML primitives, and workflows. Requires a `FactStore` wired via `WithFactStore(...)` or, for the default Datalevin backend, `WithDatalevinURL(...)`.
-- **`Seed(ctx, store, src)`** — populate a `FactStore` from a `.talon.test` source. Typically called once at startup; `Run` is called many times against the same seeded store.
+- **`Seed(ctx, store, src)`** — populate a `FactStore` from a `.tln.test` source. Typically called once at startup; `Run` is called many times against the same seeded store.
 
 The `FactStore` interface is **backend-neutral**. The shipped implementation is Datalevin (`internal/datalevin.Client` satisfies it), but a future SQL- or vector-store-backed implementation can plug in without touching call sites.
 
@@ -33,7 +33,7 @@ func (m *myCaller) Call(ctx context.Context, server, tool string, args map[strin
 func run(ctx context.Context, src string) error {
     result, err := talon.RunWorkflow(ctx, src,
         talon.WithMCP(&myCaller{}),
-        talon.WithFilename("my_workflow.talon"),
+        talon.WithFilename("my_workflow.tln"),
     )
     if err != nil {
         return err

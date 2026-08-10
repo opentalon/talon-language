@@ -103,7 +103,7 @@ PredicateCall = IDENT "(" IDENT ")"   (* reference to a derived predicate *)
    (planner.PlanWithModels). A classify block draws its training set from one
    via `using model "<qualified name>"` instead of `trained_on`.
 
-   Import-by-module-name: `import "ns"` (no path separator / .talon suffix)
+   Import-by-module-name: `import "ns"` (no path separator / .tln suffix)
    resolves by module identity — the project tree is searched for the file
    declaring `module "ns"`. A Go-registered module needs no import (it is
    resolvable by qualified name at plan time). File-path imports still work. *)

@@ -11,15 +11,15 @@ import (
 
 func pipeline(t *testing.T, src string) diagnostic.List {
 	t.Helper()
-	tokens, ld := lexer.Lex("test.talon", src)
+	tokens, ld := lexer.Lex("test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex errors: %v", ld)
 	}
-	prog, pd := parser.Parse("test.talon", tokens)
+	prog, pd := parser.Parse("test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse errors: %v", pd)
 	}
-	return Validate("test.talon", prog)
+	return Validate("test.tln", prog)
 }
 
 func mustClean(t *testing.T, src string) {

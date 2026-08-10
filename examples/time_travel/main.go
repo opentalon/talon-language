@@ -35,7 +35,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-//go:embed certification.talon
+//go:embed certification.tln
 var program string
 
 func main() {

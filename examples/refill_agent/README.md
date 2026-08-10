@@ -4,7 +4,7 @@ An end-to-end demo of a Talon watcher agent, driven interactively from
 `talon repl`. It shows the loop a real agent runs: **assert facts →
 detect a change → fire a workflow → act**.
 
-`refill_agent.talon` holds the program: an `on change attr "current_stock"
+`refill_agent.tln` holds the program: an `on change attr "current_stock"
 to 0` block that logs a warning and runs the `Refill stock` workflow,
 which places an order via the `inventory` MCP tool.
 
@@ -13,8 +13,8 @@ which places an order via the `inventory` MCP tool.
 Preload the program into the REPL, then assert facts:
 
 ```
-$ talon repl examples/refill_agent/refill_agent.talon
-  loaded examples/refill_agent/refill_agent.talon: 2 block(s), 0 fact(s)
+$ talon repl examples/refill_agent/refill_agent.tln
+  loaded examples/refill_agent/refill_agent.tln: 2 block(s), 0 fact(s)
   watching: 1 on-block(s) armed — assert facts to fire them
 talon> attr 1 "current_stock" 8
   OK: attr 1

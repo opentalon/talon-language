@@ -112,8 +112,8 @@ record 502 type "thing"
 }
 
 func TestREPLLoadFile(t *testing.T) {
-	out := runScript(t, ":load testdata/load_example.talon\n:rules\n:quit\n")
-	if !strings.Contains(out, "loaded testdata/load_example.talon") {
+	out := runScript(t, ":load testdata/load_example.tln\n:rules\n:quit\n")
+	if !strings.Contains(out, "loaded testdata/load_example.tln") {
 		t.Errorf(":load did not confirm:\n%s", out)
 	}
 	if !strings.Contains(out, `"Loaded block"`) {
@@ -124,7 +124,7 @@ func TestREPLLoadFile(t *testing.T) {
 func TestREPLWatchFiresWorkflow(t *testing.T) {
 	// Loading a program with on-blocks arms the watcher; asserting a
 	// change to 0 fires the workflow, whose mcp step is echoed.
-	out := runScript(t, `:load testdata/watch_example.talon
+	out := runScript(t, `:load testdata/watch_example.tln
 attr 1 "current_stock" 8
 attr 1 "current_stock" 0
 :quit
@@ -146,7 +146,7 @@ attr 1 "current_stock" 0
 func TestREPLWatchNoFireWithoutCrossing(t *testing.T) {
 	// A single assert establishes the value (no change event), so the
 	// on-change-to-0 block must not fire.
-	out := runScript(t, `:load testdata/watch_example.talon
+	out := runScript(t, `:load testdata/watch_example.tln
 attr 1 "current_stock" 5
 :quit
 `)

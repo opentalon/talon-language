@@ -594,7 +594,7 @@ func (v *validator) checkDetectTune(bb *ast.DetectBlock) {
 		return
 	}
 	// Only enforce existence when the program actually contains test blocks
-	// (i.e. we were given a .talon.test file). During `talon build` the rule
+	// (i.e. we were given a .tln.test file). During `talon build` the rule
 	// file is validated in isolation, so the labeled fixture isn't visible
 	// yet; testrunner picks up the same check at run time.
 	if v.programHasTests() && !v.testExists(bb.Tune.AgainstTest) {
@@ -606,7 +606,7 @@ func (v *validator) checkDetectTune(bb *ast.DetectBlock) {
 }
 
 // testExists reports whether any TestBlock in the program (typically from
-// a .talon.test file merged in by the CLI) matches the given name.
+// a .tln.test file merged in by the CLI) matches the given name.
 func (v *validator) testExists(name string) bool {
 	for _, b := range v.prog.Blocks {
 		if tb, ok := b.(*ast.TestBlock); ok && tb.Name == name {
@@ -618,7 +618,7 @@ func (v *validator) testExists(name string) bool {
 
 // programHasTests reports whether the program contains any TestBlock.
 // Used to gate validator checks that depend on labeled fixtures being
-// visible (which is only true once `talon test` merges the .talon.test).
+// visible (which is only true once `talon test` merges the .tln.test).
 func (v *validator) programHasTests() bool {
 	for _, b := range v.prog.Blocks {
 		if _, ok := b.(*ast.TestBlock); ok {

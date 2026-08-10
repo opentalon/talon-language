@@ -1,0 +1,36 @@
+// Escalation playbook — imperative control flow inside a remediate body.
+//
+// Groundwork for self-hosting (issue #13): Talon's declarative blocks gain
+// `if`/`else` branching and `for each` iteration in their action bodies. The
+// guards reuse the ordinary condition grammar (`attr "priority" == "CRITICAL"`
+// is the same condition a `when`/`having` clause accepts) and are evaluated
+// per flagged row against that row's entity — no new expression language.
+//
+// `while` also exists (bounded, see docs/grammar) but needs mutable loop
+// state to be useful, so it is not exercised here.
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/escalation_playbook.tln test/escalation_playbook.tln.test
+
+detect "Overdue for service" {
+  for records where type == "vehicle"
+    and attr "km" > attr "last_service_km" + 20000
+  flag matching items
+  remediate {
+    // Branch on severity: page on-call for a critical vehicle, otherwise
+    // just open a ticket. Both leaves resolve `attr "id"` against the row.
+    if attr "priority" == "CRITICAL" {
+      mcp "ops" "page_oncall" { vehicle attr "id" severity "critical" }
+    } else {
+      mcp "ops" "open_ticket" { vehicle attr "id" reason "overdue service" }
+    }
+
+    // Fan the same notice out to every stakeholder channel. The loop
+    // variable `channel` binds each list element in turn and is usable as
+    // an MCP arg value.
+    for each channel in ["fleet-ops", "maintenance"] {
+      mcp "slack" "notify" { channel channel text "Vehicle {item.id} overdue for service" }
+    }
+  }
+}

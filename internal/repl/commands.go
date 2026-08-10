@@ -77,7 +77,7 @@ func printHelp(w io.Writer) {
                             e.g. :find for records where type == "item"
     :count <selector>       like :find but just the count
     :context KEY VALUE      set a context variable (e.g. :context role "manager")
-    :load FILE              load .talon source from a file; a program with
+    :load FILE              load .tln source from a file; a program with
                             'on' blocks becomes a live watcher — assert
                             facts and matching on-blocks fire their workflows
     :clear                  drop all facts, blocks, and context

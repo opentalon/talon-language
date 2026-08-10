@@ -70,7 +70,7 @@ func Resolve(prog *ast.Program, basePath string) (*ast.Program, diagnostic.List)
 type resolver struct {
 	// seen is keyed by absolute file path so cycles are detected
 	// regardless of how a path is spelled (relative vs absolute,
-	// `./a.talon` vs `a.talon`).
+	// `./a.tln` vs `a.tln`).
 	seen map[string]bool
 	// origin maps each imported block back to the file that declared
 	// it, so a name-collision diagnostic can point at both sides.
@@ -90,7 +90,7 @@ func (r *resolver) walk(imports []ast.ImportStatement, fromPath string) ([]ast.B
 	for _, imp := range imports {
 		target := imp.Path
 		// Module-name import: `import "fleet.ml"` (no path separator, no
-		// .talon extension) resolves by module identity — find the file in
+		// .tln extension) resolves by module identity — find the file in
 		// the project tree that declares `module "fleet.ml"`. If none does,
 		// it may be a Go-registered module (resolved at plan time by
 		// qualified name, no file needed), so this is a no-op, not an error.
@@ -154,13 +154,13 @@ func (r *resolver) walk(imports []ast.ImportStatement, fromPath string) ([]ast.B
 }
 
 // isModuleName reports whether an import target is a module name (e.g.
-// "fleet.ml") rather than a file path ("./x.talon", "sub/y.talon"). Module
-// names carry no path separator and no .talon extension.
+// "fleet.ml") rather than a file path ("./x.tln", "sub/y.tln"). Module
+// names carry no path separator and no .tln extension.
 func isModuleName(target string) bool {
-	return !strings.ContainsAny(target, `/\`) && !strings.HasSuffix(target, ".talon")
+	return !strings.ContainsAny(target, `/\`) && !strings.HasSuffix(target, ".tln")
 }
 
-// findModuleFile searches baseDir's tree for the .talon file that declares
+// findModuleFile searches baseDir's tree for the .tln file that declares
 // `module "<moduleName>"`, returning its absolute path. First match wins.
 func findModuleFile(baseDir, moduleName string) (string, bool) {
 	if baseDir == "" {
@@ -168,7 +168,7 @@ func findModuleFile(baseDir, moduleName string) (string, bool) {
 	}
 	var found string
 	_ = filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".talon") {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".tln") {
 			return nil
 		}
 		src, rerr := os.ReadFile(path)

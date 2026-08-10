@@ -74,11 +74,11 @@ detect "Low stock" {
 
 func TestCheck_FilenameOption(t *testing.T) {
 	src := `workflow "broken" { step "s1" {`
-	err := talon.Check(src, talon.WithFilename("agent.talon"))
+	err := talon.Check(src, talon.WithFilename("agent.tln"))
 	if err == nil {
 		t.Fatal("expected a compile error")
 	}
-	if got := err.Error(); !contains(got, "agent.talon") {
+	if got := err.Error(); !contains(got, "agent.tln") {
 		t.Errorf("error should reference the filename, got: %v", got)
 	}
 }

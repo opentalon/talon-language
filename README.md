@@ -19,7 +19,7 @@ Talon is:
 - **Readable** — rules look like English. A domain expert can read, write, and audit them without programming experience.
 - **Adaptive** — thresholds learn from each tenant's own data. Rules get smarter over time.
 - **Deterministic** — detections are explainable and auditable. No black-box predictions.
-- **Testable** — rules have their own test framework (`.talon.test` files).
+- **Testable** — rules have their own test framework (`.tln.test` files).
 
 ## Example
 
@@ -89,10 +89,10 @@ block, and trace one to see the per-step query plan:
 
 ```bash
 talon repl
-talon> :load examples/insurance_claims.talon
-  loaded examples/insurance_claims.talon: 5 block(s), 0 fact(s)
-talon> :load test/insurance_claims.talon.test
-  loaded test/insurance_claims.talon.test: 0 block(s), 28 fact(s)
+talon> :load examples/insurance_claims.tln
+  loaded examples/insurance_claims.tln: 5 block(s), 0 fact(s)
+talon> :load test/insurance_claims.tln.test
+  loaded test/insurance_claims.tln.test: 0 block(s), 28 fact(s)
 talon> :eval all
   "Auto-approve in-network routine": 1 detection(s) — records [902]
   "Out-of-network provider":         1 detection(s) — records [904]
@@ -126,9 +126,9 @@ Example with the talon-db sidecar:
 # Terminal 1: start the daemon
 talondb-server --db /tmp/talon.bbolt --socket /tmp/talondb.sock
 
-# Terminal 2: run a .talon program against it
-talon run examples/fleet_maintenance.talon \
-  --seed test/fleet_maintenance.talon.test \
+# Terminal 2: run a .tln program against it
+talon run examples/fleet_maintenance.tln \
+  --seed test/fleet_maintenance.tln.test \
   --store talon-db \
   --talondb unix:///tmp/talondb.sock
 ```
@@ -197,7 +197,7 @@ graph TB
         GUARD[Policy Blocks]
     end
 
-    TALON[".talon source files"] --> Compiler
+    TALON[".tln source files"] --> Compiler
     Compiler --> Runtime
     Runtime --> Output
 
@@ -216,7 +216,7 @@ graph TB
 ### How data flows
 
 1. **Facts come in** — MCP tool results, API responses, webhooks, or any structured data source feed facts into the FactStore.
-2. **Rules compile** — `.talon` files are compiled by the Talon compiler (Lexer, Parser, Validator, Query Planner).
+2. **Rules compile** — `.tln` files are compiled by the Talon compiler (Lexer, Parser, Validator, Query Planner).
 3. **Rules evaluate** — the runtime queries the FactStore, runs ML primitives, and produces detections, predictions, and recommendations.
 4. **Results go out** — detections surface as chat alerts, scheduled reports, dashboard widgets, or policy blocks.
 
@@ -257,7 +257,7 @@ Every prediction is explainable. A decision tree says "this item is at risk beca
 `predict` and `classify` can train inline (`trained_on records where …`) or draw from a **pre-fitted `model`** — the model analog of a cached `threshold`. A model carries its fitted params inline (version-pinned in source with `computed_from` / `valid_until`), so there is no per-run training. Package models under a `module` namespace and import them by name across files:
 
 ```talon
-// fleet_ml.talon
+// fleet_ml.tln
 module "fleet.ml" {
   export model "failure_risk" {
     classify knn k 3
@@ -270,7 +270,7 @@ module "fleet.ml" {
   }
 }
 
-// app.talon
+// app.tln
 import "fleet.ml"                        // by module name, not file path
 classify "Vehicle failure risk" {
   for records where type == "vehicle" and status == "open"
@@ -487,7 +487,7 @@ workflow "Onboard new team member" {
 ### Testing
 
 ```talon
-// maintenance.talon.test
+// maintenance.tln.test
 
 test "Overdue service is detected" {
   given {
@@ -525,20 +525,20 @@ test "Up-to-date service is not flagged" {
 
 | Tool | What it does |
 |------|-------------|
-| `talon build` | Compile `.talon` files, report errors |
-| `talon test` | Run `.talon.test` files (supports `-run NAME`, `-v`, `--junit FILE`, dir walk) |
+| `talon build` | Compile `.tln` files, report errors |
+| `talon test` | Run `.tln.test` files (supports `-run NAME`, `-v`, `--junit FILE`, dir walk) |
 | `talon repl` | Interactive REPL — assert facts, evaluate rules, trace execution |
 | `talon trace` | Step-by-step evaluation trace for debugging |
 | `talon mod` | Package manager (`init`, `add`, `tidy`, `verify`) |
 
 ## Editor support
 
-Syntax highlighting + file detection for `.talon` and `.talon.test` files:
+Syntax highlighting + file detection for `.tln` and `.tln.test` files:
 
 | Editor | Plugin | Install |
 | --- | --- | --- |
 | Vim / Neovim | **[opentalon/talon-vim](https://github.com/opentalon/talon-vim)** | `Plugin 'opentalon/talon-vim'` (Vundle), `Plug 'opentalon/talon-vim'` (vim-plug), or git-clone into `pack/*/start/` (Neovim native) |
-| VS Code | **[opentalon/talon-vscode](https://github.com/opentalon/talon-vscode)** | `git clone https://github.com/opentalon/talon-vscode ~/.vscode/extensions/opentalon.talon-vscode-0.1.0` then reload |
+| VS Code | **[opentalon/talon-vscode](https://github.com/opentalon/talon-vscode)** | `git clone https://github.com/opentalon/talon-vscode ~/.vscode/extensions/opentalon.tln-vscode-0.1.0` then reload |
 
 Both plugins mirror the keyword list in
 [`internal/lexer/lexer.go`](./internal/lexer/lexer.go), so block
@@ -573,12 +573,12 @@ will work across both editors; tracked in
   - [Validator](https://github.com/opentalon/talon-language/issues/9)
   - [Query Planner + Emitter](https://github.com/opentalon/talon-language/issues/10)
   - [ML Primitives Runtime](https://github.com/opentalon/talon-language/issues/11)
-  - [Metaprogramming](https://github.com/opentalon/talon-language/issues/12) — Go generates `.talon` rules from data
+  - [Metaprogramming](https://github.com/opentalon/talon-language/issues/12) — Go generates `.tln` rules from data
   - [Self-hosting](https://github.com/opentalon/talon-language/issues/13) — Talon compiler in Talon (v2+). Groundwork landed: imperative control flow, string builtins, and an importable ML-module system. Remaining language gaps: first-class maps/trees, functions with return values, and a pure `source → code` entry point (file I/O stays a host responsibility, by design).
 
 ### Ecosystem
 
-- [Testing framework](https://github.com/opentalon/talon-language/issues/16) — `.talon.test` files
+- [Testing framework](https://github.com/opentalon/talon-language/issues/16) — `.tln.test` files
 - [Editor support](https://github.com/opentalon/talon-language/issues/18) — Vim, Neovim, VS Code, LSP
 - [Plugin system and package manager](https://github.com/opentalon/talon-language/issues/19) — `talon.mod`
 - [Observability](https://github.com/opentalon/talon-language/issues/20) — logging, tracing, metrics, audit

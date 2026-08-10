@@ -1,0 +1,153 @@
+// Talooner — deterministic GitHub PR review policy.
+//
+// The phase-0 exit artifact for https://github.com/opentalon/talooner: the
+// project brief's v1 ruleset, expressed in Talon, running against synthetic PR
+// facts with no GitHub and no bot code. If this file can't be written, the
+// Talooner design is wrong.
+//
+//   ./talon build examples/talooner_review.tln
+//   ./talon test  examples/talooner_review.tln examples/talooner_review.tln.test
+//
+// One record per pull request, type "pr". A GitHub Action extracts the facts;
+// the engine decides; the Action executes whatever actions come back. No model
+// is in the decision path.
+//
+// Two things about the fact model that are load-bearing:
+//
+//   - The evaluator is two-valued. An unset attribute makes its pattern fail,
+//     which makes an enclosing `not` succeed. So `not is "critical_path"` is
+//     TRUE for a PR whose extraction died. Extractors assert facts explicitly,
+//     negative cases included; unset never means "couldn't determine".
+//   - `pr.changed_files` is a list. String predicates quantify existentially
+//     over it (talon-language#158), so `contains` means "any element contains".
+//     `matches` is a substring scan, NOT a glob — `matches "**/*.css"` matches
+//     nothing, because no path contains that text.
+
+// ─── Predicates ───────────────────────────────────────────────────────────────
+
+define "small_change" {
+  attr "pr.lines_changed" < 50
+  attr "pr.files_changed" < 5
+}
+
+define "large_change" {
+  attr "pr.lines_changed" >= 500
+}
+
+define "critical_path" {
+  attr "pr.changed_files" contains "internal/auth/"
+    or attr "pr.changed_files" contains "billing/"
+}
+
+define "ui_change" {
+  attr "pr.changed_files" ends_with ".css"
+    or attr "pr.changed_files" ends_with ".scss"
+    or attr "pr.changed_files" contains "app/components/"
+}
+
+define "ready_for_review" {
+  attr "pr.draft" == false
+  attr "pr.has_description" == true
+}
+
+// ─── Base ruleset — strict, tenant cannot override ───────────────────────────
+
+// A PR with unresolved conflicts is never approvable, whatever the tenant
+// ruleset says. `strict` makes overriding this a compile error.
+strict rule "Never approve a PR with unresolved conflicts" {
+  for records where type == "pr"
+    and attr "pr.mergeable" == false
+  block "merge"
+  do block "pr.merge"
+  do comment "pr" "This PR has unresolved conflicts — resolve them before review"
+  reason "PR {attr.pr.number} has unresolved merge conflicts"
+  priority CRITICAL
+}
+
+// ─── Block incomplete PRs ────────────────────────────────────────────────────
+
+rule "Block PRs with no description" {
+  for records where type == "pr"
+    and attr "pr.draft" == false
+    and attr "pr.has_description" == false
+  block "merge"
+  do block "pr.merge"
+  do comment "pr" "This PR has no description. Say what changed and why before requesting review"
+  reason "no description"
+  priority HIGH
+}
+
+// ─── Auto-approve safe changes ───────────────────────────────────────────────
+
+rule "Auto-approve safe changes" {
+  for records where type == "pr"
+    and is "small_change"
+    and is "ready_for_review"
+    and attr "pr.tests_passing" == true
+    and not is "critical_path"
+  allow "merge"
+  do approve "pr"
+  do comment "pr" "Small, tested, documented, and off the critical path — no objections from me"
+  priority MEDIUM
+}
+
+// ─── Require human review ────────────────────────────────────────────────────
+
+rule "Require human review for critical paths" {
+  for records where type == "pr"
+    and is "critical_path"
+  requires "review.senior_engineer"
+  do require "review.senior_engineer"
+  do assign "pr" attr "user.owner"
+  do comment "pr" "Touches critical code owned by {attr.user.owner} — human approval required"
+  reason "touches a critical path"
+  priority HIGH
+}
+
+rule "Require human review for large PRs" {
+  for records where type == "pr"
+    and is "large_change"
+  requires "review.human"
+  do require "review.human"
+  do comment "pr" "{attr.pr.lines_changed} lines changed — too large to auto-approve. Consider splitting it"
+  reason "large change"
+  priority HIGH
+}
+
+// The author is the code owner, so CODEOWNERS will not request anyone. Invisible
+// to GitHub, trivial once ownership is a fact.
+rule "Escalate self-review of owned critical code" {
+  for records where type == "pr"
+    and is "critical_path"
+    and attr "user.owner" == attr "pr.author"
+  requires "review.senior_engineer"
+  do require "review.senior_engineer"
+  do comment "pr" "Author {attr.pr.author} owns this code — needs an independent reviewer"
+  reason "author owns the code they changed"
+  priority CRITICAL
+}
+
+// ─── Security review for new dependencies ────────────────────────────────────
+
+rule "Security review for new dependencies" {
+  for records where type == "pr"
+    and attr "pr.new_dependencies" > 0
+  requires "review.security_team"
+  do require "review.security_team"
+  do assign "pr" "@org/security"
+  do comment "pr" "{attr.pr.new_dependencies} new dependencies — security review required"
+  reason "adds new dependencies"
+  priority HIGH
+}
+
+// ─── Design review for UI changes ────────────────────────────────────────────
+
+rule "Design review for UI changes" {
+  for records where type == "pr"
+    and is "ui_change"
+  requires "review.designers"
+  do require "review.designers"
+  do notify "design-channel" "UI change in {attr.pr.repo} PR {attr.pr.number} needs a look"
+  reason "changes user-facing styling"
+  priority MEDIUM
+}

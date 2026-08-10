@@ -9,11 +9,11 @@ import (
 
 func parseSrc(t *testing.T, src string) *ast.Program {
 	t.Helper()
-	tokens, ld := lexer.Lex("test.talon", src)
+	tokens, ld := lexer.Lex("test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := Parse("test.talon", tokens)
+	prog, pd := Parse("test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}

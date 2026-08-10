@@ -4,7 +4,7 @@
 // matched row, and returns them as data.
 //
 // The package is shared by the runtime (internal/executor) and the
-// .talon.test runner (internal/testrunner) so that `did` / `did_not`
+// .tln.test runner (internal/testrunner) so that `did` / `did_not`
 // assertions and what a host actually receives cannot drift apart.
 package actions
 

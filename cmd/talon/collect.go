@@ -21,7 +21,7 @@ import (
 // and `run` fires one execution when the host decides to.
 func runCollect() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon collect <list|run> <file.talon> [--name NAME] [--store ...]")
+		fmt.Fprintln(os.Stderr, "usage: talon collect <list|run> <file.tln> [--name NAME] [--store ...]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	switch os.Args[2] {
@@ -49,7 +49,7 @@ type collectInfo struct {
 // populate its own job queue.
 func runCollectList() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon collect list <file.talon>")
+		fmt.Fprintln(os.Stderr, "usage: talon collect list <file.tln>")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	blocks := parseCollectBlocks(os.Args[3])
@@ -75,7 +75,7 @@ func runCollectList() {
 // the SDK; here `run` wires the store and reports what was asserted.
 func runCollectRun() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon collect run <file.talon> --name NAME [--store memory|datalevin|talon-db]")
+		fmt.Fprintln(os.Stderr, "usage: talon collect run <file.tln> --name NAME [--store memory|datalevin|talon-db]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	path := os.Args[3]

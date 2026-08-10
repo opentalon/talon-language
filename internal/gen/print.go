@@ -1,4 +1,4 @@
-// Package gen renders Talon AST nodes back into canonical .talon source.
+// Package gen renders Talon AST nodes back into canonical .tln source.
 //
 // It is a pure printer: no I/O, no FactStore dependency, no evaluation. The
 // discovery algorithms that produce specs (workflow compilation, threshold
@@ -56,7 +56,7 @@ func Program(p *ast.Program) string {
 // hold an ast.Block and don't want to type-switch.
 func Block(b ast.Block) string { return render(b) }
 
-// Detect renders an ast.DetectBlock back to .talon source.
+// Detect renders an ast.DetectBlock back to .tln source.
 func Detect(b *ast.DetectBlock) string { return render(b) }
 
 // Rule renders an ast.RuleBlock back to source.

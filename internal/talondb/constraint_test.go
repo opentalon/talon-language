@@ -22,16 +22,16 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// parseConstraintBlocks compiles a .talon source string and returns
+// parseConstraintBlocks compiles a .tln source string and returns
 // every ConstraintBlock it contained. Lets the constraint tests speak
 // the real language instead of hand-rolling AST shapes.
 func parseConstraintBlocks(t *testing.T, src string) []*ast.ConstraintBlock {
 	t.Helper()
-	tokens, ld := lexer.Lex("test.talon", src)
+	tokens, ld := lexer.Lex("test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("test.talon", tokens)
+	prog, pd := parser.Parse("test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}

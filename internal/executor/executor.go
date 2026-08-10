@@ -780,7 +780,7 @@ func (e *Executor) execFilter(f *planner.Filter, vars map[string]any) (StepResul
 	}, nil
 }
 
-// Seed reads given blocks from a parsed .talon.test program and asserts
+// Seed reads given blocks from a parsed .tln.test program and asserts
 // every fact through the FactStore's Assert method. Schema inference (for
 // backends that need it, e.g. Datalevin) is the backend's responsibility.
 func (e *Executor) Seed(ctx context.Context, prog *ast.Program) (int, error) {

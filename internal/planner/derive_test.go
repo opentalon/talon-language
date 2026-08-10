@@ -11,8 +11,8 @@ import (
 // TestPlanDeriveNoPlan: a derive block is inlined into referencing queries and
 // produces no standalone plan (like define).
 func TestPlanDeriveNoPlan(t *testing.T) {
-	tokens, _ := lexer.Lex("t.talon", `derive overdue(v) { for records where type == "vehicle" }`)
-	prog, pd := parser.Parse("t.talon", tokens)
+	tokens, _ := lexer.Lex("t.tln", `derive overdue(v) { for records where type == "vehicle" }`)
+	prog, pd := parser.Parse("t.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}

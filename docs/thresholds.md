@@ -34,7 +34,7 @@ detect "Service overdue" {
 ```
 
 The host's discovery job runs the expensive computation on a schedule, writes
-the answer into a generated `.talon` file, and the runtime just *looks it up*.
+the answer into a generated `.tln` file, and the runtime just *looks it up*.
 A `threshold "name"` reference resolves to the cached value — one lookup, no
 per-eval series walk.
 
@@ -64,7 +64,7 @@ Threshold references are **inlined at plan time**: the planner replaces each
 so the rest of the pipeline only ever sees a plain number. The block itself
 produces no query — it's data, not an evaluable rule.
 
-The host can regenerate the `.talon` file with a new `value` and the next
+The host can regenerate the `.tln` file with a new `value` and the next
 compile picks it up — no code change, no redeploy of Talon itself.
 
 ## Expiry
@@ -86,8 +86,8 @@ block, and a `valid_until` that isn't a date.
 
 ## Worked example
 
-Files: [`examples/cached_threshold.talon`](../examples/cached_threshold.talon)
-and [`test/cached_threshold.talon.test`](../test/cached_threshold.talon.test).
+Files: [`examples/cached_threshold.tln`](../examples/cached_threshold.tln)
+and [`test/cached_threshold.tln.test`](../test/cached_threshold.tln.test).
 
 The cached interval is `18200`, so an item is overdue when
 `km > last_service_km + 18200`:
@@ -98,9 +98,9 @@ The cached interval is `18200`, so an item is overdue when
 | Van B | 40000 | 25000 | under | not flagged |
 
 ```
-./talon build   examples/cached_threshold.talon
-./talon test    examples/cached_threshold.talon test/cached_threshold.talon.test
-./talon explain examples/cached_threshold.talon test/cached_threshold.talon.test
+./talon build   examples/cached_threshold.tln
+./talon test    examples/cached_threshold.tln test/cached_threshold.tln.test
+./talon explain examples/cached_threshold.tln test/cached_threshold.tln.test
 ```
 
 ```

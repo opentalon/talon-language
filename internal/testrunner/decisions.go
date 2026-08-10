@@ -17,7 +17,7 @@ import (
 // Tier-1 Decisions for the entities that fired. Cross-block linking
 // (recommend → detect) is followed automatically.
 //
-// The result maps the .talon.test block name to the slice of decisions
+// The result maps the .tln.test block name to the slice of decisions
 // produced by that test's `when` clause.
 func Decisions(prog *ast.Program, plans map[string]*planner.QueryPlan) map[string][]explain.Decision {
 	blocks := indexBlocks(prog)

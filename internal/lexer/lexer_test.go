@@ -6,7 +6,7 @@ import (
 
 func lex(t *testing.T, src string) []Token {
 	t.Helper()
-	tokens, diags := Lex("test.talon", src)
+	tokens, diags := Lex("test.tln", src)
 	if diags.HasErrors() {
 		t.Fatalf("unexpected lex errors: %v", diags)
 	}
@@ -248,7 +248,7 @@ func TestLineColTracking(t *testing.T) {
 }
 
 func TestMultipleErrors(t *testing.T) {
-	_, diags := Lex("test.talon", "@ $")
+	_, diags := Lex("test.tln", "@ $")
 	if !diags.HasErrors() {
 		t.Fatal("expected errors for illegal characters")
 	}
@@ -264,14 +264,14 @@ func TestMultipleErrors(t *testing.T) {
 }
 
 func TestUnterminatedString(t *testing.T) {
-	_, diags := Lex("test.talon", `"unterminated`)
+	_, diags := Lex("test.tln", `"unterminated`)
 	if !diags.HasErrors() {
 		t.Fatal("expected error for unterminated string")
 	}
 }
 
 func TestUnterminatedBlockComment(t *testing.T) {
-	_, diags := Lex("test.talon", "/* not closed")
+	_, diags := Lex("test.tln", "/* not closed")
 	if !diags.HasErrors() {
 		t.Fatal("expected error for unterminated block comment")
 	}

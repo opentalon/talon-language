@@ -1,0 +1,36 @@
+// Test suite for recall_batch.tln — string builtins in conditions + args.
+//
+// Run:
+//   go build ./cmd/talon
+//   ./talon test examples/recall_batch.tln test/recall_batch.tln.test
+
+test "VIN prefix normalises and matches the recall batch; ticket fields are built with string fns" {
+  given {
+    // upper(substring("1ftabc123", 0, 3)) == upper("1ft") == "1FT" → match.
+    record 1 type "vehicle"
+    attr 1 "vin" "1ftabc123"
+    attr 1 "recall_code" "rb7"
+
+    // "2gt..." → "2GT" != "1FT" → no match.
+    record 2 type "vehicle"
+    attr 2 "vin" "2gtxyz999"
+    attr 2 "recall_code" "rb7"
+  }
+
+  mock mcp "ops" "open_recall" { returns { ticket 900 } }
+
+  when detect "Recall batch match"
+
+  expect {
+    flagged 1
+    not flagged 2
+
+    // Args are computed by upper()/substring()/concat().
+    mcp_called "ops" "open_recall" with {
+      vehicle == 1
+      code == "RB7"
+      region == "1FT"
+      title contains "batch RB7"
+    }
+  }
+}

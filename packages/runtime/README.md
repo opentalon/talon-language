@@ -69,7 +69,7 @@ store.subscribe(prefix: string, cb: (actions: ActionResult[]) => void): Unsubscr
 
 ## Scope
 
-The JS runtime implements the reactive subset of Talon — rules, `define`, conditions, and actions. Workflows, ML primitives, `forecast`/`detect` blocks, and `.talon.test` files are Go-only. See the [main repo](https://github.com/opentalon/talon-language) for the full language.
+The JS runtime implements the reactive subset of Talon — rules, `define`, conditions, and actions. Workflows, ML primitives, `forecast`/`detect` blocks, and `.tln.test` files are Go-only. See the [main repo](https://github.com/opentalon/talon-language) for the full language.
 
 ## License
 

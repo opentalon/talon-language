@@ -35,7 +35,7 @@ detect "Tuned consumption anomaly" {
 ```
 
 The `tune against test "name"` clause names a labeled `test` block (in the
-same `.talon.test` file passed to `talon test` or `talon explain`):
+same `.tln.test` file passed to `talon test` or `talon explain`):
 
 ```talon
 test "labeled_consumption_history" {
@@ -93,7 +93,7 @@ threshold; the audit trail tells you when and why.
 
 ## Worked example: heavy-tailed consumption
 
-`examples/tuned_consumption.talon` + `test/tuned_consumption.talon.test`
+`examples/tuned_consumption.tln` + `test/tuned_consumption.tln.test`
 ship as the canonical demonstration. The labeled fixture has:
 
 - 10 routine consumption values around mean 50 (stddev ≈ 1)
@@ -149,7 +149,7 @@ new line per primitive enables ABC against it the day the primitive lands.
 
 ## Worked example: learned_threshold percentile
 
-`examples/tuned_high_mileage.talon` demonstrates `learned_threshold`
+`examples/tuned_high_mileage.tln` demonstrates `learned_threshold`
 tuning. The rule uses `attr "km" > learned_threshold p95 of attr "km"`,
 but the labeled fixture proves p95 is too lax for *this* fleet:
 

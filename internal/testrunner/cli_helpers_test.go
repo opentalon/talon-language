@@ -38,7 +38,7 @@ func TestFilterByNameSubstring(t *testing.T) {
 func TestWriteJUnitIncludesFailures(t *testing.T) {
 	suites := []JUnitSuite{
 		{
-			File: "fleet.talon.test",
+			File: "fleet.tln.test",
 			Results: []TestResult{
 				{Name: "pass case", Passed: true, Duration: 2 * time.Millisecond},
 				{
@@ -59,7 +59,7 @@ func TestWriteJUnitIncludesFailures(t *testing.T) {
 
 	mustContain := []string{
 		`<?xml`,
-		`<testsuite name="fleet.talon.test" tests="2" failures="1"`,
+		`<testsuite name="fleet.tln.test" tests="2" failures="1"`,
 		`<testcase name="pass case"`,
 		`<testcase name="fail case"`,
 		`<failure message="expected 42, got 0; threshold off">`,
@@ -71,7 +71,7 @@ func TestWriteJUnitIncludesFailures(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(out, `<testcase name="pass case" classname="fleet.talon.test" time="0.000"><failure`) {
+	if strings.Contains(out, `<testcase name="pass case" classname="fleet.tln.test" time="0.000"><failure`) {
 		t.Errorf("pass case must not contain <failure>")
 	}
 }

@@ -362,7 +362,7 @@ func (p *parser) parseLoggerStatement() *ast.LoggerAction {
 }
 
 // parseTuneClause parses `tune against test "NAME"`. The named test must be
-// defined in a .talon.test file passed to `talon test` / `talon explain`;
+// defined in a .tln.test file passed to `talon test` / `talon explain`;
 // its given/expect data becomes the labeled fixture ABC tunes against.
 func (p *parser) parseTuneClause() *ast.TuneClause {
 	p.advance() // tune

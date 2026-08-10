@@ -13,15 +13,15 @@ import (
 
 func planAll(t *testing.T, src string) map[string]*QueryPlan {
 	t.Helper()
-	tokens, ld := lexer.Lex("test.talon", src)
+	tokens, ld := lexer.Lex("test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := parser.Parse("test.talon", tokens)
+	prog, pd := parser.Parse("test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse: %v", pd)
 	}
-	vd := validator.Validate("test.talon", prog)
+	vd := validator.Validate("test.tln", prog)
 	if vd.HasErrors() {
 		t.Fatalf("validate: %v", vd)
 	}

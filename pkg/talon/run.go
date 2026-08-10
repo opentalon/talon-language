@@ -171,7 +171,7 @@ func Run(ctx context.Context, src string, opts ...Option) (*Result, error) {
 	return result, nil
 }
 
-// Seed parses a .talon.test source and pushes its facts into the
+// Seed parses a .tln.test source and pushes its facts into the
 // given store. Returns the number of entities written.
 //
 // Separated from [Run] because the typical pattern is to seed once at

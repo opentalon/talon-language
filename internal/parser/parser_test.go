@@ -12,11 +12,11 @@ import (
 
 func mustParse(t *testing.T, src string) *ast.Program {
 	t.Helper()
-	tokens, ld := lexer.Lex("test.talon", src)
+	tokens, ld := lexer.Lex("test.tln", src)
 	if ld.HasErrors() {
 		t.Fatalf("lex errors: %v", ld)
 	}
-	prog, pd := Parse("test.talon", tokens)
+	prog, pd := Parse("test.tln", tokens)
 	if pd.HasErrors() {
 		t.Fatalf("parse errors: %v", pd)
 	}
@@ -533,7 +533,7 @@ detect "Not active" {
 
 func TestParseErrorRecovery(t *testing.T) {
 	// Bad block, followed by valid block — must recover and parse the second
-	tokens, _ := lexer.Lex("test.talon", `
+	tokens, _ := lexer.Lex("test.tln", `
 detect "Bad block" {
   @@@ invalid syntax @@@
 }
@@ -541,7 +541,7 @@ detect "Good block" {
   for records where status == "ok"
   flag matching items
 }`)
-	prog, diags := Parse("test.talon", tokens)
+	prog, diags := Parse("test.tln", tokens)
 	if !diags.HasErrors() {
 		t.Fatal("expected parse errors for bad syntax")
 	}
@@ -975,7 +975,7 @@ func TestParseRuleRejectsConfidenceFilter(t *testing.T) {
 	// On a rule, only the bare `confidence N` provenance form is valid.
 	// `confidence >= N` is the ML filter and must be rejected with a
 	// clean diagnostic so users learn the correct shape.
-	tokens, ld := lexer.Lex("t.talon", `
+	tokens, ld := lexer.Lex("t.tln", `
 rule "Bad" {
   when tool_action contains "x"
   block "x"
@@ -984,7 +984,7 @@ rule "Bad" {
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	_, pd := Parse("t.talon", tokens)
+	_, pd := Parse("t.tln", tokens)
 	if !pd.HasErrors() {
 		t.Fatal("expected a parse error for `confidence >= N` inside rule")
 	}
@@ -1053,13 +1053,13 @@ recommend "Order more" {
 }
 
 func TestParseLoggerRejectsUnknownLevel(t *testing.T) {
-	tokens, _ := lexer.Lex("t.talon", `
+	tokens, _ := lexer.Lex("t.tln", `
 detect "Bad" {
   for records where type == "x"
   flag matching items
   logger.shout "loud"
 }`)
-	_, pd := Parse("t.talon", tokens)
+	_, pd := Parse("t.tln", tokens)
 	if !pd.HasErrors() {
 		t.Fatal("expected error for unknown log level")
 	}
@@ -1650,7 +1650,7 @@ rule "Conflicts" {
 }
 
 func TestParseRuleDoRejectsQuotedVerb(t *testing.T) {
-	tokens, ld := lexer.Lex("t.talon", `
+	tokens, ld := lexer.Lex("t.tln", `
 rule "Quoted" {
   for records where type == "pr"
   do "approve" "pr"
@@ -1658,7 +1658,7 @@ rule "Quoted" {
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	_, pd := Parse("t.talon", tokens)
+	_, pd := Parse("t.tln", tokens)
 	if !pd.HasErrors() {
 		t.Fatal("expected a parse error for a quoted action verb")
 	}
@@ -1675,7 +1675,7 @@ rule "Quoted" {
 }
 
 func TestParseRuleDoRequiresVerb(t *testing.T) {
-	tokens, ld := lexer.Lex("t.talon", `
+	tokens, ld := lexer.Lex("t.tln", `
 rule "Empty" {
   for records where type == "pr"
   do
@@ -1683,7 +1683,7 @@ rule "Empty" {
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	if _, pd := Parse("t.talon", tokens); !pd.HasErrors() {
+	if _, pd := Parse("t.tln", tokens); !pd.HasErrors() {
 		t.Fatal("expected a parse error for `do` with no verb")
 	}
 }
@@ -1697,11 +1697,11 @@ func TestParseRuleDoRejectsUnsupportedArgument(t *testing.T) {
 		`rule "R" { for records where type == "pr" do dispatch ["a", "b"] }`,
 		`rule "R" { for records where type == "pr" do x attr "n" + 1 }`,
 	} {
-		tokens, ld := lexer.Lex("t.talon", src)
+		tokens, ld := lexer.Lex("t.tln", src)
 		if ld.HasErrors() {
 			t.Fatalf("lex %s: %v", src, ld)
 		}
-		if _, pd := Parse("t.talon", tokens); !pd.HasErrors() {
+		if _, pd := Parse("t.tln", tokens); !pd.HasErrors() {
 			t.Errorf("expected a parse error for %s", src)
 		}
 	}
@@ -1737,7 +1737,7 @@ test "bool arg" {
 // A `did` with the verb omitted must not eat the expect block's closing brace,
 // which would desync brace matching for the rest of the file.
 func TestParseActionAssertionRequiresVerb(t *testing.T) {
-	tokens, ld := lexer.Lex("t.talon", `
+	tokens, ld := lexer.Lex("t.tln", `
 test "no verb" {
   given { record 1 type "pr" }
   when rule "R"
@@ -1751,7 +1751,7 @@ rule "Later" {
 	if ld.HasErrors() {
 		t.Fatalf("lex: %v", ld)
 	}
-	prog, pd := Parse("t.talon", tokens)
+	prog, pd := Parse("t.tln", tokens)
 	if !pd.HasErrors() {
 		t.Fatal("expected a parse error for a did assertion with no verb")
 	}

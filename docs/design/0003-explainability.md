@@ -63,7 +63,7 @@ type Fact struct {
 ### `talon explain` command
 
 ```
-talon explain <rules.talon> <tests.talon.test> [--test NAME] [--json]
+talon explain <rules.tln> <tests.tln.test> [--test NAME] [--json]
 ```
 
 Renders a Tier-1 view for every Decision produced by the test fixtures.
@@ -162,5 +162,5 @@ Two policies make the Tier-1 view readable:
 - `internal/testrunner/decisions_test.go` — cement detect + recommend
   end-to-end.
 - `cmd/talon/main.go` — `runExplain()` and `explain` subcommand.
-- `examples/cement_explain.talon`, `test/cement_explain.talon.test` —
+- `examples/cement_explain.tln`, `test/cement_explain.tln.test` —
   Tier-1 demo fixture.

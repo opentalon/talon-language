@@ -49,7 +49,7 @@ func New(client *Client) *Adapter {
 // write proceeds; callers that care can inspect the violations via
 // the error.
 //
-// Constraint blocks are typically parsed from the .talon source by
+// Constraint blocks are typically parsed from the .tln source by
 // the compiler and threaded through here from cmd/talon's wiring.
 func (a *Adapter) WithConstraints(blocks []*ast.ConstraintBlock) *Adapter {
 	clone := *a
@@ -135,7 +135,7 @@ func (a *Adapter) Assert(ctx context.Context, facts []factstore.Fact) error {
 // The merged record uses talon-language's namespaced attribute keys
 // (":record/type", ":attr/km", ...); the constraint evaluator expects
 // bare keys ("type", "km", ...). bareKeyView builds a temporary view
-// over the record with the namespace stripped, so .talon-authored
+// over the record with the namespace stripped, so .tln-authored
 // constraints continue to read as the language spec intends.
 func (a *Adapter) checkConstraints(recordID string, record map[string]any) error {
 	if len(a.constraints) == 0 {
