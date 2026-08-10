@@ -24,10 +24,10 @@ That split is the point: an action is decided independently of whether it was
 carried out, so the same rule is testable with no host at all — see "Testing"
 below.
 
-> **Status.** Actions are resolved in the test runner only. `talon explain`,
-> `talon why` and `talon run` do not yet report them — `explain.Decision` has no
-> action field. Until that lands, `did` / `did_not` assertions are the only way
-> to observe what a rule does, and a decision trace does not record actions.
+> **Status.** The engine emits actions at runtime — see "Getting the actions
+> out" below. `talon explain` and `talon why` still do not report them:
+> `explain.Decision` has no action field, so a decision trace does not record
+> actions.
 
 ## Syntax
 
@@ -81,6 +81,67 @@ that distinction survives.
 Talon is not newline-sensitive, so an argument list ends at the next clause
 keyword (`do`, `reason`, `priority`, `block`, `allow`, `requires`, `overrides`,
 `logger.*`, …) or the end of the rule body.
+
+## Getting the actions out
+
+A host embedding the engine reads them off the run result:
+
+```go
+res, err := talon.Run(ctx, src, talon.WithFactStore(store))
+for _, a := range res.Actions {
+    // a.EntityID — the row it fired for
+    // a.Rule     — the rule it came from
+    // a.Verb     — the host's vocabulary, unvalidated by Talon
+    // a.Args     — resolved arguments, positional
+    host.Perform(a)
+}
+```
+
+`res.Actions` is every block's actions in one list; `res.Blocks[name].Actions`
+is one block's. Both are always non-nil — a ruleset with no `do` clauses, or one
+that matched no rows, yields an empty list, so a caller never has to tell nil
+from empty.
+
+An `attr` argument naming a fact the row does not carry is present in `Args` as
+`nil`. It is not dropped: dropping it would silently shift every positional
+argument after it.
+
+The ordering is fixed, so the same facts and ruleset produce the same list on
+every run: blocks by name, rows in flagged-set order within a block, and a
+rule's `do` clauses in source order within a row.
+
+Firing lives in `internal/actions` and is shared by the runtime and the
+`.talon.test` runner, so a `did` assertion that passes is an assertion about
+what the host will actually receive.
+
+### Defeated rules fire nothing
+
+Resolution runs before any action reaches the host. When a rule that matched a
+row is defeated by another rule matching the *same* row — via an `overrides`
+edge, resolved by [defeasible priority](defeasible.md) — its actions are absent
+from the result:
+
+```talon
+rule "Tenant approve" {
+  for records where type == "pr" and attr "risk" == "low"
+  do approve "pr"
+}
+
+strict rule "Block secrets" {
+  for records where type == "pr" and attr "secrets" == true
+  overrides "Tenant approve"
+  do block "pr"
+}
+```
+
+A low-risk PR carrying secrets emits only `block`. A low-risk PR without them
+still emits `approve` — defeat is decided per row, not per ruleset.
+
+Only rules linked by an `overrides` edge are put through resolution. Two rules
+matching one row is the normal case, not a conflict: `label` and `assign` both
+matching a PR fire both, and a `priority` annotation alone never silences
+another rule. Priority decides the winner *within* a conflict the author
+declared with `overrides`.
 
 ## Testing
 

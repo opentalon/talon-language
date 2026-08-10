@@ -42,6 +42,12 @@ type BlockResult struct {
 	Flagged   [][]any        // entities matched by the first FactQuery
 	Vars      map[string]any // all intermediate result variables
 	Steps     []StepResult   // per-step results for tracing
+
+	// Actions holds the `do` clauses this block fired, resolved against
+	// the rows that matched. Always non-nil: a block with no `do` clauses
+	// (or one that matched nothing) reports an empty list, so a host never
+	// has to tell nil from empty. Talon executes none of them.
+	Actions []FiredAction
 }
 
 // StepResult records one step's execution.
@@ -174,6 +180,12 @@ func (e *Executor) RunAll(ctx context.Context, plans map[string]*planner.QueryPl
 		}
 		results[name] = result
 	}
+	// Defeasible resolution runs after every block, before any host sees an
+	// action: a strict rule in one block can defeat a rule in another, and
+	// the loser's actions must not appear.
+	for _, w := range resolveDefeatedActions(plans, results) {
+		talonlog.Default().WarnContext(ctx, w, "source", "defeasible")
+	}
 	return results, nil
 }
 
@@ -197,6 +209,7 @@ func (e *Executor) RunWithPresets(ctx context.Context, plan *planner.QueryPlan, 
 	result := &BlockResult{
 		BlockName: plan.BlockName,
 		Vars:      map[string]any{},
+		Actions:   []FiredAction{},
 	}
 	for k, v := range presets {
 		result.Vars[k] = v
@@ -212,6 +225,9 @@ func (e *Executor) RunWithPresets(ctx context.Context, plan *planner.QueryPlan, 
 	}
 
 	result.Flagged = flaggedRows(plan, result.Vars)
+	if fired, ok := result.Vars[planner.ActionsVar].([]FiredAction); ok && fired != nil {
+		result.Actions = fired
+	}
 	talonlog.BlockEval(ctx, plan.BlockName, "", len(result.Flagged), time.Since(start))
 	return result, nil
 }
@@ -504,6 +520,8 @@ func (e *Executor) execComputation(ctx context.Context, gc *planner.GoComputatio
 			return StepResult{}, err
 		}
 		vars[gc.Into] = result
+	case planner.FuncFireActions:
+		vars[gc.Into] = e.execFireActions(ctx, gc, vars)
 	case planner.FuncRemediateMCP:
 		result, err := e.execRemediate(ctx, gc, vars)
 		if err != nil {

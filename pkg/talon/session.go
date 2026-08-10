@@ -159,7 +159,7 @@ func (s *Session) RunAll(ctx context.Context) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Blocks: blocks}, nil
+	return &Result{Blocks: blocks, Actions: collectActions(blocks)}, nil
 }
 
 // Snapshot returns the current store contents (entity id → attribute →
@@ -249,7 +249,8 @@ func (s *Session) handle(ctx context.Context, block *ast.OnBlock, ev factstore.E
 			if err != nil {
 				f.Err = err
 			} else {
-				f.Result = &Result{Blocks: map[string]*BlockResult{res.BlockName: res}}
+				blocks := map[string]*BlockResult{res.BlockName: res}
+				f.Result = &Result{Blocks: blocks, Actions: collectActions(blocks)}
 			}
 			s.pending = append(s.pending, f)
 		}

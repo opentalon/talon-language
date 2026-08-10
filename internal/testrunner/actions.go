@@ -5,67 +5,53 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opentalon/talon-language/internal/actions"
 	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/template"
 )
 
 // FiredAction is one `do` action resolved against one matched row. Talon does
 // not execute it — the host does. This is the data the engine hands back.
-type FiredAction struct {
-	EntityID int
-	Verb     string
-	Args     []any
-}
+type FiredAction = actions.Fired
 
 // FireBlockActions resolves the `do` clauses of a rule for every flagged row,
 // in source order, row order following the flagged set. A block with no `do`
 // clauses returns nothing.
 //
-// Arguments resolve per row: `attr "x"` reads the row's attribute, a string
-// literal is rendered as a template so `{attr.x}` interpolates, and numbers and
-// booleans pass through. An `attr` that the row does not carry resolves to nil,
-// which keeps a missing fact distinguishable from an empty string in the
-// action payload even though the condition layer is two-valued.
+// Firing itself lives in internal/actions, shared with the runtime, so a
+// `did` / `did_not` assertion is checked against the same resolution a host
+// embedding the engine receives. All this does is project the test runner's
+// in-memory entities into the rows that package wants.
 func FireBlockActions(b ast.Block, flagged []int, entities map[int]*entity, now time.Time) []FiredAction {
 	rule, ok := b.(*ast.RuleBlock)
-	if !ok || len(rule.Do) == 0 {
+	if !ok {
 		return nil
 	}
-	var out []FiredAction
+	rows := make([]actions.Row, 0, len(flagged))
 	for _, id := range flagged {
 		ent, ok := entities[id]
 		if !ok || ent == nil {
 			continue
 		}
-		ctx := renderContextFor(ent, flagged, entities, now, nil, "")
-		for _, do := range rule.Do {
-			fired := FiredAction{EntityID: id, Verb: do.Verb}
-			for _, arg := range do.Args {
-				fired.Args = append(fired.Args, resolveActionArg(arg, ent, ctx))
-			}
-			out = append(out, fired)
+		rows = append(rows, actions.Row{
+			ID:    id,
+			Attrs: attrFields(ent),
+			Ctx:   renderContextFor(ent, flagged, entities, now, nil, ""),
+		})
+	}
+	return actions.Fire(rule, rows)
+}
+
+// attrFields projects an entity's ":attr/x" fields to bare names — the view
+// `attr "x"` arguments read. Record fields stay out, so `attr` naming a fact
+// the row does not carry resolves to nil rather than to a record value.
+func attrFields(ent *entity) map[string]any {
+	out := make(map[string]any, len(ent.fields))
+	for k, v := range ent.fields {
+		if name, ok := strings.CutPrefix(k, ":attr/"); ok {
+			out[name] = v
 		}
 	}
 	return out
-}
-
-// resolveActionArg evaluates one `do` argument against a row.
-func resolveActionArg(e ast.Expr, ent *entity, ctx template.RenderContext) any {
-	switch v := e.(type) {
-	case *ast.AttrExpr:
-		if val, ok := ent.fields[":attr/"+v.Name]; ok {
-			return val
-		}
-		return nil
-	case *ast.LiteralExpr:
-		if s, ok := v.Value.(string); ok {
-			return template.Render(ast.ParseTemplate(s), ctx)
-		}
-		return v.Value
-	case *ast.IdentExpr:
-		return v.Name
-	}
-	return nil
 }
 
 // checkActionAssertions verifies the did / did_not assertions in an expect

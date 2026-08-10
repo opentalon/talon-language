@@ -157,7 +157,7 @@ func Run(ctx context.Context, src string, opts ...Option) (*Result, error) {
 		return nil, err
 	}
 
-	result := &Result{Blocks: blocks}
+	result := &Result{Blocks: blocks, Actions: collectActions(blocks)}
 	if cfg.factStore != nil {
 		// Best-effort name resolution: a fact store with no
 		// :attr/name bindings returns an empty map and that's fine.

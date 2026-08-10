@@ -1,8 +1,15 @@
 package testrunner
 
 import (
+	"context"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/talon-language/internal/executor"
+	"github.com/opentalon/talon-language/internal/factstore"
 
 	"github.com/opentalon/talon-language/internal/diagnostic"
 	"github.com/opentalon/talon-language/internal/planner"
@@ -296,4 +303,61 @@ func validateSrc(t *testing.T, rulesSrc, testSrc string) diagnostic.List {
 	merged := *rulesProg
 	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
 	return Validate(&merged, plans)
+}
+
+// The test runner and the runtime must resolve `do` clauses identically —
+// a `did` assertion that passes while the host receives something else is
+// the failure mode promoting this code out of the test runner was meant to
+// remove. Same ruleset, same facts, both paths, compared verbatim.
+func TestActionsRuntimeParity(t *testing.T) {
+	rulesSrc := `
+rule "Critical path" {
+  for records where type == "pr" and attr "risk" == "low"
+  do require "review.senior"
+  do assign "pr" attr "user.owner"
+  do comment "pr" "Owned by {attr.user.owner}, {attr.files} files"
+  do escalate attr "missing.attr"
+}
+`
+	given := []ast.TestDatum{
+		{Kind: "record", ID: 4, Fields: map[string]any{"type": "pr"}},
+		{Kind: "attr", ID: 4, Fields: map[string]any{"risk": "low"}},
+		{Kind: "attr", ID: 4, Fields: map[string]any{"user.owner": "@alice"}},
+		{Kind: "attr", ID: 4, Fields: map[string]any{"files": 2.0}},
+	}
+
+	prog := mustParse(t, "rules.talon", rulesSrc)
+	plans, pd := planner.Plan(prog)
+	if pd.HasErrors() {
+		t.Fatalf("plan: %v", pd)
+	}
+	rule := prog.Blocks[0]
+
+	// Test-runner path: in-memory entities, flagged set from the runner.
+	fromRunner := FireBlockActions(rule, []int{4}, buildEntities(given), time.Unix(0, 0).UTC())
+
+	// Runtime path: the same program against a seeded MemoryStore.
+	store := factstore.NewMemoryStore()
+	exec := &executor.Executor{Client: store}
+	if _, err := exec.Seed(context.Background(), &ast.Program{
+		Blocks: []ast.Block{&ast.TestBlock{Given: given}},
+	}); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+	results, err := exec.RunAll(context.Background(), plans)
+	if err != nil {
+		t.Fatalf("RunAll: %v", err)
+	}
+	fromRuntime := results["Critical path"].Actions
+
+	if !reflect.DeepEqual(fromRunner, fromRuntime) {
+		t.Fatalf("test runner and runtime disagree:\n runner  %#v\n runtime %#v", fromRunner, fromRuntime)
+	}
+	if len(fromRuntime) != 4 {
+		t.Fatalf("want 4 actions, got %#v", fromRuntime)
+	}
+	// The missing attr survives as nil on both paths.
+	if got := fromRuntime[3].Args; !reflect.DeepEqual(got, []any{nil}) {
+		t.Fatalf("missing attr arg: got %#v, want []any{nil}", got)
+	}
 }
