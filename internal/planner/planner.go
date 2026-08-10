@@ -31,7 +31,13 @@ const (
 	FuncOptimizeACO          = "optimize_aco"
 	FuncOptimizeILP          = "optimize_ilp"
 	FuncAsOfIntersect        = "asof_intersect"
+	FuncFireActions          = "fire_actions"
 )
+
+// ActionsVar is the variable a rule plan's fire_actions step binds its
+// resolved actions to. The executor reads it back off the scope to build
+// the block result's action list.
+const ActionsVar = "fired_actions"
 
 // ─── Plan step types ──────────────────────────────────────────────────────────
 
@@ -39,6 +45,11 @@ const (
 type QueryPlan struct {
 	BlockName string
 	Steps     []PlanStep
+	// Rule is the source rule block this plan compiles, set for rule plans
+	// only. The runtime needs it after execution to resolve defeasible
+	// conflicts between rules that matched the same row — including rules
+	// with no `do` clauses, which defeat without firing anything.
+	Rule *ast.RuleBlock
 }
 
 // PlanStep is implemented by FactQuery, GoComputation, MLComputation, and Filter.
@@ -806,7 +817,7 @@ func (p *planner) planEnrich(b *ast.EnrichBlock) *QueryPlan {
 }
 
 func (p *planner) planRule(b *ast.RuleBlock) *QueryPlan {
-	plan := &QueryPlan{BlockName: b.Name}
+	plan := &QueryPlan{BlockName: b.Name, Rule: b}
 	qb := p.newQueryBuilder()
 	if b.Selector != nil {
 		qb.addSelector(*b.Selector)
@@ -826,8 +837,19 @@ func (p *planner) planRule(b *ast.RuleBlock) *QueryPlan {
 			Conditions: append([]ast.Condition(nil), qb.goConditions...),
 			Into:       "policy_candidates",
 		})
+		last = "policy_candidates"
 	}
-	_ = last
+
+	// do: resolve the rule's action clauses against every matched row. The
+	// engine hands the result back; it executes nothing itself.
+	if len(b.Do) > 0 {
+		plan.Steps = append(plan.Steps, &GoComputation{
+			Function: FuncFireActions,
+			Input:    last,
+			Params:   map[string]any{"rule": b},
+			Into:     ActionsVar,
+		})
+	}
 	return plan
 }
 

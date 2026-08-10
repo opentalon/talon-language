@@ -3,6 +3,7 @@ package talon
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/opentalon/talon-language/internal/diagnostic"
@@ -40,6 +41,17 @@ type BlockResult = executor.BlockResult
 // StepResult records one step's execution inside a BlockResult.
 type StepResult = executor.StepResult
 
+// Action is one `do` clause a rule fired, resolved against one matched
+// row: the verb, its resolved arguments, the id of the row it fired for,
+// and the rule it came from. Talon executes none of them — deciding which
+// actions fire and what their arguments are is the engine's job, running
+// them is the host's.
+//
+// An `attr` argument naming a fact the row does not carry is present and
+// nil, not dropped: dropping it would silently shift the positional
+// arguments a host reads.
+type Action = executor.FiredAction
+
 // Diagnostic is one compilation diagnostic (error, warning, or info).
 type Diagnostic = diagnostic.Diagnostic
 
@@ -59,6 +71,15 @@ const (
 // key "Foo").
 type Result struct {
 	Blocks map[string]*BlockResult
+
+	// Actions is every action fired by every block in this run, after
+	// defeasible resolution — a rule defeated for a row contributes
+	// nothing. Ordered by block name, then by the block's own order
+	// (rows in flagged-set order, a rule's `do` clauses in source
+	// order), so the same facts and ruleset produce the same list every
+	// time. Never nil; a ruleset with no `do` clauses yields an empty
+	// slice.
+	Actions []Action
 
 	// ResolvedNames maps entity id → display name, populated only by
 	// [Run] when a FactStore is wired up (the fact store holds the
@@ -198,7 +219,25 @@ func RunWorkflow(ctx context.Context, src string, opts ...Option) (*Result, erro
 		return nil, err
 	}
 
-	return &Result{Blocks: blocks}, nil
+	return &Result{Blocks: blocks, Actions: collectActions(blocks)}, nil
+}
+
+// collectActions flattens the per-block action lists into the run-level
+// one. Blocks come out of the executor in a map, so we walk them in
+// sorted name order: two runs over the same facts must produce a
+// byte-identical action list for a host to build determinism claims on
+// top of it.
+func collectActions(blocks map[string]*BlockResult) []Action {
+	names := make([]string, 0, len(blocks))
+	for name := range blocks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := []Action{}
+	for _, name := range names {
+		out = append(out, blocks[name].Actions...)
+	}
+	return out
 }
 
 // needsFactStore reports whether any compiled plan contains a step

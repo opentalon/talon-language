@@ -72,6 +72,25 @@ result, err := talon.Run(ctx, src, talon.WithFactStore(myStore))
 | `WithFactStore(s FactStore)` | (`Run`/`Seed`) Installs a FactStore — required for programs with `detect` / query blocks. |
 | `WithDatalevinURL(url)` | (`Run`/`Seed`) Sugar over `WithFactStore` — constructs the default Datalevin HTTP client and Health-checks it on first store access. |
 
+### Fired actions
+
+A rule's `do` clauses come back on the result as data — Talon decides which
+actions fire and resolves their arguments; running them is yours:
+
+```go
+for _, a := range result.Actions {
+    // a.EntityID, a.Rule, a.Verb, a.Args
+    perform(a)
+}
+```
+
+`result.Actions` is every block's actions; `result.Blocks[name].Actions` is one
+block's. Both are always non-nil. Ordering is fixed (blocks by name, rows in
+flagged order, `do` clauses in source order), so the same facts and ruleset
+produce the same list every run. An `attr` argument the row does not carry is
+present as `nil` rather than dropped, and a rule defeated by an `overrides` edge
+for that row contributes nothing. See `docs/actions.md`.
+
 ### Errors
 
 - Failures during the lex / parse / validate / plan stages return a `*CompileError`. The `Stage` field identifies which stage failed; `Diags` carries the full diagnostic list.

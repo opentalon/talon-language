@@ -1082,8 +1082,10 @@ type ApprovalExpr struct {
 // engine's job is to decide *which* actions fire, resolve their arguments
 // against the matched row, and hand them back as data.
 //
-// Actions are resolved in the test runner today (see testrunner.FireBlockActions);
-// the engine's decision trace does not carry them yet.
+// Resolution lives in internal/actions, shared by the runtime (the fired
+// actions land on executor.BlockResult.Actions) and the .talon.test runner,
+// so an assertion and a host see the same payload. The engine's decision
+// trace does not carry them yet.
 //
 // The verb vocabulary is therefore deliberately open. A host that understands
 // `approve` / `block` / `comment` validates those names itself; the language
