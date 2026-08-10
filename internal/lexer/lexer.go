@@ -73,6 +73,7 @@ const (
 	TokenBlock
 	TokenAllow
 	TokenReason
+	TokenDo
 	TokenAction
 	TokenSuggest
 	TokenReturn
@@ -264,6 +265,7 @@ var keywords = map[string]TokenType{
 	"block":             TokenBlock,
 	"allow":             TokenAllow,
 	"reason":            TokenReason,
+	"do":                TokenDo,
 	"action":            TokenAction,
 	"suggest":           TokenSuggest,
 	"return":            TokenReturn,

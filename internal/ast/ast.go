@@ -78,12 +78,13 @@ type RuleBlock struct {
 	Block     *string
 	Allow     *string
 	Requires  *RequiresClause
+	Do        []*DoAction // host-executed verbs, in source order
 	Reason    *Template
 	Priority  *Priority
-	Strict    bool     // strict rules cannot be overridden
-	Overrides []string // names of rules this rule defeats when both match
-	Score     *float64 // provenance annotation — the rule's own confidence
-	Source    *string  // provenance annotation — where the rule came from
+	Strict    bool            // strict rules cannot be overridden
+	Overrides []string        // names of rules this rule defeats when both match
+	Score     *float64        // provenance annotation — the rule's own confidence
+	Source    *string         // provenance annotation — where the rule came from
 	Loggers   []*LoggerAction // logger statements fired per matched row
 }
 
@@ -1076,6 +1077,24 @@ type ApprovalExpr struct {
 	Role string
 }
 
+// DoAction is one `do <verb> [arg ...]` clause on a rule. Talon does not
+// execute it and does not know what any verb means — the host does. The
+// engine's job is to decide *which* actions fire, resolve their arguments
+// against the matched row, and hand them back as data.
+//
+// Actions are resolved in the test runner today (see testrunner.FireBlockActions);
+// the engine's decision trace does not carry them yet.
+//
+// The verb vocabulary is therefore deliberately open. A host that understands
+// `approve` / `block` / `comment` validates those names itself; the language
+// only guarantees that an unknown verb reaches the host intact rather than
+// being silently dropped.
+type DoAction struct {
+	Pos  Pos
+	Verb string
+	Args []Expr
+}
+
 type CalculateClause struct {
 	Name   string
 	From   string // "activities", "records"
@@ -1228,6 +1247,29 @@ type TestBlock struct {
 	Expect    []TestAssertion
 	Mocks     []MockClause         // `mock mcp ...` stubs installed before `when`
 	MCPCalls  []MCPCalledAssertion // `mcp_called ...` assertions inside `expect`
+	Actions   []ActionAssertion    // `did` / `did_not` assertions inside `expect`
+}
+
+// ActionAssertion checks the `do` actions a rule produced for one row:
+// `did <id> <verb> [arg ...]` / `did_not <id> <verb> [arg ...]`.
+//
+// With no args it asserts only that the verb fired for that row. With args it
+// matches positionally; a `contains "substr"` arg matches a substring instead
+// of the whole value, which is what makes an assertion on an interpolated
+// comment readable.
+type ActionAssertion struct {
+	Pos    Pos
+	Negate bool
+	ID     int
+	Verb   string
+	Args   []ActionArgMatch
+}
+
+// ActionArgMatch is one positional argument matcher inside a did/did_not
+// assertion. Contains selects substring matching over equality.
+type ActionArgMatch struct {
+	Contains bool
+	Value    any
 }
 
 // MockClause stubs one MCP tool for a test: `mock mcp "server" "tool" {

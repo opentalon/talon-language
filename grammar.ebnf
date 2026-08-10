@@ -223,7 +223,8 @@ RuleBody    = ( Selector | WhenClause )
               [ EveryClause ]
               [ BeforeClause | AfterClause ]
               [ OverridesClause ]
-              ( BlockClause | AllowClause | RequiresClause )
+              [ BlockClause | AllowClause | RequiresClause ]
+              { DoClause }
               [ ReasonClause ]
               [ PriorityClause ]
               [ ScoreAnnotation ]
@@ -231,6 +232,36 @@ RuleBody    = ( Selector | WhenClause )
               { LoggerStmt }
 
 OverridesClause = "overrides" STRING { "," STRING }
+
+(* A rule body needs at least one outcome: a verdict clause (block / allow /
+   requires), a `do` clause, or both. The validator enforces "at least one";
+   the grammar can't express it.
+
+   DoClause names a host-executed action. Talon does not execute it and does
+   not know what any verb means — the engine decides *which* actions fire,
+   resolves their arguments against the matched row, and hands them back as
+   data for the host to carry out, so an action is decided independently of
+   whether it was performed. Actions are currently resolved in the test runner
+   only (`did` / `did_not` assertions); the decision trace does not carry them
+   yet — see docs/actions.md.
+
+   The verb is a bare name, deliberately unrestricted: a GitHub review bot's
+   `approve` / `block` / `comment` and a fleet system's `dispatch` are the same
+   construct with different vocabularies, and the host validates its own. A
+   quoted verb (`do "approve"`) is a parse error, since the lexer would
+   otherwise make it indistinguishable from the bare form. The verb position
+   accepts keywords, so `do block "pr.merge"` is an action rather than a
+   verdict clause.
+
+   Arguments are ordinary expressions, resolved per matched row: `attr "x"`
+   reads that row's attribute, a string literal is rendered as a Template so
+   {attr.x} interpolates, numbers and booleans pass through. An `attr` the row
+   does not carry resolves to nothing rather than an empty string, so a host
+   can still tell a missing fact from a blank one. Since Talon is not
+   newline-sensitive, an argument list ends at the next clause keyword. *)
+DoClause        = "do" VERB { Expr }
+
+VERB            = IDENT   (* unquoted; keywords allowed, e.g. `do block` *)
 
 (* ─── recommend ──────────────────────────────────────────────────────────────── *)
 

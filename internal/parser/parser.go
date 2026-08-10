@@ -444,6 +444,10 @@ func (p *parser) parseRuleClause(b *ast.RuleBlock) bool {
 		b.Allow = &s
 	case lexer.TokenRequires:
 		b.Requires = p.parseRequiresClause()
+	case lexer.TokenDo:
+		if a := p.parseDoClause(); a != nil {
+			b.Do = append(b.Do, a)
+		}
 	case lexer.TokenReason:
 		b.Reason = p.parseLabelClause()
 	case lexer.TokenPriority:
@@ -2014,6 +2018,71 @@ func (p *parser) parseRequiresClause() *ast.RequiresClause {
 	return &ast.RequiresClause{What: what}
 }
 
+// parseDoClause parses `do <verb> [arg ...]`. The verb is any word — an IDENT
+// or a keyword that happens to be one (`do block "pr.merge"`), since the verb
+// vocabulary belongs to the host, not the language. Arguments run until the
+// next clause keyword or the end of the rule body; Talon is not
+// newline-sensitive, so the clause boundary is what terminates the list.
+func (p *parser) parseDoClause() *ast.DoAction {
+	tok := p.advance() // do
+	// The verb position is unconditional: `do block "pr.merge"` names the verb
+	// `block`, which is also a clause keyword. Only the end of the body stops
+	// us here — the boundary check applies to arguments, not to the verb.
+	if p.at(lexer.TokenRBrace) || p.at(lexer.TokenEOF) {
+		p.errorf("expected an action verb after `do`, got %q", p.peek().Value)
+		return nil
+	}
+	// A quoted verb is the likely first mistake, and it would otherwise parse:
+	// the lexer hands back the string's contents, so `do "approve" "pr"` would
+	// look identical to `do approve "pr"` by the time we see it.
+	if p.at(lexer.TokenString) {
+		p.errorf("action verb must not be quoted — write `do %s ...`, not `do %q ...`",
+			p.peek().Value, p.peek().Value)
+		p.advance()
+		return nil
+	}
+	verb := p.advance().Value
+	if verb == "" {
+		p.errorf("expected an action verb after `do`")
+		return nil
+	}
+	a := &ast.DoAction{Verb: verb, Pos: ast.Pos{Line: tok.Line, Col: tok.Col}}
+	for !p.atRuleClauseBoundary() {
+		before := p.pos
+		arg := p.parseExpr()
+		// Only the forms the action resolver understands are accepted. Anything
+		// else (arithmetic, list literals, negation) would resolve to nothing at
+		// run time and hand the host an empty argument with no diagnostic.
+		switch arg.(type) {
+		case *ast.AttrExpr, *ast.LiteralExpr, *ast.IdentExpr:
+			a.Args = append(a.Args, arg)
+		default:
+			p.errorf("unsupported argument to `do %s` — an action argument must be `attr \"name\"`, a literal, or a bare name", verb)
+		}
+		if p.pos == before {
+			// parseExpr consumed nothing — bail rather than spin.
+			p.errorf("unexpected token %q in arguments to `do %s`", p.peek().Value, verb)
+			p.advance()
+			break
+		}
+	}
+	return a
+}
+
+// atRuleClauseBoundary reports whether the current token starts a new rule
+// clause (or ends the body), which is what terminates a `do` argument list.
+func (p *parser) atRuleClauseBoundary() bool {
+	switch p.peek().Type {
+	case lexer.TokenDo, lexer.TokenReason, lexer.TokenPriority,
+		lexer.TokenBlock, lexer.TokenAllow, lexer.TokenRequires,
+		lexer.TokenOverrides, lexer.TokenEvery, lexer.TokenBefore,
+		lexer.TokenAfter, lexer.TokenConfidence, lexer.TokenSource,
+		lexer.TokenRBrace, lexer.TokenEOF:
+		return true
+	}
+	return p.atLoggerStatement()
+}
+
 func (p *parser) parseFeaturesClause() []ast.Expr {
 	p.advance() // features
 	p.expect(lexer.TokenLBracket)
@@ -2964,6 +3033,12 @@ func (p *parser) parseTestBlock() *ast.TestBlock {
 					b.MCPCalls = append(b.MCPCalls, p.parseMCPCalledAssertion())
 					continue
 				}
+				// did / did_not carry a verb plus positional arg matchers,
+				// which TestAssertion's flat shape can't hold.
+				if p.at(lexer.TokenIdent) && (p.peek().Value == "did" || p.peek().Value == "did_not") {
+					b.Actions = append(b.Actions, p.parseActionAssertion())
+					continue
+				}
 				b.Expect = append(b.Expect, p.parseTestAssertion())
 			}
 			p.expect(lexer.TokenRBrace)
@@ -3047,15 +3122,10 @@ func (p *parser) parseLiteralValue() any {
 	switch p.peek().Type {
 	case lexer.TokenString:
 		return p.expectString()
+	case lexer.TokenBool:
+		return p.advance().Value == "true"
 	case lexer.TokenIdent:
-		v := p.advance().Value
-		switch v {
-		case "true":
-			return true
-		case "false":
-			return false
-		}
-		return v
+		return p.advance().Value
 	default:
 		s := p.expectNumberStr()
 		if n, err := strconv.Atoi(s); err == nil {
@@ -3106,6 +3176,8 @@ func (p *parser) parseTestDatum() ast.TestDatum {
 			fields[attrName] = n
 		case lexer.TokenBool:
 			fields[attrName] = p.advance().Value == "true"
+		case lexer.TokenLBracket:
+			fields[attrName] = p.parseTestListValue()
 		default:
 			p.errorf("expected value for attr %q, got %q", attrName, p.peek().Value)
 		}
@@ -3116,6 +3188,88 @@ func (p *parser) parseTestDatum() ast.TestDatum {
 		p.advance()
 		return ast.TestDatum{}
 	}
+}
+
+// parseTestListValue parses a `[ v, v, ... ]` literal in a given block. List
+// attributes are what the string predicates quantify over (`contains` means
+// "any element contains"), so a test file that cannot express one cannot
+// exercise them. An empty list is legal and distinct from an unset attribute.
+func (p *parser) parseTestListValue() []any {
+	p.expect(lexer.TokenLBracket)
+	out := []any{}
+	for !p.at(lexer.TokenRBracket) && !p.at(lexer.TokenEOF) {
+		if p.at(lexer.TokenComma) {
+			p.advance()
+			continue
+		}
+		switch p.peek().Type {
+		case lexer.TokenString:
+			out = append(out, p.advance().Value)
+		case lexer.TokenNumber:
+			n, _ := strconv.ParseFloat(p.advance().Value, 64)
+			out = append(out, n)
+		case lexer.TokenBool:
+			out = append(out, p.advance().Value == "true")
+		default:
+			p.errorf("expected a string, number or boolean in list literal, got %q", p.peek().Value)
+			p.advance()
+		}
+	}
+	p.expect(lexer.TokenRBracket)
+	return out
+}
+
+// parseActionAssertion parses `did <id> <verb> [arg ...]` or the `did_not`
+// form. Args match positionally; `contains "x"` matches a substring of that
+// argument instead of the whole value.
+func (p *parser) parseActionAssertion() ast.ActionAssertion {
+	tok := p.advance() // did | did_not
+	a := ast.ActionAssertion{
+		Negate: tok.Value == "did_not",
+		Pos:    ast.Pos{Line: tok.Line, Col: tok.Col},
+	}
+	a.ID, _ = strconv.Atoi(p.expectNumberStr())
+	// The verb is required. Without this guard a `did 1` with the verb omitted
+	// eats the expect block's closing brace, which desyncs brace matching for
+	// everything after this test.
+	if p.at(lexer.TokenRBrace) || p.at(lexer.TokenEOF) || p.atTestAssertionBoundary() {
+		p.errorf("expected an action verb after `%s %d`", tok.Value, a.ID)
+		return a
+	}
+	a.Verb = p.advance().Value
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) && !p.atTestAssertionBoundary() {
+		if p.at(lexer.TokenContains) {
+			p.advance() // contains
+			a.Args = append(a.Args, ast.ActionArgMatch{Contains: true, Value: p.expectString()})
+			continue
+		}
+		before := p.pos
+		a.Args = append(a.Args, ast.ActionArgMatch{Value: p.parseLiteralValue()})
+		if p.pos == before {
+			// parseLiteralValue consumed nothing — bail rather than spin.
+			p.errorf("unexpected token %q in arguments to `%s %d %s`",
+				p.peek().Value, tok.Value, a.ID, a.Verb)
+			p.advance()
+			break
+		}
+	}
+	return a
+}
+
+// atTestAssertionBoundary reports whether the current token starts a new
+// assertion, terminating the argument list of a did/did_not.
+func (p *parser) atTestAssertionBoundary() bool {
+	switch p.peek().Type {
+	case lexer.TokenFlagged, lexer.TokenNot, lexer.TokenLabel,
+		lexer.TokenPriority, lexer.TokenThreshold, lexer.TokenCount:
+		return true
+	case lexer.TokenIdent:
+		switch p.peek().Value {
+		case "did", "did_not", "mcp_called", "score":
+			return true
+		}
+	}
+	return false
 }
 
 func (p *parser) parseTestAssertion() ast.TestAssertion {
@@ -3153,6 +3307,14 @@ func (p *parser) parseTestAssertion() ast.TestAssertion {
 		op := p.advance().Value // "~=", ">", etc.
 		val := p.advance().Value
 		return ast.TestAssertion{Kind: "threshold", Op: op, Value: val}
+
+	case lexer.TokenCount:
+		// `count` is a keyword (the calculate METHOD), so it never reached
+		// the IDENT branch below despite checkAssertion handling "count".
+		p.advance()             // count
+		op := p.advance().Value // "=="
+		val := p.advance().Value
+		return ast.TestAssertion{Kind: "count", Op: op, Value: val}
 
 	case lexer.TokenIdent:
 		// e.g. "count == 2" or "score 808 > 2.5"

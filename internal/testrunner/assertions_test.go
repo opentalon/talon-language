@@ -134,5 +134,9 @@ func runResults(t *testing.T, rulesSrc, testSrc string) []TestResult {
 	if pd.HasErrors() {
 		t.Fatalf("plan: %v", pd)
 	}
-	return Run(testProg, plans)
+	// Mirror `talon test`: it merges the rules and test programs before
+	// running, which is what gives the runner access to the source blocks.
+	merged := *rulesProg
+	merged.Blocks = append(merged.Blocks, testProg.Blocks...)
+	return Run(&merged, plans)
 }
