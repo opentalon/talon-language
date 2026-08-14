@@ -48,9 +48,6 @@ jobs:
           go-version: "1.25"
           cache: true
 
-      - name: Clone talon-db sibling (for local replace directive)
-        run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-
       - name: Build tln
         env:
           GOOS: ${{ matrix.os }}

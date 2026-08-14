@@ -15,16 +15,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - name: Clone talon-db sibling (for local replace directive)
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-master}"
-          # Cross-repo PRs: try the matching branch on talon-db first so
-          # stacked changes (proto on talon-db side, adapter on this side)
-          # see each other in CI. Fall back to master when no matching
-          # branch exists.
-          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
-            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-          fi
       - run: go test ./...
 
   js-runtime:
@@ -45,12 +35,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - name: Clone talon-db sibling (for local replace directive)
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-master}"
-          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
-            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-          fi
       - uses: golangci/golangci-lint-action@v7
         with:
           version: latest
@@ -63,12 +47,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - name: Clone talon-db sibling (for local replace directive)
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-master}"
-          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
-            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-          fi
       - run: go build ./cmd/tln
       - run: ./tln build examples/fleet_maintenance.tln
       - run: ./tln test -v --junit junit-tln.xml examples/fleet_maintenance.tln test/fleet_maintenance.tln.test
@@ -86,12 +64,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      - name: Clone talon-db sibling (for local replace directive)
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-master}"
-          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
-            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-          fi
       - name: Install Datalevin
         run: |
           curl -sL https://github.com/datalevin/datalevin/releases/download/0.10.7/dtlv-0.10.7-ubuntu-22.04-amd64.zip -o dtlv.zip
@@ -107,91 +79,50 @@ jobs:
           echo "$output"
           echo "$output" | grep -q ":service-overdue" || { echo "FAIL: missing query results"; exit 1; }
 
-  talon-db:
-    name: tln + talon-db
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-      - name: Clone talon-db sibling repo
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-master}"
-          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
-            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-          fi
-      - name: Build talondb-server
-        run: |
-          cd ../talon-db
-          go build -o /tmp/talondb-server ./cmd/talondb-server
-      - name: Start talondb-server
-        run: |
-          rm -f /tmp/tln.bbolt /tmp/talondb.sock
-          /tmp/talondb-server --db /tmp/tln.bbolt --socket /tmp/talondb.sock > /tmp/talondb.log 2>&1 &
-          echo "TALONDB_PID=$!" >> $GITHUB_ENV
-          for i in $(seq 1 30); do
-            if [ -S /tmp/talondb.sock ]; then
-              echo "talondb-server is up"
-              break
-            fi
-            sleep 0.5
-          done
-          [ -S /tmp/talondb.sock ] || { echo "FAIL: server did not bind socket"; cat /tmp/talondb.log; exit 1; }
-      - run: go build ./cmd/tln
-      - run: ./tln build examples/fleet_maintenance.tln
-      - name: Run fleet_maintenance through talon-db
-        run: |
-          output=$(./tln run examples/fleet_maintenance.tln \
-                     --seed test/fleet_maintenance.tln.test \
-                     --store talon-db \
-                     --talondb unix:///tmp/talondb.sock)
-          echo "$output"
-          echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
-          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }
-      - name: Seed tenant-a (--tenant flag)
-        run: |
-          output=$(./tln run examples/fleet_maintenance.tln \
-                     --seed test/fleet_maintenance.tln.test \
-                     --store talon-db \
-                     --talondb unix:///tmp/talondb.sock \
-                     --tenant a)
-          echo "$output"
-          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: tenant-a should detect overdues"; exit 1; }
-      - name: Tenant-b must NOT see tenant-a's data (isolation)
-        run: |
-          # tenant-b has no seed. The program will error on the ML
-          # anomaly block once it reaches it (zero samples in the
-          # tenant), which is itself a positive signal — the data path
-          # is truly empty. What matters is that "Service overdue" must
-          # not appear with ANY non-zero count between now and the
-          # error; that would mean facts leaked from tenant-a.
-          set +e
-          output=$(./tln run examples/fleet_maintenance.tln \
-                     --store talon-db \
-                     --talondb unix:///tmp/talondb.sock \
-                     --tenant b 2>&1)
-          set -e
-          echo "$output"
-          if echo "$output" | grep -qE "Service overdue.*[1-9]"; then
-            echo "FAIL: tenant-b saw tenant-a's overdues — isolation broken"
-            exit 1
-          fi
-      - name: Tenant-a still sees its data after the tenant-b query
-        run: |
-          output=$(./tln run examples/fleet_maintenance.tln \
-                     --store talon-db \
-                     --talondb unix:///tmp/talondb.sock \
-                     --tenant a)
-          echo "$output"
-          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: tenant-a lost its data"; exit 1; }
-      - name: Stop talondb-server
-        if: always()
-        run: |
-          if [ -n "$TALONDB_PID" ]; then
-            kill $TALONDB_PID 2>/dev/null || true
-          fi
-          cat /tmp/talondb.log 2>/dev/null || true
+  # ── talon-db integration — DISABLED ──────────────────────────────────────
+  # The talon-db backend was cut from core (no longer a Go dependency). It
+  # returns as an external plugin; re-enable this job then. Kept here, wholly
+  # commented, so it is a diff to uncomment rather than rewrite.
+  #
+  # talon-db:
+  #   name: tln + talon-db
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-go@v5
+  #       with:
+  #         go-version: "1.25"
+  #     - name: Clone talon-db (now opentalon/tln-db)
+  #       run: |
+  #         BRANCH="${GITHUB_HEAD_REF:-master}"
+  #         if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/tln-db.git ../tln-db 2>/dev/null; then
+  #           git clone --depth=1 https://github.com/opentalon/tln-db.git ../tln-db
+  #         fi
+  #     - name: Build talondb-server
+  #       run: |
+  #         cd ../tln-db
+  #         go build -o /tmp/talondb-server ./cmd/talondb-server
+  #     - name: Start talondb-server
+  #       run: |
+  #         rm -f /tmp/tln.bbolt /tmp/talondb.sock
+  #         /tmp/talondb-server --db /tmp/tln.bbolt --socket /tmp/talondb.sock > /tmp/talondb.log 2>&1 &
+  #         echo "TALONDB_PID=$!" >> $GITHUB_ENV
+  #         for i in $(seq 1 30); do
+  #           if [ -S /tmp/talondb.sock ]; then echo "up"; break; fi
+  #           sleep 0.5
+  #         done
+  #         [ -S /tmp/talondb.sock ] || { echo "FAIL: server did not bind socket"; cat /tmp/talondb.log; exit 1; }
+  #     - run: go build ./cmd/tln
+  #     - name: Run fleet_maintenance through talon-db
+  #       run: |
+  #         output=$(./tln run examples/fleet_maintenance.tln \
+  #                    --seed test/fleet_maintenance.tln.test \
+  #                    --store talon-db \
+  #                    --talondb unix:///tmp/talondb.sock)
+  #         echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL"; exit 1; }
+  #     - name: Stop talondb-server
+  #       if: always()
+  #       run: kill $TALONDB_PID 2>/dev/null || true
 
   tln-run:
     name: tln Run (HTTP)
@@ -210,12 +141,6 @@ jobs:
           curl -sL https://download.clojure.org/install/linux-install-1.12.5.1638.sh -o install-clojure.sh
           sudo bash install-clojure.sh || true
           clojure --version
-      - name: Clone talon-db sibling (for local replace directive)
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-master}"
-          if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
-            git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
-          fi
       - run: go build ./cmd/tln
       - name: Start datalevin-server
         run: |
