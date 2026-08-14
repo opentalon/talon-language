@@ -126,6 +126,49 @@ and what each REPL command does — is in [`docs/repl.md`](docs/repl.md).
 > the language stays storage-agnostic and code-free at the boundary. The
 > server lives at [opentalon/tln-db](https://github.com/opentalon/tln-db).
 
+## Plugins
+
+tln core is a pure language + planner + small SPIs. Every IO or search edge is
+an **external plugin** that imports tln (one-way); core never imports them.
+
+| Plugin | Shape | SPI it implements | Repo |
+|---|---|---|---|
+| **store** | where facts live | `pkg/factstore.FactStore` | [tln-db](https://github.com/opentalon/tln-db) |
+| **tools** | call the outside world | `tln.ToolResolver` (`mcp`/`collect`/`enrich`/`remediate`) | [tln-mcp](https://github.com/opentalon/tln-mcp) |
+| **solver** | search over rules | consumes `pkg/factstore` rule types | [tln-asp](https://github.com/opentalon/tln-asp) |
+
+### Answer Set Programming — tln-asp
+
+Core's negation is **stratified**: a predicate may not depend on its own
+negation. Some rules need exactly that. The classic example is the game of
+positions — a position is **winning** if some move leads to a position that is
+*not* winning:
+
+```tln
+// `move(x, y)` edges come from the facts; `win` refers back to itself through
+// `not` — a cycle core rejects as "negation through recursion is not stratifiable".
+derive win(x) {
+  for records where move(x, y) and not win(y)
+}
+
+// Once solved, `win(...)` is used like any other predicate:
+detect "Winning positions" {
+  for records where type == "position" and win(pos)
+  flag matching items
+  label "{item.name}: winning — a move forces the opponent into a loss"
+  priority HIGH
+}
+```
+
+On a cycle the game is a **draw** — *undefined* under core's single well-founded
+model, but **multiple answer sets** under stable-model semantics (each a
+consistent who-wins assignment). So the host hands this rule set to
+[tln-asp](https://github.com/opentalon/tln-asp) — a pure-Go stable-model solver
+([ADR-0008](./docs/design/0008-asp-plugin.md)) — which returns those answer
+sets; each feeds back into any FactStore, where `win(...)` then drives ordinary
+`detect` / `rule` / `recommend` blocks. Core stays deterministic; the plugin
+owns the search.
+
 ## Architecture
 
 ```mermaid
