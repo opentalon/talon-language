@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/explain"
-	"github.com/opentalon/talon-language/internal/testrunner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/explain"
+	"github.com/opentalon/tln-language/internal/testrunner"
 )
 
 // runCommand executes a slash command and writes output to w. It returns
@@ -391,7 +391,7 @@ func runFind(s *Session, tail string, w io.Writer, countOnly bool) {
 // Internally synthesises a TestBlock (same pattern as :eval) so the
 // testrunner's Decision-chain pipeline runs unchanged, then filters
 // the resulting Decisions by block name and/or entity ID. Reuses
-// the CLI's `talon why` plumbing semantically — same Decision +
+// the CLI's `tln why` plumbing semantically — same Decision +
 // explain.RenderAll output format — so users learning one surface
 // know the other.
 func runWhy(s *Session, tail string, w io.Writer) {

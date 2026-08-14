@@ -8,12 +8,12 @@
 // `tune against test "..."` solves this: ABC searches the threshold space
 // against a labeled fixture (entities the tenant marked as "really
 // anomalous" vs "fine"), picks the value that maximizes F1 on their data,
-// and surfaces the choice in `talon explain` so auditors can see the
+// and surfaces the choice in `tln explain` so auditors can see the
 // provenance.
 //
-//   ./talon build examples/tuned_consumption.tln
-//   ./talon test examples/tuned_consumption.tln test/tuned_consumption.tln.test
-//   ./talon explain examples/tuned_consumption.tln test/tuned_consumption.tln.test
+//   ./tln build examples/tuned_consumption.tln
+//   ./tln test examples/tuned_consumption.tln test/tuned_consumption.tln.test
+//   ./tln explain examples/tuned_consumption.tln test/tuned_consumption.tln.test
 
 detect "Tuned consumption anomaly" {
   for records where type == "stock_item"

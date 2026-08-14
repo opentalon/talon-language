@@ -39,8 +39,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	adapterpkg "github.com/opentalon/talon-language/internal/talondb"
+	"github.com/opentalon/tln-language/internal/factstore"
+	adapterpkg "github.com/opentalon/tln-language/internal/talondb"
 )
 
 var (
@@ -154,7 +154,7 @@ func TestAdapterCrashSurvivesAndRecovers(t *testing.T) {
 	skipIfShortOrWindows(t)
 
 	bin := buildTalondbServer(t)
-	dbPath := filepath.Join(t.TempDir(), "talon.bbolt")
+	dbPath := filepath.Join(t.TempDir(), "tln.bbolt")
 
 	srv := startServerTCP(t, bin, dbPath)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

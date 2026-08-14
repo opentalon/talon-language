@@ -3,10 +3,10 @@ package testrunner
 import (
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 func TestTraceCapturesAnomalyExplanation(t *testing.T) {

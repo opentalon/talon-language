@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
-	talonlog "github.com/opentalon/talon-language/internal/log"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
 )
 
 // LoggingActionHandler returns an ActionHandler that executes the actions
@@ -39,7 +39,7 @@ func LoggingActionHandler() ActionHandler {
 
 func dispatchLoggerAction(ctx context.Context, block *ast.OnBlock, ev factstore.Event, a *ast.LoggerAction) {
 	msg := interpolateTemplate(a.Message.Raw, ev)
-	logger := talonlog.Default().With(
+	logger := tlnlog.Default().With(
 		"source", "on_block",
 		"trigger", block.Trigger,
 		"block", block.Name,
@@ -55,7 +55,7 @@ func dispatchLoggerAction(ctx context.Context, block *ast.OnBlock, ev factstore.
 }
 
 func dispatchBlockRef(ctx context.Context, block *ast.OnBlock, ev factstore.Event, a *ast.BlockRefAction) {
-	talonlog.Default().DebugContext(ctx, "on_block_ref",
+	tlnlog.Default().DebugContext(ctx, "on_block_ref",
 		"source", "on_block",
 		"trigger", block.Trigger,
 		"block", block.Name,

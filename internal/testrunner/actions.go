@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/actions"
-	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/actions"
+	"github.com/opentalon/tln-language/internal/ast"
 )
 
-// FiredAction is one `do` action resolved against one matched row. Talon does
+// FiredAction is one `do` action resolved against one matched row. tln does
 // not execute it — the host does. This is the data the engine hands back.
 type FiredAction = actions.Fired
 

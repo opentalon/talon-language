@@ -1,5 +1,5 @@
 // Package imports resolves `import "./path"` directives in a parsed
-// Talon program. It recursively reads + parses each imported file, then
+// tln program. It recursively reads + parses each imported file, then
 // merges the resulting blocks into the caller's program. Paths are
 // always relative to the file that declared the import.
 //
@@ -17,10 +17,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
 )
 
 // Resolve walks the program's `import` directives, parses each target

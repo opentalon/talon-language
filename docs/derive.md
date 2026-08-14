@@ -5,7 +5,7 @@ pattern — and any other block can reference it exactly like an asserted fact.
 It closes the deductive cycle: multi-step reasoning that used to be assembled
 in host code now lives in the language.
 
-```talon
+```tln
 derive overdue(v) {
   for records where type == "vehicle"
     and attr "km" > attr "last_service_km" + 20000
@@ -52,7 +52,7 @@ fact reads like a stored one. (This is the same mechanism `define` + `is` use.)
 Chained derivations inline transitively: `due_for_recall(v)` referencing
 `overdue(v)` expands both, in order.
 
-`talon explain` names the predicate in its WHY output:
+`tln explain` names the predicate in its WHY output:
 
 ```
 WHY
@@ -83,9 +83,9 @@ candidates" → recommend "Book recall service"`.
 | Van 3 | 70000 | 55000 | Sprinter | no | yes | no |
 
 ```
-./talon build   examples/vehicle_recall.tln
-./talon test    examples/vehicle_recall.tln test/vehicle_recall.tln.test
-./talon explain examples/vehicle_recall.tln test/vehicle_recall.tln.test
+./tln build   examples/vehicle_recall.tln
+./tln test    examples/vehicle_recall.tln test/vehicle_recall.tln.test
+./tln explain examples/vehicle_recall.tln test/vehicle_recall.tln.test
 ```
 
 ## Scope (v1) and follow-ups

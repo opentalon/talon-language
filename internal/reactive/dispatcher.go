@@ -14,8 +14,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // ActionHandler receives an OnBlock that matched an event. It is responsible

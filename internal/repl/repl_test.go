@@ -19,7 +19,7 @@ func runScript(t *testing.T, input string) string {
 
 func TestREPLQuitImmediately(t *testing.T) {
 	out := runScript(t, ":quit\n")
-	if !strings.Contains(out, "talon>") {
+	if !strings.Contains(out, "tln>") {
 		t.Errorf("expected prompt, got %q", out)
 	}
 }

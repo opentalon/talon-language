@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/mlmodel"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/mlmodel"
 )
 
 // GoComputation function names.
@@ -41,7 +41,7 @@ const ActionsVar = "fired_actions"
 
 // ─── Plan step types ──────────────────────────────────────────────────────────
 
-// QueryPlan is the execution plan for one Talon block.
+// QueryPlan is the execution plan for one tln block.
 type QueryPlan struct {
 	BlockName string
 	Steps     []PlanStep
@@ -91,7 +91,7 @@ type GoComputation struct {
 
 // MLComputation runs an ML primitive (one of the 7 keywords).
 // The result row carries an explanation alongside its value so downstream steps
-// and `talon trace` can surface the decision path. See ADR-0001.
+// and `tln trace` can surface the decision path. See ADR-0001.
 type MLComputation struct {
 	Function string         // function name constant (FuncXxx, ML subset)
 	Input    string         // result variable from a previous step
@@ -277,9 +277,9 @@ func Plan(prog *ast.Program) (map[string]*QueryPlan, diagnostic.List) {
 }
 
 // PlanWithModels is Plan with an optional registry of Go-provided ML models.
-// `using model "name"` references resolve against Talon `model`/`module`
+// `using model "name"` references resolve against tln `model`/`module`
 // blocks first, then this registry — so a host can serve models it built in
-// Go under the same qualified names Talon source uses.
+// Go under the same qualified names tln source uses.
 func PlanWithModels(prog *ast.Program, goModels *mlmodel.Registry) (map[string]*QueryPlan, diagnostic.List) {
 	// Inline cached `threshold "name"` references to their literal value before
 	// planning, so the query builder and Go condition evaluator only ever see
@@ -295,7 +295,7 @@ func PlanWithModels(prog *ast.Program, goModels *mlmodel.Registry) (map[string]*
 	return p.planAll()
 }
 
-// collectModels indexes every Talon `model` block by the name a reference
+// collectModels indexes every tln `model` block by the name a reference
 // uses: top-level models by bare name, and `module "ns"` members by their
 // qualified `ns.name`.
 func collectModels(prog *ast.Program) map[string]*mlmodel.Model {
@@ -931,11 +931,11 @@ func (p *planner) planPredictBlock(b *ast.PredictBlock) *QueryPlan {
 	switch {
 	case b.UsingModel != "":
 		// `using model "ns.name"` — walk the model's inline fitted tree; no
-		// training query. Resolved from Talon or Go providers.
+		// training query. Resolved from tln or Go providers.
 		model, provider, ok := p.models.Resolve(b.UsingModel)
 		if !ok {
 			p.diags.AddError("", b.Pos.Line, b.Pos.Col,
-				fmt.Sprintf("predict %q: unknown model %q (no Talon `model` block or registered Go model)", b.Name, b.UsingModel), "")
+				fmt.Sprintf("predict %q: unknown model %q (no tln `model` block or registered Go model)", b.Name, b.UsingModel), "")
 			break
 		}
 		params["feature_names"] = model.Features
@@ -1065,12 +1065,12 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 	switch {
 	case b.UsingModel != "":
 		// `using model "ns.name"` — the model's inline fitted examples are the
-		// training set, resolved at plan time from Talon or Go providers. No
+		// training set, resolved at plan time from tln or Go providers. No
 		// training query is emitted; the fitted rows ride in the params.
 		model, provider, ok := p.models.Resolve(b.UsingModel)
 		if !ok {
 			p.diags.AddError("", b.Pos.Line, b.Pos.Col,
-				fmt.Sprintf("classify %q: unknown model %q (no Talon `model` block or registered Go model)", b.Name, b.UsingModel), "")
+				fmt.Sprintf("classify %q: unknown model %q (no tln `model` block or registered Go model)", b.Name, b.UsingModel), "")
 			break
 		}
 		params["feature_names"] = model.Features
@@ -1106,7 +1106,7 @@ func (p *planner) planClassifyBlock(b *ast.ClassifyBlock) *QueryPlan {
 }
 
 // defaultKNN is the neighbour count when a classify block doesn't override it.
-// Small, matching the per-tenant data volumes Talon sees (issue #70).
+// Small, matching the per-tenant data volumes tln sees (issue #70).
 const defaultKNN = 5
 
 func (p *planner) planSimilarBlock(b *ast.SimilarBlock) *QueryPlan {
@@ -2018,7 +2018,7 @@ func (b *queryBuilder) addMembership(c *ast.MembershipCondition) {
 // addCategoryTreeMembership emits a Datalog rule that walks the
 // category hierarchy and a RuleCall clause that anchors a row when
 // the entity's category attribute is `Root` or one of its
-// descendants. Schema assumed (matches Talon's `category` blocks):
+// descendants. Schema assumed (matches tln's `category` blocks):
 //
 //	[<entity>     :record/category <category-name>]
 //	[<cat-entity> :record/type     "category"]
@@ -2254,7 +2254,7 @@ func (b *queryBuilder) build() factstore.Query {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// exprToFieldPath maps a Talon expression to a Datalevin attribute path.
+// exprToFieldPath maps a tln expression to a Datalevin attribute path.
 func exprToFieldPath(e ast.Expr) (path string, ok bool) {
 	switch v := e.(type) {
 	case *ast.IdentExpr:

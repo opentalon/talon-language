@@ -1,12 +1,12 @@
 // Talooner — deterministic GitHub PR review policy.
 //
 // The phase-0 exit artifact for https://github.com/opentalon/talooner: the
-// project brief's v1 ruleset, expressed in Talon, running against synthetic PR
+// project brief's v1 ruleset, expressed in Tln, running against synthetic PR
 // facts with no GitHub and no bot code. If this file can't be written, the
 // Talooner design is wrong.
 //
-//   ./talon build examples/talooner_review.tln
-//   ./talon test  examples/talooner_review.tln examples/talooner_review.tln.test
+//   ./tln build examples/talooner_review.tln
+//   ./tln test  examples/talooner_review.tln examples/talooner_review.tln.test
 //
 // One record per pull request, type "pr". A GitHub Action extracts the facts;
 // the engine decides; the Action executes whatever actions come back. No model
@@ -19,7 +19,7 @@
 //     TRUE for a PR whose extraction died. Extractors assert facts explicitly,
 //     negative cases included; unset never means "couldn't determine".
 //   - `pr.changed_files` is a list. String predicates quantify existentially
-//     over it (talon-language#158), so `contains` means "any element contains".
+//     over it (tln-language#158), so `contains` means "any element contains".
 //     `matches` is a substring scan, NOT a glob — `matches "**/*.css"` matches
 //     nothing, because no path contains that text.
 

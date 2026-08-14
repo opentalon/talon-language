@@ -5,12 +5,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/validator"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/validator"
 )
 
 // runActionSrc compiles src, seeds the given facts into a MemoryStore, and
@@ -201,7 +201,7 @@ rule "Label size" {
 }
 
 // flatActions concatenates every block's actions in sorted block order,
-// mirroring what pkg/talon exposes as the run-level list.
+// mirroring what pkg/tln exposes as the run-level list.
 func flatActions(results map[string]*BlockResult) []FiredAction {
 	names := make([]string, 0, len(results))
 	for n := range results {

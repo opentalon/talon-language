@@ -1,6 +1,6 @@
 # ILP exact solver — worked example
 
-When the problem is linear and single-objective, Talon can solve it to
+When the problem is linear and single-objective, tln can solve it to
 provable optimality instead of approximating with the GA. The syntax is
 the same; you opt in with `solver linear`.
 
@@ -13,9 +13,9 @@ audit:
 > "We picked these 3 parts because no other subset of 3 active stock items
 > within the $5000 budget covers more downstream work orders."
 
-## Talon source
+## tln source
 
-```talon
+```tln
 combine "Reorder exact" {
   for records where type == "stock_item" and status == "active"
   solver linear
@@ -38,7 +38,7 @@ GoComputation  optimize_ilp(candidates) → frontier
 Note: `frontier` is a vestigial variable name from the GA path. With
 ILP, the variable holds **one** subset, not a frontier.
 
-## What `talon explain` shows
+## What `tln explain` shows
 
 ```
 COMBINE   Reorder exact — part of the provably optimal subset (total(downstream_blast_radius) = 30)

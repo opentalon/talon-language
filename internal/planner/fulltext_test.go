@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 func findFullText(q factstore.Query) *factstore.FullText {

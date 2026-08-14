@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
 )
 
 // evalStr parses a single expression (as the left side of a throwaway detect

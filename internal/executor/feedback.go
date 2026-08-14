@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // adjustWithFeedback turns a recommend's compile-time

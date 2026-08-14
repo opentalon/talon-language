@@ -64,7 +64,7 @@ needs. We call those out explicitly so:
 | Forward algorithm scoring | ✅ Pure algorithm; log-domain stable |
 | Per-entity observation sequence | ⚠️ Same sorting + windowing concerns as event_sequence |
 | Model parameters | ✅ Inline (initial, trans, emit matrices) — host owns model storage |
-| Training (Baum-Welch) | ❌ Not implemented. Models must be trained outside Talon (Python scikit-learn, Stan, etc.) and parameters supplied as constants. |
+| Training (Baum-Welch) | ❌ Not implemented. Models must be trained outside tln (Python scikit-learn, Stan, etc.) and parameters supplied as constants. |
 | Continuous observations | ❌ Discrete symbols only. Gaussian-emission HMMs need a different runtime. |
 | Online state inference (Viterbi) | ❌ Only forward-algorithm scoring (P(obs \| model)). Viterbi (most likely hidden state sequence) would be ~100 LOC more if needed. |
 

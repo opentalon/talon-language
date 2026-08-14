@@ -20,7 +20,7 @@ at a configurable significance level α (default 0.05).
 
 Add `using grubbs` to the existing anomaly clause:
 
-```talon
+```tln
 detect "Grubbs consumption outlier" {
   for records where type == "stock_item"
     and attr "weekly_consumption" is anomaly using grubbs compared_to last 12 weeks
@@ -60,8 +60,8 @@ Every Decision the Grubbs primitive produces carries:
 - `alpha` — the significance level used (0.05 by default)
 - `mean`, `stddev`, `sample_n` — the sample statistics
 
-`talon explain` surfaces these so an auditor can replay the call against
-any stats package and verify Talon's claim:
+`tln explain` surfaces these so an auditor can replay the call against
+any stats package and verify tln's claim:
 
 ```
 EVIDENCE
@@ -99,4 +99,4 @@ testrunner's "keep all" behavior, matching how z-score handles short windows.
 - **Per-entity time series**: Grubbs operates on a population at one point
   in time. Trend detection over multiple time points (Mann-Kendall) is a
   separate primitive that depends on time-series storage support that
-  Talon's testrunner doesn't have yet.
+  tln's testrunner doesn't have yet.

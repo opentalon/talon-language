@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/constraints"
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/factstore"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/mlruntime"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/constraints"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/factstore"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/mlruntime"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // TestResult is the outcome of one test block.
@@ -27,7 +27,7 @@ type TestResult struct {
 }
 
 // TraceStep records one plan step's execution during a traced run.
-// Marshalled to JSON by `talon trace`.
+// Marshalled to JSON by `tln trace`.
 type TraceStep struct {
 	Type         string                  `json:"type"`
 	Into         string                  `json:"into"`
@@ -397,7 +397,7 @@ func runOneTuned(
 	}
 
 	// `do` actions: resolve the evaluated rule's action clauses against each
-	// flagged row and check the did / did_not assertions. Talon executes
+	// flagged row and check the did / did_not assertions. tln executes
 	// nothing here — the host does — so this asserts on the action payload the
 	// engine would hand back.
 	if len(tb.Actions) > 0 {
@@ -421,11 +421,11 @@ func runOneTuned(
 
 	result.Passed = len(result.Errors) == 0
 	result.Duration = time.Since(start)
-	talonlog.BlockEval(context.Background(), tb.WhenBlock, tb.WhenKind, len(flagged), result.Duration)
+	tlnlog.BlockEval(context.Background(), tb.WhenBlock, tb.WhenKind, len(flagged), result.Duration)
 
 	// Fire any per-row logger statements declared on the evaluated
 	// block. Same code path the explain Tier-1 pipeline uses, so
-	// `talon test` and `talon explain` produce identical logger
+	// `tln test` and `tln explain` produce identical logger
 	// output for the same source.
 	if b, ok := progBlocks[tb.WhenBlock]; ok {
 		FireBlockLoggers(b, flagged, entities, time.Now().UTC())
@@ -740,7 +740,7 @@ func numericValue(v any) (float64, bool) {
 	return 0, false
 }
 
-// compareScalars applies a Talon comparison/approximation operator.
+// compareScalars applies a tln comparison/approximation operator.
 // `~=` allows 5% relative or 0.01 absolute tolerance, whichever is larger.
 func compareScalars(op string, got, want float64) bool {
 	switch op {

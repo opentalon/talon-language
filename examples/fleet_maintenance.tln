@@ -1,13 +1,13 @@
 // Fleet maintenance rules for vehicle service tracking and parts inventory.
 //
 // Build:
-//   go build ./cmd/talon && ./talon build examples/fleet_maintenance.tln
+//   go build ./cmd/tln && ./tln build examples/fleet_maintenance.tln
 //
 // Seeded end-to-end run (requires JDK 21 + Clojure CLI; no `brew install datalevin`):
 //   brew install openjdk@21 clojure/tools/clojure
-//   rm -rf /tmp/talon-datalevin
+//   rm -rf /tmp/tln-datalevin
 //   (cd datalevin-server && clojure -M:run)                 # terminal 1
-//   ./talon run examples/fleet_maintenance.tln \          # terminal 2
+//   ./tln run examples/fleet_maintenance.tln \          # terminal 2
 //     --seed test/fleet_maintenance.tln.test
 //
 // Ad-hoc REPL against the native dtlv CLI (optional; download release zip — no brew formula):

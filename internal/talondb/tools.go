@@ -8,7 +8,7 @@
 // talon-db is consumed as a normal GitHub dependency (no local `replace`), so
 // the server binary is built from the module cache and its dependencies must be
 // resolvable from this module's go.sum. The server imports these two libraries
-// that nothing else in talon-language does; blank-importing them here keeps
+// that nothing else in tln-language does; blank-importing them here keeps
 // their checksums pinned without pulling them into any real build.
 package talondb
 

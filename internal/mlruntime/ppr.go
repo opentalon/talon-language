@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // FuncPPRTopK is the planner function name this primitive binds to.

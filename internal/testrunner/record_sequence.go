@@ -3,7 +3,7 @@ package testrunner
 import (
 	"sort"
 
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // narrowByRecordSequence is the testrunner's analogue of

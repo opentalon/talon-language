@@ -1,11 +1,11 @@
-package talon_test
+package tln_test
 
 import (
 	"context"
 	"reflect"
 	"testing"
 
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 const actionSrc = `
@@ -29,13 +29,13 @@ test "seed" {
 }
 `
 
-func runWithActions(t *testing.T, src, seed string) *talon.Result {
+func runWithActions(t *testing.T, src, seed string) *tln.Result {
 	t.Helper()
-	store := talon.NewMemoryStore()
-	if _, err := talon.Seed(context.Background(), store, seed); err != nil {
+	store := tln.NewMemoryStore()
+	if _, err := tln.Seed(context.Background(), store, seed); err != nil {
 		t.Fatalf("Seed: %v", err)
 	}
-	res, err := talon.Run(context.Background(), src, talon.WithFactStore(store))
+	res, err := tln.Run(context.Background(), src, tln.WithFactStore(store))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -46,7 +46,7 @@ func runWithActions(t *testing.T, src, seed string) *talon.Result {
 // the fired actions back, resolved, without running the test runner.
 func TestRun_ExposesFiredActions(t *testing.T) {
 	res := runWithActions(t, actionSrc, actionSeed)
-	want := []talon.Action{
+	want := []tln.Action{
 		{EntityID: 7, Rule: "Tenant approve", Verb: "approve", Args: []any{"pr", "@alice"}},
 		{EntityID: 7, Rule: "Tenant approve", Verb: "comment", Args: []any{"pr", "@alice touched 3 files"}},
 	}

@@ -7,7 +7,7 @@ investigate.
 
 `certification.tln` holds the program:
 
-```talon
+```tln
 detect "Certification regressed" {
   for records where type == "machine"
     and status == "defective"
@@ -30,7 +30,7 @@ not flagged: Excavator A (still certified), Forklift D (never certified)
 
 ## Why this is a Go program, not a REPL session
 
-The other example agents run interactively from `talon repl`. Time-travel
+The other example agents run interactively from `tln repl`. Time-travel
 can't: it needs facts written at **different points in time**, and talon-db
 stamps its version history with the server clock — which isn't controllable
 over the wire.
@@ -41,7 +41,7 @@ store clock to backdate the "90 days ago" writes. Everything past the socket
 — history storage, the `QueryAsOf` RPC, the adapter — is the exact code that
 runs in production; only the clock is under test control.
 
-The detect then runs through `pkg/talon.Run` with the talon-db adapter as
+The detect then runs through `pkg/tln.Run` with the talon-db adapter as
 its `FactStore`, exactly as a deployed agent would.
 
 ## See also

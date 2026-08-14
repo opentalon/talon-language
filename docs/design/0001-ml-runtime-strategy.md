@@ -2,11 +2,11 @@
 
 ## Status
 
-Proposed — gates [opentalon/talon-language#11](https://github.com/opentalon/talon-language/issues/11).
+Proposed — gates [opentalon/tln-language#11](https://github.com/opentalon/tln-language/issues/11).
 
 ## Context
 
-Talon's pitch (`README.md:21`, `README.md:159`):
+tln's pitch (`README.md:21`, `README.md:159`):
 
 > **Deterministic** — detections are explainable and auditable.
 > Every prediction is explainable.
@@ -45,7 +45,7 @@ returns a structured `Explanation` alongside its value.
 
 One escape hatch: a `Backend` interface so a later
 `predict_onnx` or `similarity_embeddings` backend can be swapped in
-per-tenant without touching Talon source (see §"Future Backend Swap").
+per-tenant without touching tln source (see §"Future Backend Swap").
 
 ## Consequences
 
@@ -69,7 +69,7 @@ per-tenant without touching Talon source (see §"Future Backend Swap").
 
 | Option | Why rejected |
 |---|---|
-| ONNX Runtime via Go bindings | Adds CGo, GPU build matrix, opaque models. Breaks the "user reads the reasoning" pitch — an ONNX graph is not auditable in the way Talon claims. |
+| ONNX Runtime via Go bindings | Adds CGo, GPU build matrix, opaque models. Breaks the "user reads the reasoning" pitch — an ONNX graph is not auditable in the way tln claims. |
 | Python sidecar (gRPC) | Two runtimes to ship and version. Two failure modes. Multi-tenant cost balloons. Loses the "one binary" property. |
 | Pure Datalog/SQL aggregations | Sufficient for `learned_threshold` and `is anomaly`, insufficient for `forecast`/`predict`/`cluster`/`classify`/`find similar`. Inconsistent runtime story. |
 | Vendor a Go ML library (gorgonia, golearn) | gorgonia is dataflow/autograd, overkill. golearn is unmaintained (last commit pre-2023). Building 7 small, audited primitives is less risk than vendoring an abandoned dep. |
@@ -79,14 +79,14 @@ per-tenant without touching Talon source (see §"Future Backend Swap").
 Load-bearing piece. Every primitive returns `(value, Explanation)` so
 labels like `"failure risk because operating_hours > 2000 AND
 repair_count > 3"` are computable at the planner/executor layer, and
-`talon trace` (currently a stub at `cmd/talon/main.go:36-43`) has a
+`tln trace` (currently a stub at `cmd/tln/main.go:36-43`) has a
 real shape to render.
 
 ```go
 // internal/mlruntime/explanation.go
 
 // Explanation is the auditable trace of one ML primitive invocation.
-// JSON-serialisable for `talon trace` and audit logs.
+// JSON-serialisable for `tln trace` and audit logs.
 type Explanation struct {
     Primitive  string         // "predict_decision_tree", etc.
     EntityID   int            // who this prediction is about
@@ -165,7 +165,7 @@ well-known key in `GoComputation.Params` outputs.
 make a contract real in Go is a type, not a convention. Cost is ~30
 LOC of plan-step plumbing plus one switch case in
 `executor.execStep` (`executor.go:81-92`). Cheap; pays for itself the
-first time `talon trace` needs to enumerate predictions.
+first time `tln trace` needs to enumerate predictions.
 
 ## Accuracy Trade-offs
 
@@ -178,7 +178,7 @@ Explainability caps accuracy. Be honest about where.
 | `find similar` | Cosine on hand-engineered features | Same as classify. Hard ceiling without embeddings. |
 | `forecast` | Single/double exp smoothing | No seasonality, no exogenous regressors. Fine for monotonic stock-out, weak for weekly demand. |
 
-**Pitch defence:** Talon doesn't compete with sklearn. It competes
+**Pitch defence:** tln doesn't compete with sklearn. It competes
 with "the engineer hand-writing a threshold check in TypeScript."
 Against that baseline, CART + clear reasons + audit trail wins.
 
@@ -212,7 +212,7 @@ var registry = map[string]Backend{
 }
 ```
 
-Talon source remains `predict "X" { ... }`; planner picks backend
+tln source remains `predict "X" { ... }`; planner picks backend
 based on tenant config. **No language change.** ~half a day to wire
 when the trigger arrives.
 
@@ -279,5 +279,5 @@ schedule lives in `docs/design/IMPLEMENTATION_PLAN.md`.
 | **M7** | `cluster by` shipped — closes #11 |
 
 Each milestone is **not done** until (a) tests green, (b) one
-example in `examples/` exercises it, (c) `talon trace` shows the
+example in `examples/` exercises it, (c) `tln trace` shows the
 explanation. Without (c) the explainability claim is vapour.

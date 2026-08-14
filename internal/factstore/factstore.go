@@ -1,4 +1,4 @@
-// Package factstore is Talon's database abstraction. The planner emits
+// Package factstore is tln's database abstraction. The planner emits
 // structured Query values that any FactStore implementation can answer,
 // so adding a new backend (in-memory, SQL, custom) does not touch the
 // planner — only the implementation. See docs/factstore.md and issue

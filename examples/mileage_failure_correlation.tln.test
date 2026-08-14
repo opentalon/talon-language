@@ -1,8 +1,8 @@
 // Correlation example test suite.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/mileage_failure_correlation.tln examples/mileage_failure_correlation.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/mileage_failure_correlation.tln examples/mileage_failure_correlation.tln.test
 
 test "high fleet correlation flags every vehicle" {
   // failure_count tracks km exactly (failure = km / 10) → Pearson r = 1.0,

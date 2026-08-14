@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
 )
 
 func pipeline(t *testing.T, src string) diagnostic.List {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // runAggregates groups matched binding sets by GroupBy and computes
@@ -156,7 +156,7 @@ func aggFloat(v any) (float64, bool) {
 
 // aggGroupKey stringifies a composite group-by key so map lookups
 // don't depend on slice equality. The %v format is good enough for
-// the talon-language planner's group-by vocabulary (strings, numbers,
+// the tln-language planner's group-by vocabulary (strings, numbers,
 // bools); nested values shouldn't appear.
 func aggGroupKey(parts []any) string {
 	var b []byte

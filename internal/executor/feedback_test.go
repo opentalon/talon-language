@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // seedFeedback writes N feedback facts of the given outcome for a

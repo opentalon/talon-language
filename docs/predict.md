@@ -5,14 +5,14 @@ tree** trained on past, already-labeled records. Where [`classify`](classify.md)
 votes among nearest neighbours, `predict` learns explicit **if/then splits** —
 "operating_hours > 3000 AND repair_count > 3 → failed" — and the splits it took
 *are* the explanation. That interpretability is why the RFC picked trees over
-opaque models: a reviewer can read the reasoning, and `talon explain` prints it.
+opaque models: a reviewer can read the reasoning, and `tln explain` prints it.
 
 No training run, no model file: the labeled examples *are* the model, read from
 the FactStore and the tree grown on demand.
 
 ## Syntax
 
-```talon
+```tln
 predict "Failure risk" {
   for records where type == "machine" and status == "in_service"
   features [attr "operating_hours", attr "repair_count"]
@@ -79,12 +79,12 @@ Two in-service machines are scored:
 Run it:
 
 ```
-./talon build   examples/failure_risk.tln
-./talon test    examples/failure_risk.tln test/failure_risk.tln.test
-./talon explain examples/failure_risk.tln test/failure_risk.tln.test
+./tln build   examples/failure_risk.tln
+./tln test    examples/failure_risk.tln test/failure_risk.tln.test
+./tln explain examples/failure_risk.tln test/failure_risk.tln.test
 ```
 
-`talon explain` shows the predicted class **and the split that produced it**:
+`tln explain` shows the predicted class **and the split that produced it**:
 
 ```
 ACTION    predicted outcome: failed
@@ -115,7 +115,7 @@ shape. They differ in the model:
 
 ## Limitations
 
-- **`talon test` / `talon explain` are fully supported.** The `talon run`
+- **`tln test` / `tln explain` are fully supported.** The `tln run`
   executor path doesn't yet materialise the in-memory training set for
   supervised primitives (shared with `classify` / `find similar` / `cluster`);
   `predict` degrades to "no predictions" there rather than erroring. Tracked in

@@ -1,7 +1,7 @@
 {
-  "name": "@opentalon/talon-runtime",
+  "name": "@opentalon/tln-runtime",
   "version": "0.1.0",
-  "description": "Reactive rule engine for Talon — path-based store with extensible actions",
+  "description": "Reactive rule engine for tln — path-based store with extensible actions",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -27,7 +27,7 @@
     "LICENSE"
   ],
   "keywords": [
-    "talon",
+    "tln",
     "rule-engine",
     "reactive",
     "dsl",
@@ -38,12 +38,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/opentalon/talon-language.git",
+    "url": "git+https://github.com/opentalon/tln-language.git",
     "directory": "packages/runtime"
   },
-  "homepage": "https://github.com/opentalon/talon-language/tree/master/packages/runtime#readme",
+  "homepage": "https://github.com/opentalon/tln-language/tree/master/packages/runtime#readme",
   "bugs": {
-    "url": "https://github.com/opentalon/talon-language/issues"
+    "url": "https://github.com/opentalon/tln-language/issues"
   },
   "publishConfig": {
     "access": "public"

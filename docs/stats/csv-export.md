@@ -1,13 +1,13 @@
 # CSV export
 
-`talon explain --csv` flattens every Decision the rules produced into a
+`tln explain --csv` flattens every Decision the rules produced into a
 single CSV stream on stdout, designed for downstream analysis in R, Python,
 DuckDB, BigQuery, or any tool that reads CSV.
 
 ## Quick start
 
 ```sh
-talon explain rules.tln tests.tln.test --csv > decisions.csv
+tln explain rules.tln tests.tln.test --csv > decisions.csv
 ```
 
 In R:
@@ -61,7 +61,7 @@ JSON library of choice.
 If you genuinely need a wide schema for a specific rule (e.g., always
 exactly `cost`, `urgency`, `pareto_rank` columns), the recommended
 pattern is: parse the JSON, project the keys you want, write a wide CSV
-yourself. The Talon `--csv` exporter intentionally stays general.
+yourself. The tln `--csv` exporter intentionally stays general.
 
 ## Comparison with `--json`
 

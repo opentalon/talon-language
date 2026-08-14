@@ -1,12 +1,12 @@
 name: Release
 
 # Triggered when a tag matching v* is pushed (e.g. v0.1.0, v1.2.3-rc.1).
-# Builds the talon CLI for five OS/arch targets, packages each into a
+# Builds the tln CLI for five OS/arch targets, packages each into a
 # tarball (or zip on Windows), and attaches them — together with a
 # SHA256SUMS file — to a GitHub release using --generate-notes.
 #
 # The version string is embedded into the binary via
-# `-ldflags "-X main.version=<tag>"`, so `talon version` reports the
+# `-ldflags "-X main.version=<tag>"`, so `tln version` reports the
 # correct value at runtime.
 
 on:
@@ -51,7 +51,7 @@ jobs:
       - name: Clone talon-db sibling (for local replace directive)
         run: git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
 
-      - name: Build talon
+      - name: Build tln
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
@@ -59,13 +59,13 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           mkdir -p dist/staging
-          BIN=talon
-          if [ "$GOOS" = "windows" ]; then BIN=talon.exe; fi
+          BIN=tln
+          if [ "$GOOS" = "windows" ]; then BIN=tln.exe; fi
           go build \
             -trimpath \
             -ldflags "-s -w -X main.version=${TAG}" \
             -o "dist/staging/${BIN}" \
-            ./cmd/talon
+            ./cmd/tln
           cp LICENSE README.md dist/staging/
 
       - name: Package archive
@@ -75,7 +75,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
           EXT: ${{ matrix.ext }}
         run: |
-          NAME="talon-${TAG}-${OS}-${ARCH}"
+          NAME="tln-${TAG}-${OS}-${ARCH}"
           mkdir -p dist/out
           cd dist/staging
           if [ "$EXT" = "zip" ]; then
@@ -88,7 +88,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: talon-${{ matrix.os }}-${{ matrix.arch }}
+          name: tln-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/out/*
           if-no-files-found: error
 
@@ -119,4 +119,4 @@ jobs:
           gh release create "${TAG}" \
             --title "${TAG}" \
             --generate-notes \
-            SHA256SUMS.txt talon-*.tar.gz talon-*.zip
+            SHA256SUMS.txt tln-*.tar.gz tln-*.zip

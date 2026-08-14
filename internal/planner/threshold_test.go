@@ -3,9 +3,9 @@ package planner
 import (
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
 )
 
 // TestPlanThresholdBlockNoPlan: a cached threshold block is data, not an

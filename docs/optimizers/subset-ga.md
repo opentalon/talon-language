@@ -1,6 +1,6 @@
 # Subset GA — worked example
 
-When the question is "pick K out of N records under constraint X", Talon
+When the question is "pick K out of N records under constraint X", tln
 routes the `combine` block to a genetic algorithm with NSGA-II selection
 and Deb's constraint-dominance rule. The result is a Pareto frontier of
 *subsets*; the explainability narrative is robustness — how often each
@@ -17,9 +17,9 @@ Procurement reorders spare parts weekly. Each part has:
 The buyer can place 3 orders per week and has a $5000 budget. Pick the
 right 3.
 
-## Talon source
+## tln source
 
-```talon
+```tln
 combine "Reorder picks" {
   for records where type == "stock_item" and status == "active"
   select 3 from records
@@ -41,7 +41,7 @@ DatalevinQuery → candidates    # selector + 3 attrs bound (cost, urgency, blas
 GoComputation  optimize_ga(candidates) → frontier
 ```
 
-## What `talon explain` shows
+## What `tln explain` shows
 
 ```
 COMBINE   Reorder picks — selected in 100 of 100 Pareto-optimal subsets
@@ -98,5 +98,5 @@ tune (rare):
 - **Same answer every run with seed** → expected. Vary the seed if you
   want diversity.
 - **No feasible subset returned** → the `subject_to` is impossible at
-  the requested `select K` size. `talon explain` will show an empty
+  the requested `select K` size. `tln explain` will show an empty
   frontier; relax the constraint or shrink K.

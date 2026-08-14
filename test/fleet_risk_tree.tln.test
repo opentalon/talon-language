@@ -6,8 +6,8 @@
 // per-leaf purity gate run off the inline tree.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/fleet_risk_tree.tln test/fleet_risk_tree.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/fleet_risk_tree.tln test/fleet_risk_tree.tln.test
 
 test "decision-tree model classifies open vehicles by risk" {
   given {

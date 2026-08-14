@@ -244,7 +244,7 @@ var grubbs001 = []struct {
 // t-distribution at probability p with df degrees of freedom.
 //
 // Uses Cornish-Fisher's expansion around the normal quantile — accurate to
-// ~3 decimals for df ≥ 5, looser for small df. Talon's audit trail surfaces
+// ~3 decimals for df ≥ 5, looser for small df. tln's audit trail surfaces
 // the actual G and G_crit so a tenant can verify against a stats package
 // if they need 5+ decimal accuracy.
 func studentTCritical(p float64, df int) float64 {

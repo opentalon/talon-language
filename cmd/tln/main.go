@@ -15,23 +15,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/datalevin"
-	"github.com/opentalon/talon-language/internal/talondb"
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/executor"
-	"github.com/opentalon/talon-language/internal/explain"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/imports"
-	"github.com/opentalon/talon-language/internal/lexer"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/repl"
-	"github.com/opentalon/talon-language/internal/testrunner"
-	"github.com/opentalon/talon-language/internal/validator"
+	"github.com/opentalon/tln-language/internal/datalevin"
+	"github.com/opentalon/tln-language/internal/talondb"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/executor"
+	"github.com/opentalon/tln-language/internal/explain"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/imports"
+	"github.com/opentalon/tln-language/internal/lexer"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/repl"
+	"github.com/opentalon/tln-language/internal/testrunner"
+	"github.com/opentalon/tln-language/internal/validator"
 )
 
-// version is the Talon CLI version. Overridden at release time via
+// version is the tln CLI version. Overridden at release time via
 // `-ldflags="-X main.version=v0.1.0"`; left as "dev" for `go install`
 // and `go run` builds.
 var version = "dev"
@@ -40,12 +40,12 @@ func main() {
 	// Strip `--log-format` and `--log-level` from os.Args before subcommand
 	// dispatch, so each subcommand's own arg parser doesn't have to know
 	// about them. Logging defaults to text format at warn level — quiet
-	// enough for `talon build`/`repl` not to clutter output, but errors
+	// enough for `tln build`/`repl` not to clutter output, but errors
 	// still surface. Users opt into more detail with `--log-level=info`.
 	stripGlobalLogFlags()
 
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: talon [--log-format=text|json] [--log-level=debug|info|warn|error] <command> [args]")
+		fmt.Fprintln(os.Stderr, "usage: tln [--log-format=text|json] [--log-level=debug|info|warn|error] <command> [args]")
 		fmt.Fprintln(os.Stderr, "commands: build, test, run, repl, trace, explain, why, mod, version")
 		os.Exit(diagnostic.ExitUsage)
 	}
@@ -63,7 +63,7 @@ func main() {
 			preload = os.Args[2]
 		}
 		if err := repl.RunWithVersionFile(os.Stdin, os.Stdout, version, preload); err != nil {
-			fmt.Fprintf(os.Stderr, "talon repl: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tln repl: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
 	case "collect":
@@ -75,26 +75,26 @@ func main() {
 	case "why":
 		runWhy()
 	case "mod":
-		fmt.Fprintln(os.Stderr, "talon mod: not yet implemented")
+		fmt.Fprintln(os.Stderr, "tln mod: not yet implemented")
 		os.Exit(diagnostic.ExitError)
 	case "version", "--version", "-v":
 		fmt.Println(version)
 	default:
-		fmt.Fprintf(os.Stderr, "talon: unknown command %q\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "tln: unknown command %q\n", os.Args[1])
 		os.Exit(diagnostic.ExitUsage)
 	}
 }
 
 func runBuild() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon build <file.tln>")
+		fmt.Fprintln(os.Stderr, "usage: tln build <file.tln>")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
 	path := os.Args[2]
 	src, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon build: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln build: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 
@@ -183,8 +183,8 @@ func runTest() {
 			junitOut = args[i+1]
 			i++
 		case strings.HasPrefix(a, "-"):
-			fmt.Fprintf(os.Stderr, "talon test: unknown flag %q\n", a)
-			fmt.Fprintln(os.Stderr, "usage: talon test [paths...] [-run NAME] [-v] [--junit FILE]")
+			fmt.Fprintf(os.Stderr, "tln test: unknown flag %q\n", a)
+			fmt.Fprintln(os.Stderr, "usage: tln test [paths...] [-run NAME] [-v] [--junit FILE]")
 			os.Exit(diagnostic.ExitUsage)
 		default:
 			paths = append(paths, a)
@@ -193,11 +193,11 @@ func runTest() {
 
 	pairs, err := resolveTestPairs(paths)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon test: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln test: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	if len(pairs) == 0 {
-		fmt.Fprintln(os.Stderr, "talon test: no .tln.test files found")
+		fmt.Fprintln(os.Stderr, "tln test: no .tln.test files found")
 		os.Exit(diagnostic.ExitError)
 	}
 
@@ -225,16 +225,16 @@ func runTest() {
 	if junitOut != "" {
 		f, err := os.Create(junitOut)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "talon test: junit: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tln test: junit: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
 		if err := testrunner.WriteJUnit(f, suites); err != nil {
 			f.Close()
-			fmt.Fprintf(os.Stderr, "talon test: junit: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tln test: junit: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
 		if err := f.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "talon test: junit: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tln test: junit: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
 	}
@@ -260,7 +260,7 @@ func resolveTestPairs(paths []string) ([]testPair, error) {
 	}
 	if len(paths) == 2 {
 		a, b := paths[0], paths[1]
-		ca, cb := classifyTalonPath(a), classifyTalonPath(b)
+		ca, cb := classifyTlnPath(a), classifyTlnPath(b)
 		if ca == "rules" && cb == "test" {
 			return []testPair{{rules: a, test: b}}, nil
 		}
@@ -276,7 +276,7 @@ func resolveTestPairs(paths []string) ([]testPair, error) {
 			return nil, err
 		}
 		if !info.IsDir() {
-			switch classifyTalonPath(p) {
+			switch classifyTlnPath(p) {
 			case "rules":
 				rulesFiles = append(rulesFiles, p)
 			case "test":
@@ -293,7 +293,7 @@ func resolveTestPairs(paths []string) ([]testPair, error) {
 			if d.IsDir() {
 				return nil
 			}
-			switch classifyTalonPath(path) {
+			switch classifyTlnPath(path) {
 			case "rules":
 				rulesFiles = append(rulesFiles, path)
 			case "test":
@@ -329,7 +329,7 @@ func resolveTestPairs(paths []string) ([]testPair, error) {
 	return pairs, nil
 }
 
-func classifyTalonPath(p string) string {
+func classifyTlnPath(p string) string {
 	switch {
 	case strings.HasSuffix(p, ".tln.test"):
 		return "test"
@@ -342,7 +342,7 @@ func classifyTalonPath(p string) string {
 func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner.TestResult, bool) {
 	rulesSrc, err := os.ReadFile(rulesPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon test: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln test: %v\n", err)
 		return nil, false
 	}
 	rulesFile := filepath.Base(rulesPath)
@@ -359,7 +359,7 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 
 	testSrc, err := os.ReadFile(testPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon test: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln test: %v\n", err)
 		return nil, false
 	}
 	testFile := filepath.Base(testPath)
@@ -396,9 +396,9 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 }
 
 func runExecute() {
-	// Parse args: talon run <file.tln> [--store backend] [--datalevin URL] [--tenant NAME] [--seed file.tln.test]
+	// Parse args: tln run <file.tln> [--store backend] [--datalevin URL] [--tenant NAME] [--seed file.tln.test]
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon run <file.tln> [--store datalevin|memory|talon-db] [--datalevin URL] [--talondb unix:///path] [--tenant NAME] [--seed file.tln.test]")
+		fmt.Fprintln(os.Stderr, "usage: tln run <file.tln> [--store datalevin|memory|talon-db] [--datalevin URL] [--talondb unix:///path] [--tenant NAME] [--seed file.tln.test]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -431,7 +431,7 @@ func runExecute() {
 	// Compile
 	src, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon run: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln run: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 
@@ -451,7 +451,7 @@ func runExecute() {
 	case "datalevin":
 		client := datalevin.NewClient(serverURL)
 		if err := client.Health(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "talon run: cannot reach datalevin-server at %s: %v\n", serverURL, err)
+			fmt.Fprintf(os.Stderr, "tln run: cannot reach datalevin-server at %s: %v\n", serverURL, err)
 			fmt.Fprintln(os.Stderr, "hint: start the server with: cd datalevin-server && clj -M:run")
 			os.Exit(diagnostic.ExitError)
 		}
@@ -464,12 +464,12 @@ func runExecute() {
 	case "talon-db":
 		tdb, err := talondb.NewClient(ctx, talondbURL)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "talon run: dial talondb-server at %s: %v\n", talondbURL, err)
+			fmt.Fprintf(os.Stderr, "tln run: dial talondb-server at %s: %v\n", talondbURL, err)
 			os.Exit(diagnostic.ExitError)
 		}
 		defer func() { _ = tdb.Close() }()
 		if err := tdb.Health(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "talon run: cannot reach talondb-server at %s: %v\n", talondbURL, err)
+			fmt.Fprintf(os.Stderr, "tln run: cannot reach talondb-server at %s: %v\n", talondbURL, err)
 			fmt.Fprintln(os.Stderr, "hint: start the server with: talondb-server --socket /tmp/talondb.sock")
 			os.Exit(diagnostic.ExitError)
 		}
@@ -478,7 +478,7 @@ func runExecute() {
 		}
 		store = talondb.New(tdb)
 	default:
-		fmt.Fprintf(os.Stderr, "talon run: unknown --store %q (want datalevin, memory, or talon-db)\n", storeKind)
+		fmt.Fprintf(os.Stderr, "tln run: unknown --store %q (want datalevin, memory, or talon-db)\n", storeKind)
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -488,7 +488,7 @@ func runExecute() {
 	if seedPath != "" {
 		seedSrc, err := os.ReadFile(seedPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "talon run: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tln run: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
 		seedFile := filepath.Base(seedPath)
@@ -508,7 +508,7 @@ func runExecute() {
 		}
 		n, err := exec.Seed(ctx, seedProg)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "talon run: seed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tln run: seed: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
 		fmt.Printf("==> seeded %d entity(s) from %s\n", n, seedFile)
@@ -517,7 +517,7 @@ func runExecute() {
 	// Execute all plans
 	results, err := exec.RunAll(ctx, plans)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon run: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln run: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 
@@ -564,7 +564,7 @@ func runExecute() {
 
 func runTrace() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon trace <rules.tln> <tests.tln.test> [--test NAME]")
+		fmt.Fprintln(os.Stderr, "usage: tln trace <rules.tln> <tests.tln.test> [--test NAME]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -580,7 +580,7 @@ func runTrace() {
 
 	rulesSrc, err := os.ReadFile(rulesPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon trace: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln trace: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	rulesFile := filepath.Base(rulesPath)
@@ -591,7 +591,7 @@ func runTrace() {
 
 	testSrc, err := os.ReadFile(testPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon trace: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln trace: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	testFile := filepath.Base(testPath)
@@ -632,7 +632,7 @@ func runTrace() {
 		}
 		traces = filtered
 		if len(traces) == 0 {
-			fmt.Fprintf(os.Stderr, "talon trace: no test matched %q\n", wantTest)
+			fmt.Fprintf(os.Stderr, "tln trace: no test matched %q\n", wantTest)
 			os.Exit(diagnostic.ExitError)
 		}
 	}
@@ -640,7 +640,7 @@ func runTrace() {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(map[string]any{"traces": traces}); err != nil {
-		fmt.Fprintf(os.Stderr, "talon trace: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln trace: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 }
@@ -714,7 +714,7 @@ func printStep(num int, step planner.PlanStep) {
 // the given rules + tests files. See docs/design/0003-explainability.md.
 func runExplain() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon explain <rules.tln> <tests.tln.test> [--test NAME] [--json|--csv]")
+		fmt.Fprintln(os.Stderr, "usage: tln explain <rules.tln> <tests.tln.test> [--test NAME] [--json|--csv]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -739,7 +739,7 @@ func runExplain() {
 
 	rulesSrc, err := os.ReadFile(rulesPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon explain: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln explain: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	rulesFile := filepath.Base(rulesPath)
@@ -754,7 +754,7 @@ func runExplain() {
 
 	testSrc, err := os.ReadFile(testPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon explain: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln explain: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	testFile := filepath.Base(testPath)
@@ -789,7 +789,7 @@ func runExplain() {
 	}
 	sort.Strings(names)
 	if len(names) == 0 {
-		fmt.Fprintln(os.Stderr, "talon explain: no decisions produced")
+		fmt.Fprintln(os.Stderr, "tln explain: no decisions produced")
 		os.Exit(diagnostic.ExitError)
 	}
 
@@ -806,7 +806,7 @@ func runExplain() {
 
 	if asCSV {
 		if err := writeDecisionsCSV(os.Stdout, names, decisions); err != nil {
-			fmt.Fprintf(os.Stderr, "talon explain: csv: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tln explain: csv: %v\n", err)
 			os.Exit(diagnostic.ExitError)
 		}
 		return
@@ -823,23 +823,23 @@ func runExplain() {
 }
 
 // runWhy answers "why did <block> flag <entity>?" by walking the same
-// Decision chain that `talon explain` materialises, then filtering it to
+// Decision chain that `tln explain` materialises, then filtering it to
 // the single (block, entity) pair the user asked about. Backward-chained
 // debugging: instead of dumping every decision a rule file produces, the
 // caller anchors on one observable outcome and gets just the evidence
 // and upstream triggers that led to it.
 //
-// Reuses talon explain's compile+seed flow verbatim — see runExplain.
+// Reuses tln explain's compile+seed flow verbatim — see runExplain.
 // The only divergence is the post-filter that keeps decisions where
 // (BlockName matches if --block given) AND (EntityID matches if
 // --entity given).
 //
 // Usage:
 //
-//	talon why <rules.tln> <tests.tln.test> [--block NAME] [--entity ID] [--test NAME] [--json]
+//	tln why <rules.tln> <tests.tln.test> [--block NAME] [--entity ID] [--test NAME] [--json]
 func runWhy() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon why <rules.tln> <tests.tln.test> [--block NAME] [--entity ID] [--test NAME] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: tln why <rules.tln> <tests.tln.test> [--block NAME] [--entity ID] [--test NAME] [--json]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -865,7 +865,7 @@ func runWhy() {
 			if i+1 < len(os.Args) {
 				n, err := strconv.Atoi(os.Args[i+1])
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "talon why: --entity must be an integer, got %q\n", os.Args[i+1])
+					fmt.Fprintf(os.Stderr, "tln why: --entity must be an integer, got %q\n", os.Args[i+1])
 					os.Exit(diagnostic.ExitUsage)
 				}
 				wantEntity = n
@@ -876,13 +876,13 @@ func runWhy() {
 		}
 	}
 	if wantBlock == "" && wantEntity < 0 {
-		fmt.Fprintln(os.Stderr, "talon why: provide at least one of --block or --entity (a goal to chain backwards from)")
+		fmt.Fprintln(os.Stderr, "tln why: provide at least one of --block or --entity (a goal to chain backwards from)")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
 	rulesSrc, err := os.ReadFile(rulesPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon why: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln why: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	rulesFile := filepath.Base(rulesPath)
@@ -895,7 +895,7 @@ func runWhy() {
 
 	testSrc, err := os.ReadFile(testPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon why: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln why: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	testFile := filepath.Base(testPath)
@@ -945,11 +945,11 @@ func runWhy() {
 		// way"). Exit 1 so scripts can branch on it, but say so clearly.
 		switch {
 		case wantBlock != "" && wantEntity >= 0:
-			fmt.Fprintf(os.Stderr, "talon why: no decision matched block %q on entity %d\n", wantBlock, wantEntity)
+			fmt.Fprintf(os.Stderr, "tln why: no decision matched block %q on entity %d\n", wantBlock, wantEntity)
 		case wantBlock != "":
-			fmt.Fprintf(os.Stderr, "talon why: no decision matched block %q\n", wantBlock)
+			fmt.Fprintf(os.Stderr, "tln why: no decision matched block %q\n", wantBlock)
 		default:
-			fmt.Fprintf(os.Stderr, "talon why: no decision matched entity %d\n", wantEntity)
+			fmt.Fprintf(os.Stderr, "tln why: no decision matched entity %d\n", wantEntity)
 		}
 		os.Exit(diagnostic.ExitError)
 	}
@@ -973,7 +973,7 @@ func runWhy() {
 }
 
 // writeDecisionsCSV emits one row per Decision in stable order so downstream
-// tools (R, Python, DuckDB, BigQuery) can read Talon results without parsing
+// tools (R, Python, DuckDB, BigQuery) can read tln results without parsing
 // the nested JSON shape. Evidence is serialized as a key=value-joined string
 // in a single column rather than exploded into a dynamic schema — that keeps
 // the CSV stable when rules add or remove evidence keys between runs.
@@ -1029,7 +1029,7 @@ func flattenEvidence(facts []explain.Fact) string {
 // and `--flag value` shapes. Unknown values fall back to the defaults
 // (text format, warn level) with a one-line stderr complaint.
 func stripGlobalLogFlags() {
-	format := talonlog.FormatText
+	format := tlnlog.FormatText
 	level := slog.LevelWarn
 
 	out := make([]string, 0, len(os.Args))
@@ -1058,20 +1058,20 @@ func stripGlobalLogFlags() {
 		}
 	}
 	os.Args = out
-	talonlog.Init(format, level, os.Stderr)
+	tlnlog.Init(format, level, os.Stderr)
 }
 
-func applyLogFlag(kind, value string, format *talonlog.Format, level *slog.Level) {
+func applyLogFlag(kind, value string, format *tlnlog.Format, level *slog.Level) {
 	switch kind {
 	case "format":
-		f, err := talonlog.ParseFormat(value)
+		f, err := tlnlog.ParseFormat(value)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}
 		*format = f
 	case "level":
-		l, err := talonlog.ParseLevel(value)
+		l, err := tlnlog.ParseLevel(value)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return

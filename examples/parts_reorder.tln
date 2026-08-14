@@ -10,9 +10,9 @@
 // minimize total cost AND minimize stockout risk (small days_until)
 // AND maximize blast-radius coverage — subject to staying within budget.
 //
-//   ./talon build examples/parts_reorder.tln
-//   ./talon test examples/parts_reorder.tln test/parts_reorder.tln.test
-//   ./talon explain examples/parts_reorder.tln test/parts_reorder.tln.test
+//   ./tln build examples/parts_reorder.tln
+//   ./tln test examples/parts_reorder.tln test/parts_reorder.tln.test
+//   ./tln explain examples/parts_reorder.tln test/parts_reorder.tln.test
 
 combine "Reorder picks" {
   for records where type == "stock_item" and status == "active"

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // fakeStore is the test double for FactStore. It records every call

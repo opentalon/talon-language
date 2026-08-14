@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/constraints"
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/constraints"
+	"github.com/opentalon/tln-language/internal/factstore"
 	pb "github.com/opentalon/talon-db/proto/talondbpb"
 )
 
@@ -28,7 +28,7 @@ import (
 //     produced here; Predicates / Or / Not / FullText are evaluated
 //     against the in-memory representation.
 //
-// This mirrors the talon-language MemoryStore solver while delegating
+// This mirrors the tln-language MemoryStore solver while delegating
 // the candidate-set narrowing to the server's indexes.
 type Adapter struct {
 	client      *Client
@@ -50,7 +50,7 @@ func New(client *Client) *Adapter {
 // the error.
 //
 // Constraint blocks are typically parsed from the .tln source by
-// the compiler and threaded through here from cmd/talon's wiring.
+// the compiler and threaded through here from cmd/tln's wiring.
 func (a *Adapter) WithConstraints(blocks []*ast.ConstraintBlock) *Adapter {
 	clone := *a
 	clone.constraints = blocks
@@ -132,7 +132,7 @@ func (a *Adapter) Assert(ctx context.Context, facts []factstore.Fact) error {
 // silent at the gate today — matching the design in
 // internal/constraints/constraints.go's Verdict semantics).
 //
-// The merged record uses talon-language's namespaced attribute keys
+// The merged record uses tln-language's namespaced attribute keys
 // (":record/type", ":attr/km", ...); the constraint evaluator expects
 // bare keys ("type", "km", ...). bareKeyView builds a temporary view
 // over the record with the namespace stripped, so .tln-authored
@@ -157,7 +157,7 @@ func (a *Adapter) checkConstraints(recordID string, record map[string]any) error
 // ":attr/current_stock" → "current_stock", "name" → "name". When two
 // namespaced keys collide on the same bare name, last-write-wins is
 // the documented behaviour — collisions are rare in practice because
-// talon-language's planner emits one namespace per attribute family.
+// tln-language's planner emits one namespace per attribute family.
 func bareKeyView(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
 	for k, v := range in {

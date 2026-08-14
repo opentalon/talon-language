@@ -48,7 +48,7 @@ explicit `eager` modifier that opts a block into pre-materialisation.
 
 ### Syntax
 
-```talon
+```tln
 ;; default — lazy, evaluated when referenced in a query
 derive overdue(X) {
   for records where type == "vehicle"
@@ -81,7 +81,7 @@ mixed strategies without magic sets, and that's out of v1 scope.
     it bloats the store).
   - The host has an incremental engine — RETE (#89) — so updates
     don't trigger a full rescan on every Assert.
-- **Talon's typical scale** (thousands of facts, dozens of blocks, ad
+- **tln's typical scale** (thousands of facts, dozens of blocks, ad
   hoc `Run`) makes lazy the right default. Eager becomes valuable
   when reactive on-blocks + RETE land; explicit opt-in keeps the
   language honest about the tradeoff.

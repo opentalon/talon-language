@@ -300,7 +300,7 @@ func (m *MemoryStore) Events() *EventEmitter {
 // variables.
 //
 // The evaluation strategy is intentionally naive — one pass per entity,
-// short-circuit on first failing clause. For Talon's per-tenant fact
+// short-circuit on first failing clause. For tln's per-tenant fact
 // volumes (thousands, not millions) this is plenty; a future indexed
 // MemoryStore can replace the loop without changing the interface.
 //

@@ -3,7 +3,7 @@ package talondb
 import (
 	"math"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // numericRangeBound is the half-bounded range a pushdown contributes.

@@ -6,7 +6,7 @@
 ε-greedy with trace ID minting and feedback-fact ingestion. The
 grammar is:
 
-```talon
+```tln
 suggest "X" with probability 0.5 learn from feedback within 30 days
 ```
 
@@ -37,7 +37,7 @@ PR is the first half: ε-greedy *exploration*. The missing half is
 
 ## Proposed shape
 
-```talon
+```tln
 recommend "Stock replenishment" {
   when low_stock
   suggest "Order {qty} units"     with probability 0.8
@@ -59,9 +59,9 @@ recommend "Stock replenishment" {
 
 The runtime would:
 1. Stamp each fired suggestion with a unique trace ID into the FactStore.
-2. The host (OpenTalon, talon-plugin) emits feedback facts as user
+2. The host (OpenTalon, tln-plugin) emits feedback facts as user
    actions happen — `:feedback/trace`, `:feedback/outcome`, `:feedback/at`.
-3. A periodic Talon job (cron, runtime hook, batch) reads recent
+3. A periodic tln job (cron, runtime hook, batch) reads recent
    feedback, computes posterior reward distributions per arm,
    updates the `with probability` parameters on the live block.
 
@@ -74,7 +74,7 @@ The runtime would:
    across Runs. MemoryStore works for tests; production needs
    either Datalevin (current) or talon-db (#89) with a stable
    schema.
-3. **Update cadence** — Talon today is request-driven (`talon run`)
+3. **Update cadence** — tln today is request-driven (`tln run`)
    or reactive (on-blocks). MDP needs scheduled re-evaluation. The
    host is the right place for cron (#17), so this PR also needs
    the host's scheduling story locked.
@@ -85,14 +85,14 @@ The runtime would:
    evaluation time.
 5. **Calibration** — bandit / MDP algorithms have hyperparameters
    (exploration constant for UCB1, prior for Thompson sampling).
-   Talon needs a story for surfacing those — block annotation,
+   tln needs a story for surfacing those — block annotation,
    global config, or auto-calibration via #76's tune machinery.
 
 ## Algorithm space (pick at implementation time)
 
-| Algorithm | When it fits Talon | Cost |
+| Algorithm | When it fits tln | Cost |
 |---|---|---|
-| **ε-greedy** | Simple, well-understood, easy to reason about. Talon's `with probability N` is already shaped this way — just need to fold in observed rewards. | Lowest — small change to existing path |
+| **ε-greedy** | Simple, well-understood, easy to reason about. tln's `with probability N` is already shaped this way — just need to fold in observed rewards. | Lowest — small change to existing path |
 | **UCB1** | Better regret bounds, no manual ε tuning. Needs accurate visit counts per arm. | Medium |
 | **Thompson sampling** | Best empirical performance for Bernoulli rewards (accept/reject). Bayesian; surface as Beta priors per arm. | Medium |
 | **Contextual bandits** (LinUCB / LinTS) | When the right arm depends on entity features (user segment, item category, etc.). | Higher — need feature vector access in recommend |
@@ -109,7 +109,7 @@ The runtime would:
   of recent feedback and accepts the bias.
 - **Multi-armed exploration with safety constraints** — "explore
   ten different stock-recommendation templates, but never suggest
-  selling below cost." Talon's existing `constraint` blocks should
+  selling below cost." tln's existing `constraint` blocks should
   layer here; the MDP optimiser must filter candidate arms by
   hard constraints before sampling.
 

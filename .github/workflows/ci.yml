@@ -55,8 +55,8 @@ jobs:
         with:
           version: latest
 
-  talon-test:
-    name: Talon Tests
+  tln-test:
+    name: tln Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,17 +69,17 @@ jobs:
           if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
             git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
           fi
-      - run: go build ./cmd/talon
-      - run: ./talon build examples/fleet_maintenance.tln
-      - run: ./talon test -v --junit junit-talon.xml examples/fleet_maintenance.tln test/fleet_maintenance.tln.test
+      - run: go build ./cmd/tln
+      - run: ./tln build examples/fleet_maintenance.tln
+      - run: ./tln test -v --junit junit-tln.xml examples/fleet_maintenance.tln test/fleet_maintenance.tln.test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: talon-junit
-          path: junit-talon.xml
+          name: tln-junit
+          path: junit-tln.xml
 
-  talon-datalevin:
-    name: Talon + Datalevin
+  tln-datalevin:
+    name: tln + Datalevin
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -99,8 +99,8 @@ jobs:
           chmod +x dtlv
           sudo mv dtlv /usr/local/bin/
           dtlv --help | head -1
-      - run: go build ./cmd/talon
-      - run: ./talon build examples/fleet_maintenance.tln
+      - run: go build ./cmd/tln
+      - run: ./tln build examples/fleet_maintenance.tln
       - name: Run Datalevin integration test
         run: |
           output=$(dtlv exec -f /dev/stdin < examples/test_datalevin.clj)
@@ -108,7 +108,7 @@ jobs:
           echo "$output" | grep -q ":service-overdue" || { echo "FAIL: missing query results"; exit 1; }
 
   talon-db:
-    name: Talon + talon-db
+    name: tln + talon-db
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,8 +127,8 @@ jobs:
           go build -o /tmp/talondb-server ./cmd/talondb-server
       - name: Start talondb-server
         run: |
-          rm -f /tmp/talon.bbolt /tmp/talondb.sock
-          /tmp/talondb-server --db /tmp/talon.bbolt --socket /tmp/talondb.sock > /tmp/talondb.log 2>&1 &
+          rm -f /tmp/tln.bbolt /tmp/talondb.sock
+          /tmp/talondb-server --db /tmp/tln.bbolt --socket /tmp/talondb.sock > /tmp/talondb.log 2>&1 &
           echo "TALONDB_PID=$!" >> $GITHUB_ENV
           for i in $(seq 1 30); do
             if [ -S /tmp/talondb.sock ]; then
@@ -138,11 +138,11 @@ jobs:
             sleep 0.5
           done
           [ -S /tmp/talondb.sock ] || { echo "FAIL: server did not bind socket"; cat /tmp/talondb.log; exit 1; }
-      - run: go build ./cmd/talon
-      - run: ./talon build examples/fleet_maintenance.tln
+      - run: go build ./cmd/tln
+      - run: ./tln build examples/fleet_maintenance.tln
       - name: Run fleet_maintenance through talon-db
         run: |
-          output=$(./talon run examples/fleet_maintenance.tln \
+          output=$(./tln run examples/fleet_maintenance.tln \
                      --seed test/fleet_maintenance.tln.test \
                      --store talon-db \
                      --talondb unix:///tmp/talondb.sock)
@@ -151,7 +151,7 @@ jobs:
           echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }
       - name: Seed tenant-a (--tenant flag)
         run: |
-          output=$(./talon run examples/fleet_maintenance.tln \
+          output=$(./tln run examples/fleet_maintenance.tln \
                      --seed test/fleet_maintenance.tln.test \
                      --store talon-db \
                      --talondb unix:///tmp/talondb.sock \
@@ -167,7 +167,7 @@ jobs:
           # not appear with ANY non-zero count between now and the
           # error; that would mean facts leaked from tenant-a.
           set +e
-          output=$(./talon run examples/fleet_maintenance.tln \
+          output=$(./tln run examples/fleet_maintenance.tln \
                      --store talon-db \
                      --talondb unix:///tmp/talondb.sock \
                      --tenant b 2>&1)
@@ -179,7 +179,7 @@ jobs:
           fi
       - name: Tenant-a still sees its data after the tenant-b query
         run: |
-          output=$(./talon run examples/fleet_maintenance.tln \
+          output=$(./tln run examples/fleet_maintenance.tln \
                      --store talon-db \
                      --talondb unix:///tmp/talondb.sock \
                      --tenant a)
@@ -193,8 +193,8 @@ jobs:
           fi
           cat /tmp/talondb.log 2>/dev/null || true
 
-  talon-run:
-    name: Talon Run (HTTP)
+  tln-run:
+    name: tln Run (HTTP)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -216,7 +216,7 @@ jobs:
           if ! git clone --depth=1 -b "$BRANCH" https://github.com/opentalon/talon-db.git ../talon-db 2>/dev/null; then
             git clone --depth=1 https://github.com/opentalon/talon-db.git ../talon-db
           fi
-      - run: go build ./cmd/talon
+      - run: go build ./cmd/tln
       - name: Start datalevin-server
         run: |
           cd datalevin-server && clojure -M:run &
@@ -229,9 +229,9 @@ jobs:
             echo "waiting... ($i)"
           done
           curl -sf http://localhost:8898/health || { echo "FAIL: server did not start"; exit 1; }
-      - name: Run talon with seed from test file
+      - name: Run tln with seed from test file
         run: |
-          output=$(./talon run examples/fleet_maintenance.tln --seed test/fleet_maintenance.tln.test)
+          output=$(./tln run examples/fleet_maintenance.tln --seed test/fleet_maintenance.tln.test)
           echo "$output"
           echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
           echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 // echoCaller is the REPL's stand-in for an MCP server. A real deployment
@@ -41,7 +41,7 @@ func formatArgs(args map[string]any) string {
 // to w. A program with no on-blocks is still valid — it simply never
 // fires.
 func (s *Session) startWatch(src string, w io.Writer) error {
-	sess, err := talon.NewSession(src, talon.WithMCP(echoCaller{w: w}))
+	sess, err := tln.NewSession(src, tln.WithMCP(echoCaller{w: w}))
 	if err != nil {
 		return err
 	}
@@ -77,21 +77,21 @@ func (s *Session) fireWatch(datum ast.TestDatum, w io.Writer) {
 
 // factsFromDatum converts a REPL record/attr assertion into the EAV facts
 // the reactive session reasons over — one fact per field.
-func factsFromDatum(d ast.TestDatum) []talon.Fact {
+func factsFromDatum(d ast.TestDatum) []tln.Fact {
 	id := strconv.Itoa(d.ID)
 	keys := make([]string, 0, len(d.Fields))
 	for k := range d.Fields {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	facts := make([]talon.Fact, 0, len(keys))
+	facts := make([]tln.Fact, 0, len(keys))
 	for _, k := range keys {
-		facts = append(facts, talon.Fact{RecordID: id, Attribute: k, Value: d.Fields[k]})
+		facts = append(facts, tln.Fact{RecordID: id, Attribute: k, Value: d.Fields[k]})
 	}
 	return facts
 }
 
-func printFirings(firings []talon.Firing, w io.Writer) {
+func printFirings(firings []tln.Firing, w io.Writer) {
 	for _, f := range firings {
 		switch {
 		case f.Err != nil:

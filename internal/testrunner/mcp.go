@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/executor"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/executor"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // recordingCaller is the test double installed for `mock mcp` clauses. It

@@ -4,7 +4,7 @@ Any selector can negate a derived predicate with `not`. The negation reads as
 the complement of the derivation — the vehicles that are *not* overdue, the
 records that *don't* satisfy a policy — with no host glue and no second query.
 
-```talon
+```tln
 derive overdue(v) {
   for records where type == "vehicle"
     and attr "km" > attr "last_service_km" + 20000
@@ -56,7 +56,7 @@ lowered one of two ways depending on what the body needs:
 Negation is **stratified**: a derived predicate may not depend, even
 transitively, on its own negation.
 
-```talon
+```tln
 // Rejected at compile time — `loop` is true exactly when it is false.
 derive loop(v) {
   for records where type == "x" and not loop(v)
@@ -73,7 +73,7 @@ and rejects any cycle that crosses a negative edge with a distinct
 Negation *through* recursion has no meaning under this simple evaluation — it
 needs **well-founded semantics** to resolve to a three-valued (true / false /
 undefined) model. That is tracked in
-[issue #170](https://github.com/opentalon/talon-language/issues/170); this page
+[issue #170](https://github.com/opentalon/tln-language/issues/170); this page
 covers only the stratified case, which is the common one.
 
 ## Scope

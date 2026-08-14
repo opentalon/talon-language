@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/ast"
 )
 
 // braceBalance counts opening minus closing braces in src, ignoring those

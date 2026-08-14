@@ -1,10 +1,10 @@
-# Talon Phase 2 — Implementation Plan
+# tln Phase 2 — Implementation Plan
 
-Tracks: opentalon/talon-language#11 (ML Primitives Runtime) and adjacent prerequisites.
+Tracks: opentalon/tln-language#11 (ML Primitives Runtime) and adjacent prerequisites.
 
 ## 1. Dogfood Setup (macOS)
 
-The fleet example exercises `detect` and `rule` blocks against a live Datalevin sidecar. End-to-end smoke target: `talon run examples/fleet_maintenance.tln --seed test/fleet_maintenance.tln.test` returns 2 overdue vehicles.
+The fleet example exercises `detect` and `rule` blocks against a live Datalevin sidecar. End-to-end smoke target: `tln run examples/fleet_maintenance.tln --seed test/fleet_maintenance.tln.test` returns 2 overdue vehicles.
 
 ### 1a. Prerequisites
 
@@ -19,7 +19,7 @@ brew install clojure/tools/clojure
 
 Note: `brew install datalevin` does **not** exist. The README mentions `brew install datalevin` near `examples/fleet_maintenance.tln:8` but Homebrew has no such formula. The two real paths are:
 
-- **JVM server (what `talon run` actually uses)** — `datalevin-server/` is a Clojure ring app pulling `datalevin/datalevin 0.10.7` from Maven (`datalevin-server/deps.edn:3`). No separate install — `clj -M:run` pulls deps.
+- **JVM server (what `tln run` actually uses)** — `datalevin-server/` is a Clojure ring app pulling `datalevin/datalevin 0.10.7` from Maven (`datalevin-server/deps.edn:3`). No separate install — `clj -M:run` pulls deps.
 - **Native `dtlv` CLI (only needed for ad-hoc REPL via `examples/test_datalevin.clj`)** — download release zip manually, as CI does (`.github/workflows/ci.yml:53-58`).
 
 Action: update the `fleet_maintenance.tln` comment block — the brew instruction is misleading.
@@ -28,8 +28,8 @@ Action: update the `fleet_maintenance.tln` comment block — the brew instructio
 
 ```bash
 # Terminal 1 — clean DB + start server
-rm -rf /tmp/talon-datalevin
-cd /Users/zh/dev/projects/opentalon-ai/talon-language/datalevin-server
+rm -rf /tmp/tln-datalevin
+cd /Users/zh/dev/projects/opentalon-ai/tln-language/datalevin-server
 clojure -M:run                # binds 0.0.0.0:8898, see server.clj:75
 ```
 
@@ -39,30 +39,30 @@ Server logs `datalevin-server listening on port 8898`. Verify in Terminal 2:
 curl -s http://localhost:8898/health   # → {"status":"ok"}
 ```
 
-### 1c. Build and run Talon
+### 1c. Build and run tln
 
 ```bash
-cd /Users/zh/dev/projects/opentalon-ai/talon-language
-go build -o talon ./cmd/talon
+cd /Users/zh/dev/projects/opentalon-ai/tln-language
+go build -o tln ./cmd/tln
 
 # Compile-only sanity
-./talon build examples/fleet_maintenance.tln
+./tln build examples/fleet_maintenance.tln
 
 # Seeded end-to-end run
-./talon run examples/fleet_maintenance.tln \
+./tln run examples/fleet_maintenance.tln \
   --seed test/fleet_maintenance.tln.test
 ```
 
 ### 1d. Expected output
 
-From `cmd/talon/main.go:296-332`, output is per-block flagged rows with resolved `:attr/name`. The CI assertion (`ci.yml:102`) is `Service overdue 2 row(s)` — Truck A (501) + Car C (505). Tests for `Unusual consumption` and `Parts stock-out` will show ML-keyword blocks running but the `GoComputation` step is a stub (`executor.go:128-137`) so labels/anomaly scores will be empty. That stub is exactly the gap #11 fills.
+From `cmd/tln/main.go:296-332`, output is per-block flagged rows with resolved `:attr/name`. The CI assertion (`ci.yml:102`) is `Service overdue 2 row(s)` — Truck A (501) + Car C (505). Tests for `Unusual consumption` and `Parts stock-out` will show ML-keyword blocks running but the `GoComputation` step is a stub (`executor.go:128-137`) so labels/anomaly scores will be empty. That stub is exactly the gap #11 fills.
 
 ### 1e. Likely paper-cuts
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `cannot reach datalevin-server` | Java not on path or `clj` not installed | `java -version`, re-run brew commands |
-| `seed` succeeds but 0 rows flagged | Stale DB on disk with old schema | `rm -rf /tmp/talon-datalevin`, restart server |
+| `seed` succeeds but 0 rows flagged | Stale DB on disk with old schema | `rm -rf /tmp/tln-datalevin`, restart server |
 | `:where]` empty query short-circuits to `[][]any{}` | `executor.go:96` heuristic — fires when `calculate` has no `where` | Cosmetic; won't break smoke test |
 | `Cluster/Classify/Similar` blocks emit but return stub | Expected — see §3 below | n/a |
 
@@ -136,7 +136,7 @@ Load-bearing piece. Every primitive returns `(value, Explanation)` so labels lik
 // internal/mlruntime/explanation.go (proposed)
 
 // Explanation is the auditable trace of one ML primitive invocation.
-// JSON-serialisable for `talon trace` and audit logs.
+// JSON-serialisable for `tln trace` and audit logs.
 type Explanation struct {
     Primitive  string              // "predict_decision_tree", etc.
     EntityID   int                 // who this prediction is about
@@ -209,7 +209,7 @@ Current step interface (`planner.go:31-59`): `DatalevinQuery | GoComputation | F
 - Con: explanation is conventionally untyped — easy to forget, hard to lint.
 
 **Option B — add `MLComputation` step.** Distinct struct, strongly-typed `Explanation`, validator can enforce that label templates referencing `{explanation.*}` only follow an `MLComputation`.
-- Pro: explainability contract is structural, not nominal. Tooling (`talon trace`) gets a free hook.
+- Pro: explainability contract is structural, not nominal. Tooling (`tln trace`) gets a free hook.
 - Con: planner and executor get a parallel branch.
 
 **Recommendation: Option B.** Headline product pitch is "explainable"; way to make a contract real in Go = a type. Adds one switch case to `executor.execStep` (`executor.go:81-92`) and ~30 LOC of plan-step plumbing.
@@ -318,7 +318,7 @@ Land each behind a feature gate or commit-by-primitive — they're independent.
 
 | Milestone | Exit criteria | Blocks |
 |---|---|---|
-| **M0 — Dogfood** | `talon run` end-to-end against live Datalevin, 2 overdue vehicles, README brew note fixed | (none, do tomorrow) |
+| **M0 — Dogfood** | `tln run` end-to-end against live Datalevin, 2 overdue vehicles, README brew note fixed | (none, do tomorrow) |
 | **M1 — Design doc merged** | ADR-0001 reviewed, decision recorded, `Explanation` interface frozen | M2 |
 | **M2 — Planner: `MLComputation` step** | New step type emits for all 7 ML blocks, `planner_test.go` covers each | M3 |
 | **M3 — `learned_threshold` + `is anomaly`** | Both keywords compute real values + explanations; `.tln.test` cases pass | M4 |
@@ -327,7 +327,7 @@ Land each behind a feature gate or commit-by-primitive — they're independent.
 | **M6 — `classify` + `find similar`** | Text classification example (e.g. ticket categorisation) ships | M7 |
 | **M7 — `cluster by`** | All 7 primitives green, mlruntime registry complete | (closes #11) |
 
-Gating discipline: each milestone **not done** until (a) tests green, (b) one example in `examples/` exercises it, (c) `talon trace` shows the explanation. Without (c) the explainability claim is vapour.
+Gating discipline: each milestone **not done** until (a) tests green, (b) one example in `examples/` exercises it, (c) `tln trace` shows the explanation. Without (c) the explainability claim is vapour.
 
 ---
 
@@ -342,7 +342,7 @@ Gating discipline: each milestone **not done** until (a) tests green, (b) one ex
 | `find similar` | Cosine on hand-engineered features | Same as classify. Hard ceiling without embeddings. |
 | `forecast` | Single/double exp smoothing | No seasonality, no exogenous regressors. Fine for monotonic stock-out, weak for weekly demand. |
 
-Pitch defence: Talon doesn't compete with sklearn. Competes with "the engineer hand-writing a threshold check in TypeScript." Against that baseline, CART + clear reasons + audit trail wins.
+Pitch defence: tln doesn't compete with sklearn. Competes with "the engineer hand-writing a threshold check in TypeScript." Against that baseline, CART + clear reasons + audit trail wins.
 
 ### 5b. When does the ONNX/sidecar route become unavoidable?
 
@@ -365,25 +365,25 @@ var registry = map[string]Backend{
 }
 ```
 
-Talon source remains `predict "X" { ... }`; planner picks backend based on tenant config. No language change. Half a day to wire.
+tln source remains `predict "X" { ... }`; planner picks backend based on tenant config. No language change. Half a day to wire.
 
 ### 5c. Other named risks
 
 - **Model persistence undefined.** `trained_on` implies a fit step. Where the trained tree lives is open — `FactStore` blob? Side file? Single biggest unanswered question in design doc.
 - **`testrunner` only evaluates first `DatalevinQuery`** (`testrunner.go:62`). Does not run `GoComputation` steps. Without extending it, `.tln.test` files cannot assert on predictions — lose TDD for ML. Plan: extend `testrunner.runOne` to walk full step list using same `mlruntime.Registry`. ~150 LOC.
 - **Determinism.** k-NN with ties, DBSCAN with equal-distance neighbours, decision tree feature-split ties — all need documented tiebreak rules. "Deterministic" is in pitch (README.md:21); easy to break in ML code without discipline.
-- **Datalevin schema drift on re-seed.** `/schema` closes and reopens the DB (`server.clj:52-54`). If types change between runs, on-disk DB silently misbehaves. Document `rm -rf /tmp/talon-datalevin` in dogfood loop.
-- **README ↔ reality drift.** Two examples found: `brew install datalevin` line and unimplemented `talon trace` / `talon repl` (`main.go:36-43`). Worth one cleanup PR before #11 ships.
+- **Datalevin schema drift on re-seed.** `/schema` closes and reopens the DB (`server.clj:52-54`). If types change between runs, on-disk DB silently misbehaves. Document `rm -rf /tmp/tln-datalevin` in dogfood loop.
+- **README ↔ reality drift.** Two examples found: `brew install datalevin` line and unimplemented `tln trace` / `tln repl` (`main.go:36-43`). Worth one cleanup PR before #11 ships.
 
 ---
 
 ## Critical Files
 
-- `/Users/zh/dev/projects/opentalon-ai/talon-language/internal/mlruntime/mlruntime.go`
-- `/Users/zh/dev/projects/opentalon-ai/talon-language/internal/planner/planner.go`
-- `/Users/zh/dev/projects/opentalon-ai/talon-language/internal/executor/executor.go`
-- `/Users/zh/dev/projects/opentalon-ai/talon-language/internal/testrunner/testrunner.go`
-- `/Users/zh/dev/projects/opentalon-ai/talon-language/internal/ast/ast.go`
+- `/Users/zh/dev/projects/opentalon-ai/tln-language/internal/mlruntime/mlruntime.go`
+- `/Users/zh/dev/projects/opentalon-ai/tln-language/internal/planner/planner.go`
+- `/Users/zh/dev/projects/opentalon-ai/tln-language/internal/executor/executor.go`
+- `/Users/zh/dev/projects/opentalon-ai/tln-language/internal/testrunner/testrunner.go`
+- `/Users/zh/dev/projects/opentalon-ai/tln-language/internal/ast/ast.go`
 
 ## Entry Point After `/clear`
 

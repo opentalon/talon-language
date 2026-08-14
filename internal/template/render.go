@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/ast"
 )
 
 // Row represents one matched record's resolved attributes. The keys are

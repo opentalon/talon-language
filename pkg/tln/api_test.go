@@ -1,4 +1,4 @@
-package talon_test
+package tln_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 // mockCaller records every MCP invocation and lets a per-test handler
@@ -41,7 +41,7 @@ workflow "create" {
   }
 }`
 	mock := &mockCaller{}
-	result, err := talon.RunWorkflow(context.Background(), src, talon.WithMCP(mock))
+	result, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock))
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
@@ -87,7 +87,7 @@ workflow "chain" {
 			return map[string]any{"ok": true}, nil
 		},
 	}
-	if _, err := talon.RunWorkflow(context.Background(), src, talon.WithMCP(mock)); err != nil {
+	if _, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock)); err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
 
@@ -111,9 +111,9 @@ workflow "deny" {
 	mock := &mockCaller{}
 	hook := func(_ context.Context, _, _, _ string) (bool, error) { return false, nil }
 
-	result, err := talon.RunWorkflow(context.Background(), src,
-		talon.WithMCP(mock),
-		talon.WithConfirmHook(hook),
+	result, err := tln.RunWorkflow(context.Background(), src,
+		tln.WithMCP(mock),
+		tln.WithConfirmHook(hook),
 	)
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
@@ -154,7 +154,7 @@ workflow "paginate" {
 		},
 	}
 
-	result, err := talon.RunWorkflow(context.Background(), src, talon.WithMCP(mock))
+	result, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock))
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
@@ -203,7 +203,7 @@ workflow "map" {
 		},
 	}
 
-	if _, err := talon.RunWorkflow(context.Background(), src, talon.WithMCP(mock)); err != nil {
+	if _, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock)); err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
 	if len(mock.calls) != 2 {
@@ -227,7 +227,7 @@ workflow "stub" {
     }
   }
 }`
-	result, err := talon.RunWorkflow(context.Background(), src) // no WithMCP
+	result, err := tln.RunWorkflow(context.Background(), src) // no WithMCP
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
@@ -254,22 +254,22 @@ workflow "err" {
 			return nil, errors.New("connection refused")
 		},
 	}
-	_, err := talon.RunWorkflow(context.Background(), src, talon.WithMCP(mock))
+	_, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock))
 	if err == nil {
 		t.Fatal("expected error from MCP failure")
 	}
-	if _, isCompile := err.(*talon.CompileError); isCompile {
+	if _, isCompile := err.(*tln.CompileError); isCompile {
 		t.Errorf("expected runtime error, got CompileError: %v", err)
 	}
 }
 
 func TestRunWorkflow_CompileError_Parse(t *testing.T) {
 	src := `workflow "broken" { step "s1" {` // unterminated braces
-	_, err := talon.RunWorkflow(context.Background(), src)
+	_, err := tln.RunWorkflow(context.Background(), src)
 	if err == nil {
 		t.Fatal("expected compile error")
 	}
-	ce, ok := err.(*talon.CompileError)
+	ce, ok := err.(*tln.CompileError)
 	if !ok {
 		t.Fatalf("expected *CompileError, got %T: %v", err, err)
 	}
@@ -283,7 +283,7 @@ func TestRunWorkflow_CompileError_Parse(t *testing.T) {
 
 func TestRunWorkflow_FilenameOption(t *testing.T) {
 	src := `workflow "broken" { step "s1" {`
-	_, err := talon.RunWorkflow(context.Background(), src, talon.WithFilename("myfile.tln"))
+	_, err := tln.RunWorkflow(context.Background(), src, tln.WithFilename("myfile.tln"))
 	if err == nil {
 		t.Fatal("expected compile error")
 	}
@@ -292,7 +292,7 @@ func TestRunWorkflow_FilenameOption(t *testing.T) {
 	}
 }
 
-func keys(m map[string]*talon.BlockResult) []string {
+func keys(m map[string]*tln.BlockResult) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
@@ -300,23 +300,23 @@ func keys(m map[string]*talon.BlockResult) []string {
 	return out
 }
 
-// Compile-time check: mockCaller satisfies talon.MCPCaller.
-var _ talon.MCPCaller = (*mockCaller)(nil)
+// Compile-time check: mockCaller satisfies tln.MCPCaller.
+var _ tln.MCPCaller = (*mockCaller)(nil)
 
 // Compile-time guard documenting the public surface — bare references
 // so any rename in the SDK breaks the test build instead of silently
 // going through.
 var (
-	_ = talon.RunWorkflow
-	_ = talon.WithMCP
-	_ = talon.WithConfirmHook
-	_ = talon.WithFilename
-	_ = talon.SeverityError
-	_ = talon.SeverityWarning
-	_ = talon.SeverityInfo
-	_ talon.Result
-	_ talon.BlockResult
-	_ talon.StepResult
-	_ talon.Diagnostic
-	_ fmt.Stringer = talon.Diagnostic{}
+	_ = tln.RunWorkflow
+	_ = tln.WithMCP
+	_ = tln.WithConfirmHook
+	_ = tln.WithFilename
+	_ = tln.SeverityError
+	_ = tln.SeverityWarning
+	_ = tln.SeverityInfo
+	_ tln.Result
+	_ tln.BlockResult
+	_ tln.StepResult
+	_ tln.Diagnostic
+	_ fmt.Stringer = tln.Diagnostic{}
 )

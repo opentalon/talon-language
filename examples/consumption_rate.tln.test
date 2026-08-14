@@ -1,8 +1,8 @@
 // calculate + having example suite.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/consumption_rate.tln examples/consumption_rate.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/consumption_rate.tln examples/consumption_rate.tln.test
 
 test "high average consumption flags depots" {
   // usage amounts average (120 + 90 + 150)/3 = 120 > 100 → gate opens,

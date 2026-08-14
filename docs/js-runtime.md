@@ -1,21 +1,21 @@
 # JavaScript Runtime
 
-The `@talon-lang/runtime` package lets you load Talon rules and evaluate them
+The `@tln-lang/runtime` package lets you load tln rules and evaluate them
 reactively in JavaScript or TypeScript. When state changes the store
 automatically re-evaluates every rule and emits the resulting actions.
 
 ## Install
 
 ```bash
-npm install @talon-lang/runtime
+npm install @tln-lang/runtime
 ```
 
 ## Quick start
 
 ```ts
-import { TalonStore } from "@talon-lang/runtime";
+import { TlnStore } from "@tln-lang/runtime";
 
-const store = new TalonStore();
+const store = new TlnStore();
 
 store.loadRules(`
   rule "Show delivery" {
@@ -160,7 +160,7 @@ You can use the lexer, parser, and evaluator directly if you need to inspect
 the AST or evaluate conditions outside the store.
 
 ```ts
-import { lex, parse, evaluate, resolveExpr } from "@talon-lang/runtime";
+import { lex, parse, evaluate, resolveExpr } from "@tln-lang/runtime";
 
 const tokens = lex(`rule "R" { when "x" > 1 do show "y" }`);
 const program = parse(tokens);

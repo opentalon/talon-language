@@ -3,7 +3,7 @@ package talondb
 import (
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // matchAllWithRules evaluates every clause against the document and

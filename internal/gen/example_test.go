@@ -3,8 +3,8 @@ package gen_test
 import (
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/gen"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/gen"
 )
 
 // ExampleDetect shows the printer's primary use: turning a structured Go spec

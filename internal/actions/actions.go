@@ -1,5 +1,5 @@
 // Package actions resolves the `do` clauses of a rule into the action
-// payload the engine hands back to its host. Talon never executes an
+// payload the engine hands back to its host. tln never executes an
 // action: it decides which ones fire, resolves their arguments against the
 // matched row, and returns them as data.
 //
@@ -12,9 +12,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/defeasible"
-	"github.com/opentalon/talon-language/internal/template"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/defeasible"
+	"github.com/opentalon/tln-language/internal/template"
 )
 
 // Fired is one `do` action resolved against one matched row.

@@ -23,9 +23,9 @@ import (
 
 	_ "embed"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/talondb"
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/talondb"
+	"github.com/opentalon/tln-language/pkg/tln"
 
 	"github.com/opentalon/talon-db/bboltstore"
 	"github.com/opentalon/talon-db/grpcserver"
@@ -49,7 +49,7 @@ func run() error {
 	ctx := context.Background()
 
 	// ── Bring up a real talon-db over a Unix socket ──────────────────────
-	dir, err := os.MkdirTemp("", "talon-timetravel-")
+	dir, err := os.MkdirTemp("", "tln-timetravel-")
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func run() error {
 	}
 
 	// ── Run the detect against talon-db ──────────────────────────────────
-	res, err := talon.Run(ctx, program, talon.WithFactStore(adapter))
+	res, err := tln.Run(ctx, program, tln.WithFactStore(adapter))
 	if err != nil {
 		return err
 	}

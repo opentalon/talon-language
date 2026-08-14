@@ -1,13 +1,13 @@
 # Thresholds (inline & cached)
 
-Talon has two ways to put a *learned number* into a rule — a threshold the
+tln has two ways to put a *learned number* into a rule — a threshold the
 data decides, not a magic constant hard-coded by hand.
 
 ## Two forms
 
 **Inline (compute-on-demand)** — `learned_threshold`:
 
-```talon
+```tln
 detect "Slow request" {
   for records where attr "latency" > learned_threshold p95 of attr "latency" over last 30 days
   flag matching items
@@ -19,7 +19,7 @@ Simple, always current, no infrastructure — but it pays that cost on each run.
 
 **Cached (precomputed)** — the `threshold` block:
 
-```talon
+```tln
 threshold "service_interval" {
   value 18200
   computed_from "47 service tickets, avg 20222 km, margin 0.9"
@@ -65,7 +65,7 @@ so the rest of the pipeline only ever sees a plain number. The block itself
 produces no query — it's data, not an evaluable rule.
 
 The host can regenerate the `.tln` file with a new `value` and the next
-compile picks it up — no code change, no redeploy of Talon itself.
+compile picks it up — no code change, no redeploy of tln itself.
 
 ## Expiry
 
@@ -79,7 +79,7 @@ When it passes:
 This is deliberate: a slightly stale threshold is almost always better than a
 crashed rule. Keeping the value live puts the responsibility where it belongs
 — on the host's scheduled discovery job to refresh before `valid_until` hits —
-while the warning makes the staleness visible in `talon build` output.
+while the warning makes the staleness visible in `tln build` output.
 
 The validator also rejects a `threshold "name"` reference with no matching
 block, and a `valid_until` that isn't a date.
@@ -98,9 +98,9 @@ The cached interval is `18200`, so an item is overdue when
 | Van B | 40000 | 25000 | under | not flagged |
 
 ```
-./talon build   examples/cached_threshold.tln
-./talon test    examples/cached_threshold.tln test/cached_threshold.tln.test
-./talon explain examples/cached_threshold.tln test/cached_threshold.tln.test
+./tln build   examples/cached_threshold.tln
+./tln test    examples/cached_threshold.tln test/cached_threshold.tln.test
+./tln explain examples/cached_threshold.tln test/cached_threshold.tln.test
 ```
 
 ```

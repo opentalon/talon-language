@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/template"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/template"
 )
 
 // RunCollect executes one collect block: dispatch its MCP call (with the

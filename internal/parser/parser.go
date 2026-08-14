@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/lexer"
 )
 
 type parser struct {
@@ -362,7 +362,7 @@ func (p *parser) parseLoggerStatement() *ast.LoggerAction {
 }
 
 // parseTuneClause parses `tune against test "NAME"`. The named test must be
-// defined in a .tln.test file passed to `talon test` / `talon explain`;
+// defined in a .tln.test file passed to `tln test` / `tln explain`;
 // its given/expect data becomes the labeled fixture ABC tunes against.
 func (p *parser) parseTuneClause() *ast.TuneClause {
 	p.advance() // tune
@@ -780,7 +780,7 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 			call.OnError = p.parseOnErrorClause()
 			continue
 		}
-		// Arg names are free-form and may collide with Talon keywords
+		// Arg names are free-form and may collide with tln keywords
 		// (e.g. `priority`, `status`, `type`). Consume one token as the
 		// key unconditionally — this both accepts keyword-named args and
 		// guarantees forward progress so a stray token can never spin the
@@ -922,7 +922,7 @@ func (p *parser) parseCollect() *ast.CollectBlock {
 }
 
 // parseScheduleExpr reads the schedule metadata: `weekly` | `daily` |
-// `hourly` | `every N hours|days` | `cron "<expr>"`. Talon does not
+// `hourly` | `every N hours|days` | `cron "<expr>"`. tln does not
 // interpret it — it's a string a host scheduler reads.
 func (p *parser) parseScheduleExpr() string {
 	if p.at(lexer.TokenString) {
@@ -2021,7 +2021,7 @@ func (p *parser) parseRequiresClause() *ast.RequiresClause {
 // parseDoClause parses `do <verb> [arg ...]`. The verb is any word — an IDENT
 // or a keyword that happens to be one (`do block "pr.merge"`), since the verb
 // vocabulary belongs to the host, not the language. Arguments run until the
-// next clause keyword or the end of the rule body; Talon is not
+// next clause keyword or the end of the rule body; tln is not
 // newline-sensitive, so the clause boundary is what terminates the list.
 func (p *parser) parseDoClause() *ast.DoAction {
 	tok := p.advance() // do

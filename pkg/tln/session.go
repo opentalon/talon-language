@@ -1,4 +1,4 @@
-package talon
+package tln
 
 import (
 	"context"
@@ -6,12 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/executor"
-	"github.com/opentalon/talon-language/internal/factstore"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/reactive"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/executor"
+	"github.com/opentalon/tln-language/internal/factstore"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/reactive"
 )
 
 // Firing records one on-block match and what it executed. A match with a
@@ -28,7 +28,7 @@ type Firing struct {
 	Err     error   // non-nil if evaluating the guard or running the ref failed
 }
 
-// Session is a long-lived, event-driven Talon runtime. It holds a
+// Session is a long-lived, event-driven tln runtime. It holds a
 // compiled program and a MemoryStore, registers the program's on-blocks
 // on a reactive dispatcher, and fires their referenced blocks when facts
 // pushed in via [Session.Assert] / [Session.Retract] match.
@@ -95,7 +95,7 @@ func NewSession(src string, opts ...Option) (*Session, error) {
 	if cfg.factStore != nil {
 		ms, ok := cfg.factStore.(*factstore.MemoryStore)
 		if !ok {
-			return nil, fmt.Errorf("talon: NewSession requires a *MemoryStore (from NewMemoryStore); got %T", cfg.factStore)
+			return nil, fmt.Errorf("tln: NewSession requires a *MemoryStore (from NewMemoryStore); got %T", cfg.factStore)
 		}
 		store = ms
 	} else {
@@ -275,7 +275,7 @@ func logOnAction(ctx context.Context, block *ast.OnBlock, ev factstore.Event, a 
 		"{event.entity}", ev.Fact.RecordID,
 	).Replace(a.Message.Raw)
 
-	logger := talonlog.Default().With("source", "on_block", "trigger", block.Trigger, "block", block.Name)
+	logger := tlnlog.Default().With("source", "on_block", "trigger", block.Trigger, "block", block.Name)
 	switch strings.ToLower(a.Level) {
 	case "warn", "warning":
 		logger.WarnContext(ctx, msg)

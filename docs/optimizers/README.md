@@ -1,7 +1,7 @@
-# Talon optimizers
+# tln optimizers
 
 The `combine` block solves a family of optimization problems over selected
-records. Talon picks the backend based on the syntax you write — there is
+records. tln picks the backend based on the syntax you write — there is
 no global setting. This page maps clauses to backends and explains when
 each one is the right choice.
 
@@ -55,7 +55,7 @@ Are all objectives and constraints linear sums of attrs?
 ones that are non-dominated across multiple criteria.
 
 **Syntax**:
-```talon
+```tln
 combine "Service priority" {
   for records where is "overdue"
   maximize attr "km_overdue"
@@ -66,7 +66,7 @@ combine "Service priority" {
 ```
 
 **Output**: Every record gets a `pareto_rank` (0 = on the frontier).
-`flagged` contains rank-0 entities. `talon explain` cites which
+`flagged` contains rank-0 entities. `tln explain` cites which
 dimensions each pick wins on and how many other candidates it dominates.
 
 **Algorithm**: Deb et al. (2002) fast non-dominated sort plus crowding
@@ -83,7 +83,7 @@ distance. Deterministic; no seed needed.
 inequality constraints on aggregates. Multi-objective trade-offs welcome.
 
 **Syntax**:
-```talon
+```tln
 combine "Reorder picks" {
   for records where type == "stock_item" and status == "active"
   select 3 from records
@@ -97,7 +97,7 @@ combine "Reorder picks" {
 
 **Output**: A Pareto frontier of **subsets** (not individual records).
 `flagged` is the union of entities across all rank-0 subsets. Per-entity
-`talon explain` shows "selected in N of M Pareto-optimal subsets" — a
+`tln explain` shows "selected in N of M Pareto-optimal subsets" — a
 robustness signal you can read at a glance.
 
 **Algorithm**: NSGA-II survivor selection with Deb's constraint-dominance:
@@ -120,7 +120,7 @@ ILP returns a provably optimal answer in milliseconds for typical
 business-size problems.
 
 **Syntax**:
-```talon
+```tln
 combine "Reorder exact" {
   for records where type == "stock_item" and status == "active"
   solver linear
@@ -131,7 +131,7 @@ combine "Reorder exact" {
 }
 ```
 
-**Output**: One subset; `flagged` is exactly that subset. `talon explain`
+**Output**: One subset; `flagged` is exactly that subset. `tln explain`
 declares "part of the provably optimal subset" — no probabilistic hedging.
 
 **Algorithm**: 0/1 branch-and-bound with LP-relaxation bounding. Pure Go,
@@ -151,7 +151,7 @@ no native solver dependencies.
 order, route. Every selected candidate must be visited exactly once.
 
 **Syntax**:
-```talon
+```tln
 combine "Service tour" {
   for records where is "overdue"
   sequence
@@ -162,7 +162,7 @@ combine "Service tour" {
 ```
 
 **Output**: `flagged` is the entities in optimal visit order. Each entity
-gets a `stop_number` in evidence. `talon explain` renders "stop 3 of 7
+gets a `stop_number` in evidence. `tln explain` renders "stop 3 of 7
 on the shortest tour (length 28.4)".
 
 **Algorithm**: Classic Ant System with elitist reinforcement (Dorigo 1992).
@@ -189,7 +189,7 @@ batched data. v1 ships tuning for `anomaly_zscore`; other primitives will
 follow.
 
 **Syntax**:
-```talon
+```tln
 detect "Tuned consumption anomaly" {
   for records where type == "stock_item"
     and attr "weekly_consumption" is anomaly compared_to last 12 weeks

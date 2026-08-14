@@ -1,6 +1,6 @@
 // Tier-1 explainability fixture. Run with:
 //
-//   ./talon explain examples/cement_explain.tln test/cement_explain.tln.test
+//   ./tln explain examples/cement_explain.tln test/cement_explain.tln.test
 
 test "Cement scenario" {
   given {
@@ -17,8 +17,8 @@ test "Cement scenario" {
   when recommend "Order cement"
   expect {
     // Tier-1 explain demo — assertions intentionally minimal.
-    // The `talon test` runner does not populate `flagged` for recommend
+    // The `tln test` runner does not populate `flagged` for recommend
     // blocks (their plan is a GoComputation chain, no DatalevinQuery).
-    // The user-facing assertion is the `talon explain` output itself.
+    // The user-facing assertion is the `tln explain` output itself.
   }
 }

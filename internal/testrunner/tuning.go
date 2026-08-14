@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/explain"
-	"github.com/opentalon/talon-language/internal/mlruntime"
-	"github.com/opentalon/talon-language/internal/optimize"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/explain"
+	"github.com/opentalon/tln-language/internal/mlruntime"
+	"github.com/opentalon/tln-language/internal/optimize"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // tunableSpec describes how to tune one ML primitive's parameter via ABC:
@@ -67,7 +67,7 @@ var tunables = []tunableSpec{
 
 // tuningResult captures one block's auto-tuned parameter set and the labeled-
 // fixture diagnostics that produced it. Surfaced into Decision evidence so
-// `talon explain` can render the tuning provenance alongside the threshold
+// `tln explain` can render the tuning provenance alongside the threshold
 // itself.
 type tuningResult struct {
 	BlockName    string

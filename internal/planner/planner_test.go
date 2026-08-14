@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/validator"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/validator"
 )
 
 func planAll(t *testing.T, src string) map[string]*QueryPlan {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // mockMCP records calls and returns configurable responses.

@@ -46,7 +46,7 @@ func (c ACOConfig) withDefaults() ACOConfig {
 
 // ACOResult is the output of one ACO run: the best tour found (a permutation
 // of node indices), its total length, and a per-iteration trace of best
-// lengths so `talon explain` can render convergence.
+// lengths so `tln explain` can render convergence.
 type ACOResult struct {
 	Tour    []int
 	Length  float64

@@ -1,21 +1,21 @@
-# @opentalon/talon-runtime
+# @opentalon/tln-runtime
 
-Reactive rule engine for [Talon](https://github.com/opentalon/talon-language) — a path-based reactive store that evaluates Talon rules on every state change and dispatches resulting actions to subscribers and registered handlers.
+Reactive rule engine for [tln](https://github.com/opentalon/tln-language) — a path-based reactive store that evaluates tln rules on every state change and dispatches resulting actions to subscribers and registered handlers.
 
-This is the **JavaScript runtime**, intended for browser and Node applications that want to embed Talon's reactive rule subset (the lexer, parser, evaluator, and `TalonStore`). For workflow execution, ML primitives, and the full CLI, see the Go implementation in the main repo.
+This is the **JavaScript runtime**, intended for browser and Node applications that want to embed tln's reactive rule subset (the lexer, parser, evaluator, and `TlnStore`). For workflow execution, ML primitives, and the full CLI, see the Go implementation in the main repo.
 
 ## Install
 
 ```bash
-npm install @opentalon/talon-runtime
+npm install @opentalon/tln-runtime
 ```
 
 ## Quick start
 
 ```ts
-import { TalonStore } from "@opentalon/talon-runtime"
+import { TlnStore } from "@opentalon/tln-runtime"
 
-const store = new TalonStore()
+const store = new TlnStore()
 
 store.loadRules(`
   rule "Show delivery address" {
@@ -55,7 +55,7 @@ console.log(store.get("subtotal")) // 500
 ## API
 
 ```ts
-const store = new TalonStore()
+const store = new TlnStore()
 
 store.loadRules(source: string, opts?: { tag?: string }): void
 store.unloadRules(tag: string): void
@@ -69,7 +69,7 @@ store.subscribe(prefix: string, cb: (actions: ActionResult[]) => void): Unsubscr
 
 ## Scope
 
-The JS runtime implements the reactive subset of Talon — rules, `define`, conditions, and actions. Workflows, ML primitives, `forecast`/`detect` blocks, and `.tln.test` files are Go-only. See the [main repo](https://github.com/opentalon/talon-language) for the full language.
+The JS runtime implements the reactive subset of tln — rules, `define`, conditions, and actions. Workflows, ML primitives, `forecast`/`detect` blocks, and `.tln.test` files are Go-only. See the [main repo](https://github.com/opentalon/tln-language) for the full language.
 
 ## License
 

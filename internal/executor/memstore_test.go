@@ -5,16 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/validator"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/validator"
 )
 
 // TestExecutor_MemoryStoreEndToEnd proves the FactStore abstraction by
-// running a real Talon program through compile + execute against a
+// running a real tln program through compile + execute against a
 // MemoryStore (no Datalevin sidecar required). Mirrors the contract the
 // CLI's `--store memory` flag depends on; a regression here would mean a
 // new clause type was added to the planner without a matching case in

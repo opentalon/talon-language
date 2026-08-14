@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // stubVectorBackend captures the args of the last VectorSearch call and

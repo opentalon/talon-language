@@ -5,7 +5,7 @@ matching its selector. Constraints run on every fact mutation — assert,
 retract, batch load — and decide whether a candidate fact is allowed
 into the FactStore.
 
-Think of them as database CHECK constraints, but expressed in Talon and
+Think of them as database CHECK constraints, but expressed in tln and
 spanning the full fact graph (not just one table).
 
 ## Why
@@ -20,7 +20,7 @@ graph.
 
 ## Syntax
 
-```talon
+```tln
 constraint "Item status is valid" {
   for records where type == "item"
   require attr "status" in ["active", "defective", "missing", "inactive"]

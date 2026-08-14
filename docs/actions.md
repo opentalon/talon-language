@@ -3,7 +3,7 @@
 A rule's verdict clauses (`block` / `allow` / `requires`) say whether something
 is permitted. A **`do` clause** says what should happen as a result:
 
-```talon
+```tln
 rule "Require human review for critical paths" {
   for records where type == "pr"
     and attr "pr.changed_files" contains "internal/auth/"
@@ -16,7 +16,7 @@ rule "Require human review for critical paths" {
 }
 ```
 
-**Talon does not execute actions and does not know what any verb means.** The
+**tln does not execute actions and does not know what any verb means.** The
 engine decides *which* actions fire, resolves their arguments against the
 matched row, and hands them back as data. Performing them is the host's job.
 
@@ -25,7 +25,7 @@ carried out, so the same rule is testable with no host at all — see "Testing"
 below.
 
 > **Status.** The engine emits actions at runtime — see "Getting the actions
-> out" below. `talon explain` and `talon why` still do not report them:
+> out" below. `tln explain` and `tln why` still do not report them:
 > `explain.Decision` has no action field, so a decision trace does not record
 > actions.
 
@@ -41,7 +41,7 @@ clause, or both — and the validator rejects a rule with neither.
 
 ### Verbs are the host's vocabulary
 
-The verb is a bare name and Talon does not check it against a list. A review bot
+The verb is a bare name and tln does not check it against a list. A review bot
 understands `approve` / `block` / `comment`; a fleet system understands
 `dispatch` / `order_part`. Both are the same construct. The host validates the
 names it accepts and should reject unknown ones loudly — an unknown verb that
@@ -78,7 +78,7 @@ than it looks: the condition layer is two-valued, so a rule can fire on a row
 whose other facts never got extracted, and the action payload is the only place
 that distinction survives.
 
-Talon is not newline-sensitive, so an argument list ends at the next clause
+tln is not newline-sensitive, so an argument list ends at the next clause
 keyword (`do`, `reason`, `priority`, `block`, `allow`, `requires`, `overrides`,
 `logger.*`, …) or the end of the rule body.
 
@@ -87,11 +87,11 @@ keyword (`do`, `reason`, `priority`, `block`, `allow`, `requires`, `overrides`,
 A host embedding the engine reads them off the run result:
 
 ```go
-res, err := talon.Run(ctx, src, talon.WithFactStore(store))
+res, err := tln.Run(ctx, src, tln.WithFactStore(store))
 for _, a := range res.Actions {
     // a.EntityID — the row it fired for
     // a.Rule     — the rule it came from
-    // a.Verb     — the host's vocabulary, unvalidated by Talon
+    // a.Verb     — the host's vocabulary, unvalidated by tln
     // a.Args     — resolved arguments, positional
     host.Perform(a)
 }
@@ -121,7 +121,7 @@ row is defeated by another rule matching the *same* row — via an `overrides`
 edge, resolved by [defeasible priority](defeasible.md) — its actions are absent
 from the result:
 
-```talon
+```tln
 rule "Tenant approve" {
   for records where type == "pr" and attr "risk" == "low"
   do approve "pr"
@@ -147,7 +147,7 @@ declared with `overrides`.
 
 `.tln.test` asserts on the actions a rule produced, with no host involved:
 
-```talon
+```tln
 test "critical path tags the owner" {
   given {
     record 1 type "pr"
@@ -197,7 +197,7 @@ that only checks the rows it should.
 `given` takes list literals, which is what the string predicates quantify over
 (`contains` means "any element contains"):
 
-```talon
+```tln
 attr 1 "pr.changed_files" ["internal/auth/a.go", "README.md"]
 attr 2 "pr.changed_files" []
 ```

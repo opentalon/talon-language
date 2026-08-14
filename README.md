@@ -1,20 +1,20 @@
-# Talon
+# tln
 
 **A domain-agnostic expert system language with built-in ML primitives.**
 
-[![CI](https://github.com/opentalon/talon-language/actions/workflows/ci.yml/badge.svg)](https://github.com/opentalon/talon-language/actions/workflows/ci.yml)
+[![CI](https://github.com/opentalon/tln-language/actions/workflows/ci.yml/badge.svg)](https://github.com/opentalon/tln-language/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 
 ---
 
-Talon introduces a new concept: **Expert-in-the-Loop**. Instead of a human reviewing every AI decision, a deterministic expert system sits alongside the LLM — reasoning over facts, enforcing policies, and predicting outcomes. The LLM handles conversation and intent. Talon handles knowledge and inference. They work together.
+tln introduces a new concept: **Expert-in-the-Loop**. Instead of a human reviewing every AI decision, a deterministic expert system sits alongside the LLM — reasoning over facts, enforcing policies, and predicting outcomes. The LLM handles conversation and intent. tln handles knowledge and inference. They work together.
 
-## What is Talon?
+## What is tln?
 
-Talon is a rule language for building expert systems. It reasons over structured facts from any data source — inventory, CRM, ERP, IoT sensors, ticketing systems, or anything that produces structured data. Rules detect patterns, enforce policies, predict outcomes, and automate workflows.
+tln is a rule language for building expert systems. It reasons over structured facts from any data source — inventory, CRM, ERP, IoT sensors, ticketing systems, or anything that produces structured data. Rules detect patterns, enforce policies, predict outcomes, and automate workflows.
 
-Talon is:
+tln is:
 - **Domain-agnostic** — works for fleet management, construction, supply chain, HR compliance, hospitality, sales optimization, or any domain with structured data.
 - **Readable** — rules look like English. A domain expert can read, write, and audit them without programming experience.
 - **Adaptive** — thresholds learn from each tenant's own data. Rules get smarter over time.
@@ -23,9 +23,9 @@ Talon is:
 
 ## Example
 
-A construction site is burning through cement faster than expected. Talon detects it, forecasts when stock hits zero, and tells procurement exactly how much to order:
+A construction site is burning through cement faster than expected. tln detects it, forecasts when stock hits zero, and tells procurement exactly how much to order:
 
-```talon
+```tln
 detect "Cement running low" {
   for records where type == "stock_item"
     and attr "name" == "Portland Cement 50kg"
@@ -55,20 +55,20 @@ recommend "Order cement" {
 }
 ```
 
-No LLM involved. No API calls to figure out what's running low. Talon watches the data and tells you before the site stops.
+No LLM involved. No API calls to figure out what's running low. tln watches the data and tells you before the site stops.
 
 ## Installation
 
 ### Prebuilt binaries (recommended)
 
-Each tagged release publishes a `talon` binary for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, and windows/amd64. Grab one from the [Releases page](https://github.com/opentalon/talon-language/releases) or use the snippet for your platform:
+Each tagged release publishes a `tln` binary for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, and windows/amd64. Grab one from the [Releases page](https://github.com/opentalon/tln-language/releases) or use the snippet for your platform:
 
 ```bash
 # macOS (Apple Silicon) — adjust the URL for linux/x86_64 etc.
-TAG=$(curl -sL https://api.github.com/repos/opentalon/talon-language/releases/latest | grep '"tag_name"' | cut -d '"' -f 4)
-curl -fsSL "https://github.com/opentalon/talon-language/releases/download/${TAG}/talon-${TAG}-darwin-arm64.tar.gz" \
+TAG=$(curl -sL https://api.github.com/repos/opentalon/tln-language/releases/latest | grep '"tag_name"' | cut -d '"' -f 4)
+curl -fsSL "https://github.com/opentalon/tln-language/releases/download/${TAG}/tln-${TAG}-darwin-arm64.tar.gz" \
   | tar -xz
-./talon version
+./tln version
 ```
 
 Every release ships with a `SHA256SUMS.txt` file in case you want to verify the download.
@@ -78,27 +78,27 @@ Every release ships with a `SHA256SUMS.txt` file in case you want to verify the 
 If you already have Go 1.25+ installed:
 
 ```bash
-go install github.com/opentalon/talon-language/cmd/talon@latest
-talon version
+go install github.com/opentalon/tln-language/cmd/tln@latest
+tln version
 ```
 
 ### Try the REPL
 
-The fastest way to see Talon in action — load a real example, evaluate every
+The fastest way to see tln in action — load a real example, evaluate every
 block, and trace one to see the per-step query plan:
 
 ```bash
-talon repl
-talon> :load examples/insurance_claims.tln
+tln repl
+tln> :load examples/insurance_claims.tln
   loaded examples/insurance_claims.tln: 5 block(s), 0 fact(s)
-talon> :load test/insurance_claims.tln.test
+tln> :load test/insurance_claims.tln.test
   loaded test/insurance_claims.tln.test: 0 block(s), 28 fact(s)
-talon> :eval all
+tln> :eval all
   "Auto-approve in-network routine": 1 detection(s) — records [902]
   "Out-of-network provider":         1 detection(s) — records [904]
   "Over the per-visit cap":          2 detection(s) — records [903 904]
   "Reject blacklisted provider":     1 detection(s) — records [901]
-talon> :trace "Over the per-visit cap"
+tln> :trace "Over the per-visit cap"
   "Over the per-visit cap": 2 detection(s) — records [903 904]
     trace:
     step 1  DatalevinQuery → candidates  (rows: [903 904])
@@ -106,28 +106,28 @@ talon> :trace "Over the per-visit cap"
 ```
 
 The full walkthrough — including how to read trace output, the
-LLM-extracts-facts-then-Talon-decides pattern from
+LLM-extracts-facts-then-Tln-decides pattern from
 [Code Mode for MCP](https://opakalex.github.io/posts/code-mode-for-mcp/),
 and what each REPL command does — is in [`docs/repl.md`](docs/repl.md).
 
 ## FactStore backends
 
-`talon run` picks its fact backend with `--store`:
+`tln run` picks its fact backend with `--store`:
 
 | Backend | When to use | Setup |
 |---|---|---|
 | `datalevin` (default) | Production today. JVM sidecar, native Datalog, FTS, raft. | `cd datalevin-server && clojure -M:run` |
 | `memory` | REPL, demos, unit tests, CI smoke runs. Entirely in-process. | None — works out of the box |
-| `talon-db` | Phase-3 Go-native backend. Embedded bbolt + bitmap indexes; gRPC over Unix socket (or TCP / HTTP). | `talondb-server --db ./talon.bbolt --socket /tmp/talondb.sock` (see [opentalon/talon-db](https://github.com/opentalon/talon-db)) |
+| `talon-db` | Phase-3 Go-native backend. Embedded bbolt + bitmap indexes; gRPC over Unix socket (or TCP / HTTP). | `talondb-server --db ./tln.bbolt --socket /tmp/talondb.sock` (see [opentalon/talon-db](https://github.com/opentalon/talon-db)) |
 
 Example with the talon-db sidecar:
 
 ```bash
 # Terminal 1: start the daemon
-talondb-server --db /tmp/talon.bbolt --socket /tmp/talondb.sock
+talondb-server --db /tmp/tln.bbolt --socket /tmp/talondb.sock
 
 # Terminal 2: run a .tln program against it
-talon run examples/fleet_maintenance.tln \
+tln run examples/fleet_maintenance.tln \
   --seed test/fleet_maintenance.tln.test \
   --store talon-db \
   --talondb unix:///tmp/talondb.sock
@@ -157,7 +157,7 @@ graph TB
         API[REST / Webhooks]
     end
 
-    subgraph Compiler["Talon Compiler (Go)"]
+    subgraph Compiler["tln Compiler (Go)"]
         direction TB
         LEX[Lexer]
         PAR[Parser]
@@ -166,7 +166,7 @@ graph TB
         LEX --> PAR --> VAL --> QP
     end
 
-    subgraph Runtime["Talon Runtime"]
+    subgraph Runtime["tln Runtime"]
         direction TB
         EVAL[Rule Evaluator]
         ML[ML Primitives]
@@ -183,7 +183,7 @@ graph TB
         FEEDBACK[User Feedback]
     end
 
-    subgraph Plugins["Packages (talon.mod)"]
+    subgraph Plugins["Packages (tln.mod)"]
         STD_LOG[std/logger]
         STD_TIME[std/time]
         STD_STR[std/strings]
@@ -197,7 +197,7 @@ graph TB
         GUARD[Policy Blocks]
     end
 
-    TALON[".tln source files"] --> Compiler
+    TLN[".tln source files"] --> Compiler
     Compiler --> Runtime
     Runtime --> Output
 
@@ -216,7 +216,7 @@ graph TB
 ### How data flows
 
 1. **Facts come in** — MCP tool results, API responses, webhooks, or any structured data source feed facts into the FactStore.
-2. **Rules compile** — `.tln` files are compiled by the Talon compiler (Lexer, Parser, Validator, Query Planner).
+2. **Rules compile** — `.tln` files are compiled by the tln compiler (Lexer, Parser, Validator, Query Planner).
 3. **Rules evaluate** — the runtime queries the FactStore, runs ML primitives, and produces detections, predictions, and recommendations.
 4. **Results go out** — detections surface as chat alerts, scheduled reports, dashboard widgets, or policy blocks.
 
@@ -238,7 +238,7 @@ Plus `forecast`, `cluster`, `classify`, `predict`, `find similar`, `find related
 
 ## ML Primitives
 
-Talon has built-in ML keywords. Not heavyweight neural nets — lightweight statistical primitives that run in milliseconds on structured data.
+tln has built-in ML keywords. Not heavyweight neural nets — lightweight statistical primitives that run in milliseconds on structured data.
 
 | Keyword | What it does | Under the hood |
 |---------|-------------|----------------|
@@ -256,7 +256,7 @@ Every prediction is explainable. A decision tree says "this item is at risk beca
 
 `predict` and `classify` can train inline (`trained_on records where …`) or draw from a **pre-fitted `model`** — the model analog of a cached `threshold`. A model carries its fitted params inline (version-pinned in source with `computed_from` / `valid_until`), so there is no per-run training. Package models under a `module` namespace and import them by name across files:
 
-```talon
+```tln
 // fleet_ml.tln
 module "fleet.ml" {
   export model "failure_risk" {
@@ -279,13 +279,13 @@ classify "Vehicle failure risk" {
 }
 ```
 
-kNN models store their labeled examples (lazy); decision-tree models store the fitted tree itself (`fitted tree { node … }`, eager). Models resolve from **two providers under the same qualified name** — Talon `model` blocks *and* models a host registers in Go — so an embedding host can serve production models Talon source references transparently.
+kNN models store their labeled examples (lazy); decision-tree models store the fitted tree itself (`fitted tree { node … }`, eager). Models resolve from **two providers under the same qualified name** — tln `model` blocks *and* models a host registers in Go — so an embedding host can serve production models tln source references transparently.
 
 ## Control flow and string functions
 
-Talon stays declarative where it counts, but action bodies (today: `remediate`) support imperative control flow — `if/else`, `for each`, and a bounded `while` — branching on the same condition grammar the rest of the language uses:
+tln stays declarative where it counts, but action bodies (today: `remediate`) support imperative control flow — `if/else`, `for each`, and a bounded `while` — branching on the same condition grammar the rest of the language uses:
 
-```talon
+```tln
 remediate {
   if attr "priority" == "CRITICAL" {
     mcp "ops" "page_oncall" { vehicle attr "id" }
@@ -300,7 +300,7 @@ remediate {
 
 Expressions have a string toolkit usable anywhere a value is — `upper`, `lower`, `trim`, `length`, `substring`, `replace`, `concat`, `split`, `join`:
 
-```talon
+```tln
 for records where upper(substring(attr "vin", 0, 3)) == "1FT"
 ```
 
@@ -308,53 +308,53 @@ Both are mirrored in the JavaScript reactive runtime (`packages/runtime`) — th
 
 ## Expert-in-the-Loop
 
-Traditional AI systems use **human-in-the-loop** — a human reviews every AI decision. This doesn't scale. Talon introduces **expert-in-the-loop** — a deterministic expert system that collaborates with the LLM in real time.
+Traditional AI systems use **human-in-the-loop** — a human reviews every AI decision. This doesn't scale. tln introduces **expert-in-the-loop** — a deterministic expert system that collaborates with the LLM in real time.
 
 ```mermaid
 graph LR
     USER([User]) --> LLM["LLM<br>(conversation, intent,<br>natural language)"]
-    LLM <--> TALON["Talon Expert System<br>(facts, inference,<br>policy, predictions)"]
-    TALON <--> FACTS[(FactStore)]
+    LLM <--> TLN["tln Expert System<br>(facts, inference,<br>policy, predictions)"]
+    TLN <--> FACTS[(FactStore)]
     LLM --> RESPONSE([Response])
-    TALON --> |"proactive<br>alerts"| RESPONSE
+    TLN --> |"proactive<br>alerts"| RESPONSE
 
     style LLM fill:#faf5ff,stroke:#a855f7
-    style TALON fill:#f0fdf4,stroke:#22c55e
+    style TLN fill:#f0fdf4,stroke:#22c55e
     style FACTS fill:#fffbeb,stroke:#f59e0b
 ```
 
 How they collaborate:
 
-| Situation | LLM does | Talon does |
+| Situation | LLM does | tln does |
 |-----------|----------|------------|
 | User asks about an item | Understands intent, picks the right tool | Enriches response: "Note: this item is 5,000 km overdue for service" |
 | User wants to delete something | Prepares the tool call | Policy check: blocks if user lacks permission |
 | Nothing was asked | Nothing (reactive only) | Detects a pattern in the background, surfaces it proactively |
-| Talon detects a failure risk | Drafts the alert message in the user's language | Ran the prediction, computed the confidence |
+| tln detects a failure risk | Drafts the alert message in the user's language | Ran the prediction, computed the confidence |
 | User asks "why?" | Explains in natural language | Provides the trace: which facts, which rule, which threshold |
 
-The LLM is good at language. Talon is good at logic. Neither replaces the other.
+The LLM is good at language. tln is good at logic. Neither replaces the other.
 
 ### Inside OpenTalon
 
-When Talon runs as a plugin inside [OpenTalon](https://github.com/opentalon/opentalon), the expert-in-the-loop pattern integrates at three points:
+When tln runs as a plugin inside [OpenTalon](https://github.com/opentalon/opentalon), the expert-in-the-loop pattern integrates at three points:
 
 ```
 User message arrives
   |
   v
-[1. Talon as preparer]
+[1. tln as preparer]
   |  Evaluates rules against matched tools.
   |  Known patterns → execute directly (skip LLM).
   |  Unknown → pass through to LLM.
   |
   v
 [2. LLM agent loop]
-  |  Every tool result → asserted into Talon's FactStore.
-  |  Before each tool call → Talon policy check (block/allow).
+  |  Every tool result → asserted into tln's FactStore.
+  |  Before each tool call → tln policy check (block/allow).
   |
   v
-[3. Talon post-execution]
+[3. tln post-execution]
      Evaluates detect/predict/forecast over accumulated facts.
      Appends proactive insights to the response.
 ```
@@ -363,7 +363,7 @@ User message arrives
 
 ### Policy enforcement
 
-```talon
+```tln
 rule "Regional data restriction" {
   when tool_action starts_with "inventory"
     and tool_arg "org_unit_id" not in context.allowed_org_units
@@ -385,7 +385,7 @@ Ordered sequences across records (`A followed_by B [on same KEY] within N units`
 flag entities whose history matches a chain, not just a point-in-time
 shape:
 
-```talon
+```tln
 detect "Engine failure chain" {
   for records where type == "vehicle"
     and record type "electrical_fault"
@@ -403,7 +403,7 @@ compile to in-process matchers — no extra service required.
 
 ### Anomaly detection
 
-```talon
+```tln
 detect "Unusual consumption" {
   for records where type == "stock_item"
     and attr "weekly_consumption" is anomaly
@@ -421,7 +421,7 @@ the rule names a vector scope. Each tenant can hold multiple embedding
 models side-by-side — dimension is locked on first insert into a scope
 so a 384-dim model never collides with a 1536-dim one:
 
-```talon
+```tln
 find similar "Find related vehicles" {
   for records where type == "vehicle"
   to 1
@@ -440,7 +440,7 @@ for tuning details.
 
 ### Failure prediction
 
-```talon
+```tln
 predict "Equipment failure risk" {
   for records where type == "item" and status == "active"
   features [
@@ -458,7 +458,7 @@ predict "Equipment failure risk" {
 
 ### Workflow with MCP calls
 
-```talon
+```tln
 workflow "Onboard new team member" {
   step "create_person" {
     mcp "hr" "create-person" {
@@ -486,7 +486,7 @@ workflow "Onboard new team member" {
 
 ### Testing
 
-```talon
+```tln
 // maintenance.tln.test
 
 test "Overdue service is detected" {
@@ -525,11 +525,11 @@ test "Up-to-date service is not flagged" {
 
 | Tool | What it does |
 |------|-------------|
-| `talon build` | Compile `.tln` files, report errors |
-| `talon test` | Run `.tln.test` files (supports `-run NAME`, `-v`, `--junit FILE`, dir walk) |
-| `talon repl` | Interactive REPL — assert facts, evaluate rules, trace execution |
-| `talon trace` | Step-by-step evaluation trace for debugging |
-| `talon mod` | Package manager (`init`, `add`, `tidy`, `verify`) |
+| `tln build` | Compile `.tln` files, report errors |
+| `tln test` | Run `.tln.test` files (supports `-run NAME`, `-v`, `--junit FILE`, dir walk) |
+| `tln repl` | Interactive REPL — assert facts, evaluate rules, trace execution |
+| `tln trace` | Step-by-step evaluation trace for debugging |
+| `tln mod` | Package manager (`init`, `add`, `tidy`, `verify`) |
 
 ## Editor support
 
@@ -537,8 +537,8 @@ Syntax highlighting + file detection for `.tln` and `.tln.test` files:
 
 | Editor | Plugin | Install |
 | --- | --- | --- |
-| Vim / Neovim | **[opentalon/talon-vim](https://github.com/opentalon/talon-vim)** | `Plugin 'opentalon/talon-vim'` (Vundle), `Plug 'opentalon/talon-vim'` (vim-plug), or git-clone into `pack/*/start/` (Neovim native) |
-| VS Code | **[opentalon/talon-vscode](https://github.com/opentalon/talon-vscode)** | `git clone https://github.com/opentalon/talon-vscode ~/.vscode/extensions/opentalon.tln-vscode-0.1.0` then reload |
+| Vim / Neovim | **[opentalon/tln-vim](https://github.com/opentalon/tln-vim)** | `Plugin 'opentalon/tln-vim'` (Vundle), `Plug 'opentalon/tln-vim'` (vim-plug), or git-clone into `pack/*/start/` (Neovim native) |
+| VS Code | **[opentalon/tln-vscode](https://github.com/opentalon/tln-vscode)** | `git clone https://github.com/opentalon/tln-vscode ~/.vscode/extensions/opentalon.tln-vscode-0.1.0` then reload |
 
 Both plugins mirror the keyword list in
 [`internal/lexer/lexer.go`](./internal/lexer/lexer.go), so block
@@ -547,47 +547,47 @@ priorities, and comments all colour correctly out of the box.
 
 A future LSP server (autocomplete, on-save diagnostics, go-to-definition)
 will work across both editors; tracked in
-[issue #18](https://github.com/opentalon/talon-language/issues/18).
+[issue #18](https://github.com/opentalon/tln-language/issues/18).
 
 ## Roadmap
 
 ### Language and Vision
 
-- [Spec v0.1](https://github.com/opentalon/talon-language/issues/1) — language specification
-- [MCP tool calling integration](https://github.com/opentalon/talon-language/issues/2) — Talon as deterministic fast-path for MCP
-- [Learning from data](https://github.com/opentalon/talon-language/issues/3) — adaptive thresholds, pattern discovery, feedback loop
-- [MCP interface](https://github.com/opentalon/talon-language/issues/17) — Talon calls MCP tools natively
+- [Spec v0.1](https://github.com/opentalon/tln-language/issues/1) — language specification
+- [MCP tool calling integration](https://github.com/opentalon/tln-language/issues/2) — tln as deterministic fast-path for MCP
+- [Learning from data](https://github.com/opentalon/tln-language/issues/3) — adaptive thresholds, pattern discovery, feedback loop
+- [MCP interface](https://github.com/opentalon/tln-language/issues/17) — tln calls MCP tools natively
 
 ### Architecture
 
-- [FactStore: first backend](https://github.com/opentalon/talon-language/issues/4) — pluggable fact storage
-- [Self-contained language](https://github.com/opentalon/talon-language/issues/5) — Talon compiles directly to query plans, no intermediate layer
-- [ML primitives as keywords](https://github.com/opentalon/talon-language/issues/6) — predict, forecast, anomaly, cluster, classify, similar
-- [FactStore abstraction](https://github.com/opentalon/talon-language/issues/14) — database independence
+- [FactStore: first backend](https://github.com/opentalon/tln-language/issues/4) — pluggable fact storage
+- [Self-contained language](https://github.com/opentalon/tln-language/issues/5) — tln compiles directly to query plans, no intermediate layer
+- [ML primitives as keywords](https://github.com/opentalon/tln-language/issues/6) — predict, forecast, anomaly, cluster, classify, similar
+- [FactStore abstraction](https://github.com/opentalon/tln-language/issues/14) — database independence
 - [opentalon/talon-db](https://github.com/opentalon/talon-db) — Go-native Phase-3 backend (bbolt + roaring + vellum, gRPC sidecar)
 
 ### Compiler
 
-- [Compiler roadmap](https://github.com/opentalon/talon-language/issues/7) — umbrella issue
-  - [Lexer + Parser](https://github.com/opentalon/talon-language/issues/8)
-  - [Validator](https://github.com/opentalon/talon-language/issues/9)
-  - [Query Planner + Emitter](https://github.com/opentalon/talon-language/issues/10)
-  - [ML Primitives Runtime](https://github.com/opentalon/talon-language/issues/11)
-  - [Metaprogramming](https://github.com/opentalon/talon-language/issues/12) — Go generates `.tln` rules from data
-  - [Self-hosting](https://github.com/opentalon/talon-language/issues/13) — Talon compiler in Talon (v2+). Groundwork landed: imperative control flow, string builtins, and an importable ML-module system. Remaining language gaps: first-class maps/trees, functions with return values, and a pure `source → code` entry point (file I/O stays a host responsibility, by design).
+- [Compiler roadmap](https://github.com/opentalon/tln-language/issues/7) — umbrella issue
+  - [Lexer + Parser](https://github.com/opentalon/tln-language/issues/8)
+  - [Validator](https://github.com/opentalon/tln-language/issues/9)
+  - [Query Planner + Emitter](https://github.com/opentalon/tln-language/issues/10)
+  - [ML Primitives Runtime](https://github.com/opentalon/tln-language/issues/11)
+  - [Metaprogramming](https://github.com/opentalon/tln-language/issues/12) — Go generates `.tln` rules from data
+  - [Self-hosting](https://github.com/opentalon/tln-language/issues/13) — tln compiler in tln (v2+). Groundwork landed: imperative control flow, string builtins, and an importable ML-module system. Remaining language gaps: first-class maps/trees, functions with return values, and a pure `source → code` entry point (file I/O stays a host responsibility, by design).
 
 ### Ecosystem
 
-- [Testing framework](https://github.com/opentalon/talon-language/issues/16) — `.tln.test` files
-- [Editor support](https://github.com/opentalon/talon-language/issues/18) — Vim, Neovim, VS Code, LSP
-- [Plugin system and package manager](https://github.com/opentalon/talon-language/issues/19) — `talon.mod`
-- [Observability](https://github.com/opentalon/talon-language/issues/20) — logging, tracing, metrics, audit
-- [REPL and playground](https://github.com/opentalon/talon-language/issues/21) — interactive exploration
+- [Testing framework](https://github.com/opentalon/tln-language/issues/16) — `.tln.test` files
+- [Editor support](https://github.com/opentalon/tln-language/issues/18) — Vim, Neovim, VS Code, LSP
+- [Plugin system and package manager](https://github.com/opentalon/tln-language/issues/19) — `tln.mod`
+- [Observability](https://github.com/opentalon/tln-language/issues/20) — logging, tracing, metrics, audit
+- [REPL and playground](https://github.com/opentalon/tln-language/issues/21) — interactive exploration
 
 ## References
 
-- [OpenTalon](https://github.com/opentalon/opentalon) — the orchestration platform Talon integrates with
-- [Talon Language Spec v0.1](https://github.com/opentalon/talon-language/issues/1) — full syntax reference
+- [OpenTalon](https://github.com/opentalon/opentalon) — the orchestration platform tln integrates with
+- [tln Language Spec v0.1](https://github.com/opentalon/tln-language/issues/1) — full syntax reference
 
 ## License
 

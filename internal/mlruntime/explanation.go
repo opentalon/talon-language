@@ -3,7 +3,7 @@ package mlruntime
 import "context"
 
 // Explanation is the auditable trace of one ML primitive invocation.
-// Serialised to JSON for `talon trace` and audit logs. See ADR-0001.
+// Serialised to JSON for `tln trace` and audit logs. See ADR-0001.
 type Explanation struct {
 	Primitive  string         `json:"primitive"`
 	EntityID   int            `json:"entity_id"`
@@ -49,7 +49,7 @@ type Primitive interface {
 //
 // Keys in the inner map are bare attribute names — without the
 // `:record/` or `:attr/` namespace prefix the FactStore uses internally
-// — matching the form a Talon source file references via `attr "name"`.
+// — matching the form a tln source file references via `attr "name"`.
 type Input struct {
 	Rows     [][]any
 	Schema   map[string]int

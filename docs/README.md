@@ -1,4 +1,4 @@
-# Talon documentation
+# tln documentation
 
 ## Language
 
@@ -26,7 +26,7 @@
 - **[Classification](./classify.md)** — `classify` blocks: kNN over
   `trained_on` labeled examples, with `{class}` labels and a confidence bound.
 - **[Prediction](./predict.md)** — `predict` blocks: CART decision tree over
-  `trained_on` labeled examples, with a readable split path in `talon explain`.
+  `trained_on` labeled examples, with a readable split path in `tln explain`.
 - **[Thresholds](./thresholds.md)** — inline `learned_threshold` vs cached
   `threshold "name" { value … }` blocks, with expiry and provenance.
 - **[Derived predicates](./derive.md)** — `derive p(v) { … }` blocks: named
@@ -47,19 +47,19 @@
 
 ## Where the code lives
 
-- `cmd/talon/` — CLI entry point (`build`, `test`, `run`, `explain`).
+- `cmd/tln/` — CLI entry point (`build`, `test`, `run`, `explain`).
 - `internal/lexer`, `internal/parser`, `internal/ast` — front end.
 - `internal/validator` — pre-planning checks.
 - `internal/planner` — emits `QueryPlan`s of `DatalevinQuery`,
   `MLComputation`, `GoComputation`, `Filter` steps.
 - `internal/executor` — runs plans against a real `FactStore`.
 - `internal/testrunner` — same dispatch against an in-memory entity
-  store for `talon test` / `talon explain`.
+  store for `tln test` / `tln explain`.
 - `internal/mlruntime` — 7 ML primitives (anomaly, learned_threshold,
   predict, forecast, cluster, classify, similar).
 - `internal/optimize` — Pareto ranking, GA, ACO, ILP.
 - `internal/explain` — Tier-1 Decision rendering.
-- `pkg/talon/` — public Go SDK for embedding workflows.
+- `pkg/tln/` — public Go SDK for embedding workflows.
 
 ## Reading order for new contributors
 

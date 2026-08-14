@@ -8,10 +8,10 @@
 // deviations to constitute a "significant outlier" than a large one,
 // which is the property z=2.5 gets wrong on small fixtures.
 //
-//   ./talon build examples/grubbs_consumption.tln
-//   ./talon test examples/grubbs_consumption.tln test/grubbs_consumption.tln.test
-//   ./talon explain examples/grubbs_consumption.tln test/grubbs_consumption.tln.test
-//   ./talon explain examples/grubbs_consumption.tln test/grubbs_consumption.tln.test --csv
+//   ./tln build examples/grubbs_consumption.tln
+//   ./tln test examples/grubbs_consumption.tln test/grubbs_consumption.tln.test
+//   ./tln explain examples/grubbs_consumption.tln test/grubbs_consumption.tln.test
+//   ./tln explain examples/grubbs_consumption.tln test/grubbs_consumption.tln.test --csv
 
 detect "Grubbs consumption outlier" {
   for records where type == "stock_item"

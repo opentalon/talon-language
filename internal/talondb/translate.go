@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // composeTerm produces the inverted-index key that talondb's term

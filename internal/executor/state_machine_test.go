@@ -5,13 +5,13 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
-// compileSrc lexes + parses + plans a Talon snippet. Test helper —
+// compileSrc lexes + parses + plans a tln snippet. Test helper —
 // returns the plan map keyed by block name.
 func compileSrc(t *testing.T, src string) map[string]*planner.QueryPlan {
 	t.Helper()

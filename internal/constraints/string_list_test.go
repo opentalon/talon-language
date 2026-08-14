@@ -3,13 +3,13 @@ package constraints
 import (
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
 )
 
 // parseCondition parses the first selector condition of a throwaway detect
-// block, so tests can name a condition in Talon source instead of building
+// block, so tests can name a condition in tln source instead of building
 // AST nodes by hand.
 func parseCondition(t *testing.T, expr string) ast.Condition {
 	t.Helper()

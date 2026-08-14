@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/ast"
 )
 
 func rule(name string, opts ...func(*ast.RuleBlock)) *ast.RuleBlock {

@@ -1,6 +1,6 @@
 # Well-founded negation in the recursive resolver
 
-Talon's recursive Datalog resolver (`internal/factstore/rules.go`) accepts a
+tln's recursive Datalog resolver (`internal/factstore/rules.go`) accepts a
 negative body literal — a `Negation` clause — inside a `Rule`. When any rule in
 a set carries one, the resolver stops using top-down tabling (which has no
 order-independent reading under negation) and instead computes the set's
@@ -51,10 +51,10 @@ model is available to callers that need to distinguish the two.
 - **No grammar surface yet.** `Negation` is constructed directly, like the
   internal recursive `category_tree` rule — there is no `.tln` syntax for
   recursive/negated rules yet (that rides with self-hosting,
-  [#13](https://github.com/opentalon/talon-language/issues/13)).
+  [#13](https://github.com/opentalon/tln-language/issues/13)).
 - **Positive recursion stays on the top-down resolver.** A negation-free rule
   set (e.g. transitive closure) keeps the existing tabled evaluation unchanged;
   only negation-bearing sets take the well-founded path.
 - **Stable-model / ASP semantics** (zero-or-many models) remain out of core —
   proposed as an external plugin,
-  [#171](https://github.com/opentalon/talon-language/issues/171).
+  [#171](https://github.com/opentalon/tln-language/issues/171).

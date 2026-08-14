@@ -1,6 +1,6 @@
 // Pareto-frontier dispatch test. Run with:
 //
-//   ./talon test examples/fleet_dispatch.tln test/fleet_dispatch.tln.test
+//   ./tln test examples/fleet_dispatch.tln test/fleet_dispatch.tln.test
 
 test "Pareto frontier picks non-dominated vehicles" {
   given {

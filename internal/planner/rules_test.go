@@ -3,7 +3,7 @@ package planner
 import (
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 func TestPlanner_CategoryTreeEmitsRecursiveRule(t *testing.T) {

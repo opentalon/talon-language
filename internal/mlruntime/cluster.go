@@ -20,7 +20,7 @@ type clusterPoint struct {
 //
 // DBSCAN is density-based — it discovers clusters of arbitrary shape
 // without needing the caller to specify k up front, which matches the
-// Talon `cluster by [attr "X", attr "Y"]` block's intent. Noise points
+// tln `cluster by [attr "X", attr "Y"]` block's intent. Noise points
 // (rows that don't fit any cluster) are tagged with cluster ID -1 and
 // returned with Value=false; clustered rows return their cluster ID as
 // Value (float64).
@@ -37,7 +37,7 @@ type clusterPoint struct {
 //	                      data so callers don't have to guess.
 //	min_pts   int       — minimum neighbours (including the point itself)
 //	                      required to form a core point. Default: 3,
-//	                      matching the small-data regime Talon targets.
+//	                      matching the small-data regime tln targets.
 type DBSCANCluster struct{}
 
 // NewDBSCANCluster constructs the primitive.
@@ -177,7 +177,7 @@ func euclidean(a, b []float64) float64 {
 
 // defaultEps picks a sensible eps when the caller didn't supply one.
 // Heuristic: take the average pairwise distance and use 50% of it as the
-// neighbourhood radius. Small datasets at Talon's scale don't justify
+// neighbourhood radius. Small datasets at tln's scale don't justify
 // the full k-distance-plot calibration DBSCAN normally needs.
 func defaultEps(points []clusterPoint) float64 {
 	if len(points) < 2 {

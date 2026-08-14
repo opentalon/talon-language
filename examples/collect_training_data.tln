@@ -1,10 +1,10 @@
-// Scheduled MCP-driven fact ingestion. Talon describes WHAT to collect and
+// Scheduled MCP-driven fact ingestion. Tln describes WHAT to collect and
 // WHEN; the host (OpenTalon, a k8s CronJob, systemd timer, ...) reads the
-// schedule via `talon collect list` and fires `talon collect run` on time.
-// Talon itself runs no scheduler — see docs and issue #57.
+// schedule via `tln collect list` and fires `tln collect run` on time.
+// Tln itself runs no scheduler — see docs and issue #57.
 //
-//   talon collect list examples/collect_training_data.tln
-//   talon collect run  examples/collect_training_data.tln --name "Failure training data"
+//   tln collect list examples/collect_training_data.tln
+//   tln collect run  examples/collect_training_data.tln --name "Failure training data"
 
 collect "Failure training data" {
   schedule weekly

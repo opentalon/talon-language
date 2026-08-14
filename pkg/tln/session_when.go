@@ -1,10 +1,10 @@
-package talon
+package tln
 
 import (
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // eventFields are the identifiers a session `when` clause may reference.

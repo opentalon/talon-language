@@ -1,5 +1,5 @@
 // Package explain produces user-facing "why did this fire" explanations
-// for Talon decisions. Tier 1 surfaces the rendered label, the conditions
+// for tln decisions. Tier 1 surfaces the rendered label, the conditions
 // that satisfied the rule, and the observed fact values behind each one.
 //
 // Persistence, temporal replay, and counter-factual queries are out of

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/diagnostic"
 )
 
 type validator struct {
@@ -664,7 +664,7 @@ func (v *validator) checkDetectTune(bb *ast.DetectBlock) {
 		return
 	}
 	// Only enforce existence when the program actually contains test blocks
-	// (i.e. we were given a .tln.test file). During `talon build` the rule
+	// (i.e. we were given a .tln.test file). During `tln build` the rule
 	// file is validated in isolation, so the labeled fixture isn't visible
 	// yet; testrunner picks up the same check at run time.
 	if v.programHasTests() && !v.testExists(bb.Tune.AgainstTest) {
@@ -688,7 +688,7 @@ func (v *validator) testExists(name string) bool {
 
 // programHasTests reports whether the program contains any TestBlock.
 // Used to gate validator checks that depend on labeled fixtures being
-// visible (which is only true once `talon test` merges the .tln.test).
+// visible (which is only true once `tln test` merges the .tln.test).
 func (v *validator) programHasTests() bool {
 	for _, b := range v.prog.Blocks {
 		if _, ok := b.(*ast.TestBlock); ok {

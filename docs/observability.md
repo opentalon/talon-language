@@ -2,7 +2,7 @@
 
 This page describes the structured-logging foundation that ships in this
 release. Tracing CLI, metrics endpoint, and the audit log are tracked
-under [#20](https://github.com/opentalon/talon-language/issues/20) and
+under [#20](https://github.com/opentalon/tln-language/issues/20) and
 land in follow-up PRs.
 
 ## What gets logged today
@@ -16,14 +16,14 @@ The runtime emits structured records on three occasions:
 | (custom)     | An `on { logger.info "…" }` statement fires   | INFO / WARN / ERROR | `source=on_block`, `trigger`, `block`, message |
 
 All output goes to **stderr** so it can never collide with the
-`stdout`-bound payload of `talon run`, `talon explain`, or `talon repl`.
+`stdout`-bound payload of `tln run`, `tln explain`, or `tln repl`.
 
 ## CLI flags
 
 Two global flags configure logging. They come *before* the subcommand:
 
 ```
-talon [--log-format=text|json] [--log-level=debug|info|warn|error] <command> [args]
+tln [--log-format=text|json] [--log-level=debug|info|warn|error] <command> [args]
 ```
 
 | Flag | Default | Values |
@@ -31,7 +31,7 @@ talon [--log-format=text|json] [--log-level=debug|info|warn|error] <command> [ar
 | `--log-format` | `text` | `text` (key=value, slog's `TextHandler`), `json` (one JSON object per line) |
 | `--log-level` | `warn`  | `debug`, `info`, `warn`, `error` |
 
-Defaults are intentionally quiet — `talon build` and `talon repl` produce
+Defaults are intentionally quiet — `tln build` and `tln repl` produce
 no log noise out of the box. Opt into operational visibility with
 `--log-level=info`.
 
@@ -40,7 +40,7 @@ no log noise out of the box. Opt into operational visibility with
 ### Pipe runtime events to a log aggregator
 
 ```bash
-talon --log-format=json --log-level=info run rules.tln --seed fixtures.tln.test 2>events.jsonl
+tln --log-format=json --log-level=info run rules.tln --seed fixtures.tln.test 2>events.jsonl
 jq '.' events.jsonl
 ```
 
@@ -61,10 +61,10 @@ Each line decodes as:
 ### Watch evaluations from the REPL
 
 ```bash
-talon --log-level=info repl
-talon> :load examples/cement_explain.tln
-talon> :load test/cement_explain.tln.test
-talon> :eval "Cement running low"
+tln --log-level=info repl
+tln> :load examples/cement_explain.tln
+tln> :load test/cement_explain.tln.test
+tln> :eval "Cement running low"
 time=… level=INFO msg=block_eval rule="Cement running low" type=detect matched=1 duration_ms=0
   "Cement running low": 1 detection(s) — records [808]
 ```
@@ -78,7 +78,7 @@ Per-row logger statements work inside `detect`, `rule`, and
 `recommend` bodies — usually the most useful shape for "this rule
 fired for which row":
 
-```talon
+```tln
 detect "Service overdue" {
   for records where type == "item"
     and attr "km" > attr "last_service_km" + 20000
@@ -129,7 +129,7 @@ support a small set of event-scoped placeholders:
 
 Example:
 
-```talon
+```tln
 on change attr "current_stock" {
   logger.warn "stock changed for {event.entity}: {event.prev} -> {event.value}"
 }
@@ -150,8 +150,8 @@ observability RFC:
   appends them to a durable store.
 - **Prometheus metrics** — counters and histograms wired to the same
   event stream behind an optional `/metrics` HTTP endpoint.
-- **`talon trace --entity N`, `talon status`, `talon audit`** — CLI
+- **`tln trace --entity N`, `tln status`, `tln audit`** — CLI
   surfaces that consume the audit and metrics stores.
 
-See [#20](https://github.com/opentalon/talon-language/issues/20) for the
+See [#20](https://github.com/opentalon/tln-language/issues/20) for the
 full plan.

@@ -4,17 +4,17 @@
 //
 // Models come from two providers, resolved by the same qualified name:
 //
-//   - Talon modules — `model` blocks parsed from source (optionally namespaced
+//   - tln modules — `model` blocks parsed from source (optionally namespaced
 //     by an enclosing `module "ns" { export ... }`), converted via FromAST.
 //   - Go modules — models a host registers directly in a Registry.
 //
-// A Resolver consults the Talon models first, then the Go registry, so both
+// A Resolver consults the tln models first, then the Go registry, so both
 // kinds are usable interchangeably.
 package mlmodel
 
 import (
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/mlruntime"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/mlruntime"
 )
 
 // Example is one labeled point in a model's inline fitted set.
@@ -79,8 +79,8 @@ func FromAST(b *ast.ModelBlock, featureName func(ast.Expr) string) *Model {
 }
 
 // Registry holds Go-provided models keyed by qualified name — the "Go module"
-// provider. A host registers models it built in Go so Talon source can
-// reference them exactly like Talon-authored ones.
+// provider. A host registers models it built in Go so tln source can
+// reference them exactly like Tln-authored ones.
 type Registry struct {
 	models map[string]*Model
 }
@@ -102,25 +102,25 @@ func (r *Registry) Get(name string) (*Model, bool) {
 	return m, ok
 }
 
-// Resolver resolves a qualified model name against Talon models first, then
+// Resolver resolves a qualified model name against tln models first, then
 // the Go registry — so `using model "x"` finds either provider.
 type Resolver struct {
-	talon map[string]*Model // qualified name → Talon-authored model
+	tln map[string]*Model // qualified name → Tln-authored model
 	goReg *Registry         // host-registered Go models (may be nil)
 }
 
-// NewResolver builds a resolver over the Talon models (qualified name → model)
+// NewResolver builds a resolver over the tln models (qualified name → model)
 // and an optional Go registry.
-func NewResolver(talon map[string]*Model, goReg *Registry) *Resolver {
-	return &Resolver{talon: talon, goReg: goReg}
+func NewResolver(tln map[string]*Model, goReg *Registry) *Resolver {
+	return &Resolver{tln: tln, goReg: goReg}
 }
 
 // Resolve returns the model bound to a qualified name and which provider
-// supplied it ("talon" or "go"), or ok=false if neither has it.
+// supplied it ("tln" or "go"), or ok=false if neither has it.
 func (r *Resolver) Resolve(name string) (m *Model, provider string, ok bool) {
-	if r != nil && r.talon != nil {
-		if m, ok := r.talon[name]; ok {
-			return m, "talon", true
+	if r != nil && r.tln != nil {
+		if m, ok := r.tln[name]; ok {
+			return m, "tln", true
 		}
 	}
 	if r != nil && r.goReg != nil {

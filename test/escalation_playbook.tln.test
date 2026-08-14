@@ -1,8 +1,8 @@
 // Test suite for escalation_playbook.tln — control flow in a remediate body.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/escalation_playbook.tln test/escalation_playbook.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/escalation_playbook.tln test/escalation_playbook.tln.test
 
 test "Critical overdue vehicle pages on-call; both branches and the loop fire" {
   given {

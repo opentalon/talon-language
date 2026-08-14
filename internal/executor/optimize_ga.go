@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/optimize"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/optimize"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // execOptimizeGA runs the v2 subset-selection genetic algorithm. The candidate

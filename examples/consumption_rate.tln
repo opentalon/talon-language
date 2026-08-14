@@ -7,8 +7,8 @@
 // rate" case where recent observations weigh more (see grammar.ebnf).
 //
 // Run the companion suite:
-//   go build ./cmd/talon
-//   ./talon test examples/consumption_rate.tln examples/consumption_rate.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/consumption_rate.tln examples/consumption_rate.tln.test
 detect "High average consumption" {
   for records where type == "depot"
   calculate avg_use from records where type == "usage" of attr "amount" average

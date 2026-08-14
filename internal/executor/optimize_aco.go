@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/optimize"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/optimize"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // execOptimizeACO runs Ant Colony Optimization over the candidate rows. The

@@ -7,8 +7,8 @@
 // ticket's fields are built with the same functions.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/recall_batch.tln test/recall_batch.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/recall_batch.tln test/recall_batch.tln.test
 
 detect "Recall batch match" {
   for records where type == "vehicle"

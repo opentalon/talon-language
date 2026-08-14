@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/constraints"
-	"github.com/opentalon/talon-language/internal/factstore"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/mlruntime"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/constraints"
+	"github.com/opentalon/tln-language/internal/factstore"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/mlruntime"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // newDeterministicRNG returns a *rand.Rand seeded with the given
@@ -30,7 +30,7 @@ func newDeterministicRNG(seed int64) *rand.Rand {
 //
 // Implementations shipped in this repo:
 //
-//   - *datalevin.Client — Datalevin over HTTP (default for `talon run`)
+//   - *datalevin.Client — Datalevin over HTTP (default for `tln run`)
 //   - *factstore.MemoryStore — Prolog-style in-memory (REPL, tests, CI)
 //
 // External callers can supply their own. See docs/factstore.md.
@@ -46,7 +46,7 @@ type BlockResult struct {
 	// Actions holds the `do` clauses this block fired, resolved against
 	// the rows that matched. Always non-nil: a block with no `do` clauses
 	// (or one that matched nothing) reports an empty list, so a host never
-	// has to tell nil from empty. Talon executes none of them.
+	// has to tell nil from empty. tln executes none of them.
 	Actions []FiredAction
 }
 
@@ -184,7 +184,7 @@ func (e *Executor) RunAll(ctx context.Context, plans map[string]*planner.QueryPl
 	// action: a strict rule in one block can defeat a rule in another, and
 	// the loser's actions must not appear.
 	for _, w := range resolveDefeatedActions(plans, results) {
-		talonlog.Default().WarnContext(ctx, w, "source", "defeasible")
+		tlnlog.Default().WarnContext(ctx, w, "source", "defeasible")
 	}
 	return results, nil
 }
@@ -218,7 +218,7 @@ func (e *Executor) RunWithPresets(ctx context.Context, plan *planner.QueryPlan, 
 	for _, step := range plan.Steps {
 		sr, err := e.execStep(ctx, step, result.Vars)
 		if err != nil {
-			talonlog.BlockEval(ctx, plan.BlockName, "", 0, time.Since(start))
+			tlnlog.BlockEval(ctx, plan.BlockName, "", 0, time.Since(start))
 			return result, err
 		}
 		result.Steps = append(result.Steps, sr)
@@ -228,7 +228,7 @@ func (e *Executor) RunWithPresets(ctx context.Context, plan *planner.QueryPlan, 
 	if fired, ok := result.Vars[planner.ActionsVar].([]FiredAction); ok && fired != nil {
 		result.Actions = fired
 	}
-	talonlog.BlockEval(ctx, plan.BlockName, "", len(result.Flagged), time.Since(start))
+	tlnlog.BlockEval(ctx, plan.BlockName, "", len(result.Flagged), time.Since(start))
 	return result, nil
 }
 
@@ -598,7 +598,7 @@ func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, v
 			return nil, fmt.Errorf("step %q: confirmation: %w", stepName, err)
 		}
 		if !proceed {
-			talonlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, "skipped", 0, nil)
+			tlnlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, "skipped", 0, nil)
 			return map[string]any{"status": "skipped", "reason": "confirmation_denied"}, nil
 		}
 	}
@@ -635,7 +635,7 @@ func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, v
 	if err != nil {
 		status = "error"
 	}
-	talonlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, status, time.Since(mcpStart), err)
+	tlnlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, status, time.Since(mcpStart), err)
 	return res, err
 }
 
@@ -881,7 +881,7 @@ func resolveMLParams(params map[string]any, vars map[string]any, rows [][]any) m
 
 // resolveSeeds turns a seed AST expression into one or more entity IDs.
 // Literals and idents resolve directly; attr "id" expressions seed from
-// the first column of every candidate row (matching Talon's row layout).
+// the first column of every candidate row (matching tln's row layout).
 func resolveSeeds(e ast.Expr, rows [][]any, vars map[string]any) []string {
 	switch v := e.(type) {
 	case *ast.LiteralExpr:
