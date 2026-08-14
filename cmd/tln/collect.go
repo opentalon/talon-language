@@ -127,7 +127,7 @@ func runCollectRun() {
 	}
 	fmt.Printf("collected %d record(s) for %q\n", n, name)
 	if exec.MCP == nil {
-		fmt.Fprintln(os.Stderr, "note: standalone tln has no MCP transport; a host drives collection via the SDK (WithMCP).")
+		fmt.Fprintln(os.Stderr, "note: standalone tln has no MCP transport; a host drives collection via the SDK (WithToolResolver).")
 	}
 }
 

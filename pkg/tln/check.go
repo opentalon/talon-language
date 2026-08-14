@@ -13,7 +13,7 @@ package tln
 //
 // Check accepts the same [Option] values as [Run]; only [WithFilename]
 // affects it (labelling diagnostics and setting the base path for
-// relative imports). Execution-only options such as [WithMCP] and
+// relative imports). Execution-only options such as [WithToolResolver] and
 // [WithFactStore] are accepted but ignored.
 func Check(src string, opts ...Option) error {
 	cfg := &runConfig{file: "<tln>"}

@@ -262,7 +262,7 @@ func TestRun_RemediateFiresPerFlaggedRow(t *testing.T) {
 	store := seedDefectiveItems(t)
 	caller := &mockCaller{}
 	_, err := tln.Run(context.Background(), remediateSrc,
-		tln.WithFactStore(store), tln.WithMCP(caller))
+		tln.WithFactStore(store), tln.WithToolResolver(caller))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestRun_RemediateFiresPerFlaggedRow(t *testing.T) {
 
 func TestRun_RemediateNoCallerNoDispatch(t *testing.T) {
 	store := seedDefectiveItems(t)
-	// No WithMCP: remediate must be a no-op, not an error.
+	// No WithToolResolver: remediate must be a no-op, not an error.
 	if _, err := tln.Run(context.Background(), remediateSrc, tln.WithFactStore(store)); err != nil {
 		t.Fatalf("Run without MCP caller should not error: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestRun_EnrichRefreshesStaleFacts(t *testing.T) {
 		}
 		return map[string]any{"current_stock": 42.0}, nil
 	}}
-	if _, err := tln.Run(ctx, enrichSrc, tln.WithFactStore(store), tln.WithMCP(caller)); err != nil {
+	if _, err := tln.Run(ctx, enrichSrc, tln.WithFactStore(store), tln.WithToolResolver(caller)); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(caller.calls) != 1 {
@@ -353,7 +353,7 @@ func TestRun_EnrichSkipsFreshFacts(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	caller := &mockCaller{}
-	if _, err := tln.Run(ctx, enrichSrc, tln.WithFactStore(store), tln.WithMCP(caller)); err != nil {
+	if _, err := tln.Run(ctx, enrichSrc, tln.WithFactStore(store), tln.WithToolResolver(caller)); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(caller.calls) != 0 {

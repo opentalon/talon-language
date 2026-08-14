@@ -13,8 +13,8 @@
 //
 // Minimal example:
 //
-//	caller := myMCPCaller{...}              // implements tln.MCPCaller
-//	result, err := tln.RunWorkflow(ctx, src, tln.WithMCP(caller))
+//	caller := myToolResolver{...}              // implements tln.ToolResolver
+//	result, err := tln.RunWorkflow(ctx, src, tln.WithToolResolver(caller))
 //	if err != nil { ... }
 //	for name, block := range result.Blocks {
 //	    fmt.Println(name, "→", len(block.Steps), "steps")

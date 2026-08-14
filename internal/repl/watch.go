@@ -41,7 +41,7 @@ func formatArgs(args map[string]any) string {
 // to w. A program with no on-blocks is still valid — it simply never
 // fires.
 func (s *Session) startWatch(src string, w io.Writer) error {
-	sess, err := tln.NewSession(src, tln.WithMCP(echoCaller{w: w}))
+	sess, err := tln.NewSession(src, tln.WithToolResolver(echoCaller{w: w}))
 	if err != nil {
 		return err
 	}

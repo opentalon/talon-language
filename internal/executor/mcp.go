@@ -2,9 +2,11 @@ package executor
 
 import "context"
 
-// MCPCaller routes MCP tool calls to the host's plugin system.
-// The host (e.g. OpenTalon orchestrator) implements this interface.
-type MCPCaller interface {
+// ToolResolver routes tool calls to the host's plugin system: given a
+// (server, tool, args) triple it performs the call and returns the structured
+// result. tln never speaks a transport itself — a plugin (e.g. tln-mcp) or the
+// host implements this interface, injected via tln.WithToolResolver.
+type ToolResolver interface {
 	Call(ctx context.Context, server, tool string, args map[string]any) (any, error)
 }
 

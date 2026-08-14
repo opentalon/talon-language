@@ -78,7 +78,7 @@ type VectorHit struct {
 type Executor struct {
 	Client      FactStore
 	Registry    *mlruntime.Registry
-	MCP         MCPCaller
+	MCP         ToolResolver
 	ConfirmHook ConfirmationHook
 
 	// ApprovalHook gates `remediate approve` calls; Queue receives

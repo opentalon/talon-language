@@ -53,7 +53,7 @@ type Session struct {
 // subscribed to the session's MemoryStore.
 //
 // Options:
-//   - [WithMCP] wires the caller used by mcp steps in fired workflows.
+//   - [WithToolResolver] wires the caller used by mcp steps in fired workflows.
 //   - [WithFactStore] supplies a pre-hydrated *MemoryStore (from a prior
 //     [Session.Snapshot]); it must already hold its facts before this
 //     call so that replaying them fires nothing — the dispatcher only

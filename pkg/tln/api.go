@@ -14,14 +14,15 @@ import (
 	"github.com/opentalon/tln-language/internal/validator"
 )
 
-// MCPCaller is the host callback tln uses to dispatch MCP tool calls
-// produced by a workflow's mcp steps. Implementations route
-// (server, tool, args) to whatever transport the host uses and return
-// the structured result.
-type MCPCaller = executor.MCPCaller
+// ToolResolver is the host/plugin callback tln uses to dispatch the tool calls
+// produced by a workflow's `mcp` steps, `collect`, `enrich`, and `remediate`.
+// Implementations route (server, tool, args) to whatever transport they own —
+// e.g. the tln-mcp plugin speaks the Model Context Protocol — and return the
+// structured result. Install it with [WithToolResolver].
+type ToolResolver = executor.ToolResolver
 
 // ConfirmationHook runs before each MCP step. Returning false skips the
-// step without invoking the MCPCaller; the step result is recorded as
+// step without invoking the ToolResolver; the step result is recorded as
 // {"status":"skipped","reason":"confirmation_denied"}.
 type ConfirmationHook = executor.ConfirmationHook
 
@@ -113,24 +114,26 @@ func (e *CompileError) Error() string {
 
 // Option configures a [RunWorkflow] or [Run] invocation. The same
 // Option type is shared between both entry points; inapplicable
-// options (e.g. WithMCP on a Run with no MCP steps) are silently
+// options (e.g. WithToolResolver on a Run with no MCP steps) are silently
 // no-ops, matching the executor's tolerance today.
 type Option func(*runConfig)
 
 type runConfig struct {
 	file      string
-	mcp       MCPCaller
+	mcp       ToolResolver
 	confirm   ConfirmationHook
 	approval  ApprovalHook
 	queue     Queue
 	factStore FactStore
 }
 
-// WithMCP installs the MCP caller. Required for workflows that contain
-// MCP steps; without it, MCP steps return a stub {"status":"stub"}
-// result and the host is never contacted.
-func WithMCP(c MCPCaller) Option {
-	return func(cfg *runConfig) { cfg.mcp = c }
+// WithToolResolver installs the resolver tln dispatches tool calls to.
+// Required for programs with `mcp` / `collect` / `enrich` / `remediate`; without
+// it those effects are no-ops (MCP steps return a stub {"status":"stub"} result
+// and the host is never contacted). The tln-mcp plugin provides an MCP
+// implementation: WithToolResolver(tlnmcp.New(cfg)).
+func WithToolResolver(r ToolResolver) Option {
+	return func(cfg *runConfig) { cfg.mcp = r }
 }
 
 // WithConfirmHook installs an optional per-step confirmation gate. The
@@ -166,8 +169,8 @@ func WithFilename(name string) Option {
 // runtime errors from MCP steps (or any other executor failure)
 // surface as a plain error.
 //
-// MCP steps are dispatched via the MCPCaller installed by [WithMCP].
-// Without an MCPCaller, MCP steps are stubbed — useful for compiling
+// MCP steps are dispatched via the ToolResolver installed by [WithToolResolver].
+// Without a ToolResolver, MCP steps are stubbed — useful for compiling
 // a workflow to inspect its plan without contacting the host.
 //
 // No Datalevin client is wired up here; programs that include
