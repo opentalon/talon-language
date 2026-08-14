@@ -71,18 +71,32 @@ func (v *validator) checkDerives() {
 		})
 	}
 
-	// Build the derive→derive dependency graph and reject any cycle.
-	deps := map[string][]string{}
+	// Build the *signed* derive→derive dependency graph and reject any cycle.
+	// An edge name→pred is negative when the reference sits under an odd number
+	// of `not`s (`not overdue(v)`); the parity distinguishes a plain recursive
+	// cycle from negation-through-recursion, which needs well-founded semantics
+	// to have a meaning at all (see #170) and is rejected here with a distinct
+	// message.
+	deps := map[string][]deriveEdge{}
 	for _, name := range order {
-		seen := map[string]bool{}
 		for _, c := range derives[name].Selector.Conditions {
-			walkCond(c, func(cc ast.Condition) {
-				if pc, ok := cc.(*ast.PredicateCallCondition); ok {
-					if _, isDerive := derives[pc.Name]; isDerive && !seen[pc.Name] {
-						seen[pc.Name] = true
-						deps[name] = append(deps[name], pc.Name)
-					}
+			walkCondPolarity(c, false, func(cc ast.Condition, negated bool) {
+				pc, ok := cc.(*ast.PredicateCallCondition)
+				if !ok {
+					return
 				}
+				if _, isDerive := derives[pc.Name]; !isDerive {
+					return
+				}
+				// A predicate reachable both positively and negatively keeps the
+				// negative edge — the cycle it may close is the unsafe one.
+				if e, ok := seen2(deps[name], pc.Name); ok {
+					if negated && !e.negative {
+						markNegative(deps[name], pc.Name)
+					}
+					return
+				}
+				deps[name] = append(deps[name], deriveEdge{to: pc.Name, negative: negated})
 			})
 		}
 	}
@@ -93,17 +107,32 @@ func (v *validator) checkDerives() {
 		black = 2
 	)
 	color := map[string]int{}
+	// path/edgeNeg reconstruct the DFS-tree cycle so its polarity is known:
+	// parent[m] is the node we entered m from, edgeNeg[m] the polarity of that
+	// tree edge. A cycle is non-stratifiable iff any edge on it is negative.
+	parent := map[string]string{}
+	edgeNeg := map[string]bool{}
 	var dfs func(n string) bool
 	dfs = func(n string) bool {
 		color[n] = gray
-		for _, m := range deps[n] {
+		for _, e := range deps[n] {
+			m := e.to
 			if color[m] == gray {
-				v.errAt(derives[n].Pos,
-					fmt.Sprintf("recursive derive cycle through %q — not supported in v1 (arity-1 recursion has no base case)", m), "")
+				if cycleHasNegative(n, m, e.negative, parent, edgeNeg) {
+					v.errAt(derives[n].Pos,
+						fmt.Sprintf("negation through recursion via %q is not stratifiable — a predicate cannot depend on its own negation (well-founded semantics required; see issue #170)", m), "")
+				} else {
+					v.errAt(derives[n].Pos,
+						fmt.Sprintf("recursive derive cycle through %q — not supported in v1 (arity-1 recursion has no base case)", m), "")
+				}
 				return true
 			}
-			if color[m] == white && dfs(m) {
-				return true
+			if color[m] == white {
+				parent[m] = n
+				edgeNeg[m] = e.negative
+				if dfs(m) {
+					return true
+				}
 			}
 		}
 		color[n] = black
@@ -114,6 +143,47 @@ func (v *validator) checkDerives() {
 			return
 		}
 	}
+}
+
+// deriveEdge is one edge of the signed derive dependency graph.
+type deriveEdge struct {
+	to       string
+	negative bool
+}
+
+func seen2(edges []deriveEdge, to string) (deriveEdge, bool) {
+	for _, e := range edges {
+		if e.to == to {
+			return e, true
+		}
+	}
+	return deriveEdge{}, false
+}
+
+func markNegative(edges []deriveEdge, to string) {
+	for i := range edges {
+		if edges[i].to == to {
+			edges[i].negative = true
+		}
+	}
+}
+
+// cycleHasNegative reports whether the cycle closed by the back-edge n→m
+// (polarity closingNeg) contains any negative edge. It walks the DFS tree
+// from n up to m via parent pointers, OR-ing each tree edge's polarity.
+func cycleHasNegative(n, m string, closingNeg bool, parent map[string]string, edgeNeg map[string]bool) bool {
+	if closingNeg {
+		return true
+	}
+	for cur := n; cur != m; cur = parent[cur] {
+		if edgeNeg[cur] {
+			return true
+		}
+		if _, ok := parent[cur]; !ok {
+			break
+		}
+	}
+	return false
 }
 
 // checkThresholds validates cached threshold blocks and their references:
@@ -1068,6 +1138,24 @@ func walkCond(cond ast.Condition, fn func(ast.Condition)) {
 		walkCond(c.Right, fn)
 	case *ast.NotCondition:
 		walkCond(c.Inner, fn)
+	}
+}
+
+// walkCondPolarity is walkCond that threads negation parity: fn receives each
+// condition together with whether it sits under an odd number of `not`s.
+// `not not p` is positive again — parity, not mere presence, is what makes a
+// derive cycle unsafe.
+func walkCondPolarity(cond ast.Condition, negated bool, fn func(ast.Condition, bool)) {
+	if cond == nil {
+		return
+	}
+	fn(cond, negated)
+	switch c := cond.(type) {
+	case *ast.LogicalCondition:
+		walkCondPolarity(c.Left, negated, fn)
+		walkCondPolarity(c.Right, negated, fn)
+	case *ast.NotCondition:
+		walkCondPolarity(c.Inner, !negated, fn)
 	}
 }
 

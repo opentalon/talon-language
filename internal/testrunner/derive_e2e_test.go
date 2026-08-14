@@ -59,6 +59,55 @@ test "derived overdue predicate gates the detect" {
 	}
 }
 
+// TestDeriveNegationArithmetic pins the stratified-negation contract for a
+// derived predicate whose body needs a Go-side arithmetic filter. The whole
+// negation must be evaluated per-row (with `overdue` inlined) — the earlier
+// split that pushed the Datalog part into the store's `Not` and leaked the
+// arithmetic out as a *positive* filter flipped the sign and flagged exactly
+// the wrong vehicles.
+func TestDeriveNegationArithmetic(t *testing.T) {
+	rules := `
+derive overdue(v) {
+  for records where type == "vehicle"
+    and attr "km" > attr "last_service_km" + 20000
+}
+
+detect "Up to date" {
+  for records where type == "vehicle" and status == "active" and not overdue(v)
+  flag matching items
+}`
+	tests := `
+test "not overdue flags only up-to-date vehicles" {
+  given {
+    // overdue (80000 > 55000+20000) → excluded by the negation
+    record 1 type "vehicle" status "active"
+    attr 1 "km" 80000
+    attr 1 "last_service_km" 55000
+    // not overdue (30000 < 20000+20000) → flagged
+    record 2 type "vehicle" status "active"
+    attr 2 "km" 30000
+    attr 2 "last_service_km" 20000
+    // not overdue but inactive → dropped by the sibling filter
+    record 3 type "vehicle" status "retired"
+    attr 3 "km" 10000
+    attr 3 "last_service_km" 5000
+  }
+  when detect "Up to date"
+  expect {
+    flagged 2
+    not flagged 1
+    not flagged 3
+  }
+}`
+	res := runResults(t, rules, tests)
+	if len(res) != 1 {
+		t.Fatalf("want 1 test result, got %d", len(res))
+	}
+	if !res[0].Passed {
+		t.Fatalf("negation-with-arithmetic test failed: %v", res[0].Errors)
+	}
+}
+
 // TestDeriveChainOfDerives: a derive that references another derive inlines
 // transitively.
 func TestDeriveChainOfDerives(t *testing.T) {

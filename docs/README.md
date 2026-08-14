@@ -33,6 +33,9 @@
   predicates referenced as `p(v)`, inlined to close the deductive cycle.
 - **[Well-founded negation](./well-founded.md)** — negative literals in
   recursive rules, evaluated to a unique true/false/undefined model.
+- **[Stratified negation](./negation.md)** — `not p(v)`: negation-as-failure
+  over a derived predicate, with a signed dependency graph that rejects
+  negation through recursion.
 
 ## Design notes
 

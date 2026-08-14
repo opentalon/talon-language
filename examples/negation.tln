@@ -1,0 +1,30 @@
+// Stratified negation-as-failure: a block can negate a derived predicate with
+// `not pred(v)`. The planner inlines the predicate's body and wraps it in a
+// set-difference (`factstore.Not`), so "not overdue" reads as the complement of
+// the derivation — no host glue, no second query.
+//
+//   ./talon build examples/negation.tln
+//   ./talon test  examples/negation.tln test/negation.tln.test
+//
+// Negation is *stratified*: a derived predicate may not depend on its own
+// negation (`derive p(v) { ... not p(v) }` is rejected — a predicate that is
+// true exactly when it is false has no stratified meaning). The validator
+// tags derive→derive edges with polarity and rejects a cycle that crosses a
+// negative edge with a distinct "not stratifiable" error. Negation *through*
+// recursion, which needs well-founded semantics to mean anything, is tracked
+// in issue #170.
+
+derive overdue(v) {
+  for records where type == "vehicle"
+    and attr "km" > attr "last_service_km" + 20000
+}
+
+// Vehicles that are NOT overdue — the stratified complement of `overdue`.
+detect "Up to date" {
+  for records where type == "vehicle"
+    and status == "active"
+    and not overdue(v)
+  flag matching items
+  label "{item.name}: service up to date ({attr.km} km)"
+  priority LOW
+}
