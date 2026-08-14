@@ -37,6 +37,10 @@ type (
 	Aggregate = fs.Aggregate
 	PullSpec  = fs.PullSpec
 	Term      = fs.Term
+	// Negation is negation-as-failure of a rule-call inside a Rule body — what
+	// an out-of-tree solver (e.g. the tln-asp ASP plugin) needs to express
+	// `not p(x)`. The core resolver reads it under well-founded semantics.
+	Negation = fs.Negation
 )
 
 // Mutation + event types.

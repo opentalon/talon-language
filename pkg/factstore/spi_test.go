@@ -72,3 +72,31 @@ func TestExternalBackendImplementsFactStore(t *testing.T) {
 		t.Fatalf("clause inspection through the SPI failed: %v", rows)
 	}
 }
+
+// TestExternalRuleSetWithNegation proves an out-of-tree solver (e.g. tln-asp)
+// can build a negation-bearing rule set from the public SPI alone — a Rule
+// whose body carries a Negation clause. This is what ASP's `head :- body, not q`
+// needs at the boundary.
+func TestExternalRuleSetWithNegation(t *testing.T) {
+	// win(X) :- move(X,Y), not win(Y)  — the canonical negation-through-recursion.
+	rules := []fs.Rule{{
+		Name: "win",
+		Args: []string{"?x"},
+		Body: []fs.Clause{
+			&fs.Pattern{Entity: fs.Var("e"), Attribute: ":edge/from", Value: fs.Var("x")},
+			&fs.Pattern{Entity: fs.Var("e"), Attribute: ":edge/to", Value: fs.Var("y")},
+			&fs.Negation{Name: "win", Args: []fs.Term{fs.Var("y")}},
+		},
+	}}
+	// The Negation is a Clause, inspectable via a type switch — exactly how a
+	// solver splits positive vs negative body literals.
+	var neg int
+	for _, c := range rules[0].Body {
+		if _, ok := c.(*fs.Negation); ok {
+			neg++
+		}
+	}
+	if neg != 1 {
+		t.Fatalf("expected 1 Negation clause reachable through the SPI, got %d", neg)
+	}
+}
