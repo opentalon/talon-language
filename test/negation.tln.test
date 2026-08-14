@@ -1,0 +1,32 @@
+// `not overdue(v)` is the stratified complement of the derived predicate: a
+// vehicle is flagged "Up to date" iff it is active AND not overdue. The three
+// records exercise the two sides of the negation plus the sibling `status`
+// filter.
+
+test "not overdue flags only up-to-date vehicles" {
+  given {
+    // overdue (80000 > 55000 + 20000) → NOT up to date
+    record 1 type "vehicle" status "active"
+    attr 1 "name" "Van 1"
+    attr 1 "km" 80000
+    attr 1 "last_service_km" 55000
+
+    // not overdue (30000 < 20000 + 20000) and active → up to date
+    record 2 type "vehicle" status "active"
+    attr 2 "name" "Van 2"
+    attr 2 "km" 30000
+    attr 2 "last_service_km" 20000
+
+    // not overdue but inactive → the sibling filter drops it
+    record 3 type "vehicle" status "retired"
+    attr 3 "name" "Van 3"
+    attr 3 "km" 10000
+    attr 3 "last_service_km" 5000
+  }
+  when detect "Up to date"
+  expect {
+    flagged 2
+    not flagged 1
+    not flagged 3
+  }
+}

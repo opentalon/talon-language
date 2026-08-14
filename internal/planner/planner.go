@@ -1826,8 +1826,101 @@ func (b *queryBuilder) addLogical(c *ast.LogicalCondition) {
 }
 
 func (b *queryBuilder) addNot(c *ast.NotCondition) {
-	sub := b.subClauses(c.Inner)
-	b.whereClauses = append(b.whereClauses, &factstore.Not{Body: sub})
+	// Evaluate the inner in isolation first: if it is fully store-expressible,
+	// negate it as a set difference (`factstore.Not`) — the fast path, correct
+	// for Datalog-only bodies like `not (attr "km" > 50000)` or a derived
+	// predicate whose body is all patterns/membership.
+	child := &queryBuilder{
+		defines:   b.defines,
+		derives:   b.derives,
+		deriving:  copyBoolMap(b.deriving),
+		entityVar: b.entityVar,
+		usedVars:  copyMap(b.usedVars),
+	}
+	child.addCondition(c.Inner)
+	if len(child.goConditions) == 0 {
+		b.whereClauses = append(b.whereClauses, &factstore.Not{Body: child.whereClauses})
+		return
+	}
+
+	// Mixed body: the inner also needs a Go-side (per-row) condition, typically
+	// arithmetic over two attributes. Splitting the negation — Datalog part into
+	// the store's `Not`, Go part merged out as a *positive* filter — flips the
+	// sign of the arithmetic and silently miscompiles. Evaluate the whole
+	// negation per-row instead, inlining any derived predicate into its body so
+	// the constraint evaluator (which doesn't know `pred(v)`) can run it.
+	inlined, ok := b.inlineForGoEval(c.Inner)
+	if ok {
+		b.goConditions = append(b.goConditions, &ast.NotCondition{Inner: inlined})
+		return
+	}
+	// Inner uses a construct the per-row evaluator can't run standalone; fall
+	// back to the store-only negation (drops the Go part) — no worse than the
+	// prior behaviour, and the block_eval row count keeps it observable.
+	b.whereClauses = append(b.whereClauses, &factstore.Not{Body: child.whereClauses})
+}
+
+// inlineForGoEval rewrites cond into an equivalent tree with every derived
+// predicate replaced by its (recursively inlined) body, combined with `and`,
+// so the whole thing can be handed to the per-row constraint evaluator. It
+// returns ok=false on any construct that evaluator can't run standalone —
+// notably a derived-predicate reference the caller couldn't resolve — so the
+// caller can fall back rather than emit a condition that always errors.
+func (b *queryBuilder) inlineForGoEval(cond ast.Condition) (ast.Condition, bool) {
+	switch c := cond.(type) {
+	case *ast.PredicateCallCondition:
+		d, ok := b.derives[c.Name]
+		if !ok || b.deriving[c.Name] {
+			return nil, false
+		}
+		b.deriving[c.Name] = true
+		defer delete(b.deriving, c.Name)
+		var acc ast.Condition
+		for _, bc := range d.Selector.Conditions {
+			sub, ok := b.inlineForGoEval(bc)
+			if !ok {
+				return nil, false
+			}
+			acc = andConds(acc, sub)
+		}
+		return acc, acc != nil
+	case *ast.LogicalCondition:
+		l, ok := b.inlineForGoEval(c.Left)
+		if !ok {
+			return nil, false
+		}
+		r, ok := b.inlineForGoEval(c.Right)
+		if !ok {
+			return nil, false
+		}
+		return &ast.LogicalCondition{Op: c.Op, Left: l, Right: r}, true
+	case *ast.NotCondition:
+		inner, ok := b.inlineForGoEval(c.Inner)
+		if !ok {
+			return nil, false
+		}
+		return &ast.NotCondition{Inner: inner}, true
+	case *ast.CompareCondition, *ast.MembershipCondition, *ast.StringMatchCondition, *ast.TemporalCondition:
+		// Directly evaluable per-row by internal/constraints.
+		return cond, true
+	default:
+		return nil, false
+	}
+}
+
+func andConds(a, b ast.Condition) ast.Condition {
+	if a == nil {
+		return b
+	}
+	return &ast.LogicalCondition{Op: "and", Left: a, Right: b}
+}
+
+func copyBoolMap(m map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 func (b *queryBuilder) subClauses(cond ast.Condition) []factstore.Clause {

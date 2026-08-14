@@ -106,6 +106,10 @@ Tracked follow-ups (the machinery is already present — see the recursive
   cheap once RETE (#89) lands. v1 is lazy (inline-per-query).
 - **Alt B `produce {…}`** — derived facts that carry attributes (full EAV
   entities), as sketched in #91. v1 is boolean predicates only.
+- **Stratified negation** — `not pred(v)` negates a derived predicate
+  (negation as failure). The validator uses a *signed* dependency graph, so a
+  predicate that depends on its own negation is rejected with a distinct
+  "not stratifiable" error. See [docs/negation.md](./negation.md).
 - **Negation through recursion** — the recursive resolver now evaluates
   negative literals under **well-founded semantics** (a unique true/false/
   undefined model), so `win(X) :- move(X, Y), not win(Y)` has a meaning at the
