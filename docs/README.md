@@ -31,6 +31,8 @@
   `threshold "name" { value … }` blocks, with expiry and provenance.
 - **[Derived predicates](./derive.md)** — `derive p(v) { … }` blocks: named
   predicates referenced as `p(v)`, inlined to close the deductive cycle.
+- **[Well-founded negation](./well-founded.md)** — negative literals in
+  recursive rules, evaluated to a unique true/false/undefined model.
 
 ## Design notes
 

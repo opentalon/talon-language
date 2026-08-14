@@ -14,18 +14,28 @@ type ruleCtx struct {
 	byName  map[string][]Rule
 	memo    map[string][][]any
 	visited map[string]bool
+
+	// hasNegation routes resolution through the well-founded evaluator when any
+	// rule body carries a Negation clause; wf caches the computed model.
+	hasNegation bool
+	wf          *wfModel
 }
 
 func newRuleCtx(m *MemoryStore, rules []Rule) *ruleCtx {
 	byName := map[string][]Rule{}
+	hasNeg := false
 	for _, r := range rules {
 		byName[r.Name] = append(byName[r.Name], r)
+		if bodyHasNegation(r.Body) {
+			hasNeg = true
+		}
 	}
 	return &ruleCtx{
-		store:   m,
-		byName:  byName,
-		memo:    map[string][][]any{},
-		visited: map[string]bool{},
+		store:       m,
+		byName:      byName,
+		memo:        map[string][][]any{},
+		visited:     map[string]bool{},
+		hasNegation: hasNeg,
 	}
 }
 
@@ -37,6 +47,11 @@ func newRuleCtx(m *MemoryStore, rules []Rule) *ruleCtx {
 // chain that loops back return empty instead of recursing forever.
 // For acyclic category trees the memo is a perf cache.
 func (rc *ruleCtx) resolve(name string, args []any) [][]any {
+	if rc.hasNegation {
+		// Negation-bearing rule sets have no order-independent top-down reading;
+		// answer from the well-founded model instead.
+		return rc.wfResolve(name, args)
+	}
 	key := callKey(name, args)
 	if cached, ok := rc.memo[key]; ok {
 		return cached
