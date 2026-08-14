@@ -41,7 +41,7 @@ workflow "create" {
   }
 }`
 	mock := &mockCaller{}
-	result, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock))
+	result, err := tln.RunWorkflow(context.Background(), src, tln.WithToolResolver(mock))
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
@@ -87,7 +87,7 @@ workflow "chain" {
 			return map[string]any{"ok": true}, nil
 		},
 	}
-	if _, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock)); err != nil {
+	if _, err := tln.RunWorkflow(context.Background(), src, tln.WithToolResolver(mock)); err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
 
@@ -112,7 +112,7 @@ workflow "deny" {
 	hook := func(_ context.Context, _, _, _ string) (bool, error) { return false, nil }
 
 	result, err := tln.RunWorkflow(context.Background(), src,
-		tln.WithMCP(mock),
+		tln.WithToolResolver(mock),
 		tln.WithConfirmHook(hook),
 	)
 	if err != nil {
@@ -154,7 +154,7 @@ workflow "paginate" {
 		},
 	}
 
-	result, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock))
+	result, err := tln.RunWorkflow(context.Background(), src, tln.WithToolResolver(mock))
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
@@ -203,7 +203,7 @@ workflow "map" {
 		},
 	}
 
-	if _, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock)); err != nil {
+	if _, err := tln.RunWorkflow(context.Background(), src, tln.WithToolResolver(mock)); err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
 	if len(mock.calls) != 2 {
@@ -218,7 +218,7 @@ workflow "map" {
 	}
 }
 
-func TestRunWorkflow_NoMCPCaller(t *testing.T) {
+func TestRunWorkflow_NoToolResolver(t *testing.T) {
 	src := `
 workflow "stub" {
   step "s1" {
@@ -227,7 +227,7 @@ workflow "stub" {
     }
   }
 }`
-	result, err := tln.RunWorkflow(context.Background(), src) // no WithMCP
+	result, err := tln.RunWorkflow(context.Background(), src) // no WithToolResolver
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
@@ -254,7 +254,7 @@ workflow "err" {
 			return nil, errors.New("connection refused")
 		},
 	}
-	_, err := tln.RunWorkflow(context.Background(), src, tln.WithMCP(mock))
+	_, err := tln.RunWorkflow(context.Background(), src, tln.WithToolResolver(mock))
 	if err == nil {
 		t.Fatal("expected error from MCP failure")
 	}
@@ -300,15 +300,15 @@ func keys(m map[string]*tln.BlockResult) []string {
 	return out
 }
 
-// Compile-time check: mockCaller satisfies tln.MCPCaller.
-var _ tln.MCPCaller = (*mockCaller)(nil)
+// Compile-time check: mockCaller satisfies tln.ToolResolver.
+var _ tln.ToolResolver = (*mockCaller)(nil)
 
 // Compile-time guard documenting the public surface — bare references
 // so any rename in the SDK breaks the test build instead of silently
 // going through.
 var (
 	_ = tln.RunWorkflow
-	_ = tln.WithMCP
+	_ = tln.WithToolResolver
 	_ = tln.WithConfirmHook
 	_ = tln.WithFilename
 	_ = tln.SeverityError

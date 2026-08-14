@@ -249,7 +249,7 @@ func TestWorkflowMapExpr(t *testing.T) {
 	}
 }
 
-func TestWorkflowNoMCPCallerStub(t *testing.T) {
+func TestWorkflowNoToolResolverStub(t *testing.T) {
 	e := &Executor{} // no MCP caller
 	ctx := context.Background()
 

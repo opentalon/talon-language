@@ -61,7 +61,7 @@ func TestRunCollect_FetchesAndAsserts(t *testing.T) {
 	}
 }
 
-func TestRunCollect_NoMCPCallerIsNoOp(t *testing.T) {
+func TestRunCollect_NoToolResolverIsNoOp(t *testing.T) {
 	store := factstore.NewMemoryStore()
 	e := &Executor{Client: store} // no MCP
 	block := &ast.CollectBlock{

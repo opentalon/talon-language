@@ -32,7 +32,7 @@ workflow "Refill stock" {
 
 func TestSession_FiresWorkflowWithTriggerPresets(t *testing.T) {
 	caller := newCaller()
-	s, err := tln.NewSession(refillSrc, tln.WithMCP(caller))
+	s, err := tln.NewSession(refillSrc, tln.WithToolResolver(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestSession_FiresWorkflowWithTriggerPresets(t *testing.T) {
 
 func TestSession_IdempotentReassertNoFiring(t *testing.T) {
 	caller := newCaller()
-	s, err := tln.NewSession(refillSrc, tln.WithMCP(caller))
+	s, err := tln.NewSession(refillSrc, tln.WithToolResolver(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestSession_SnapshotHydrationNoReplayFiring(t *testing.T) {
 
 	// Session A brings an item from 3 down to 0 (one firing), then snapshots.
 	callerA := newCaller()
-	a, err := tln.NewSession(refillSrc, tln.WithMCP(callerA))
+	a, err := tln.NewSession(refillSrc, tln.WithToolResolver(callerA))
 	if err != nil {
 		t.Fatalf("NewSession A: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestSession_SnapshotHydrationNoReplayFiring(t *testing.T) {
 	}
 
 	callerB := newCaller()
-	b, err := tln.NewSession(refillSrc, tln.WithMCP(callerB), tln.WithFactStore(store))
+	b, err := tln.NewSession(refillSrc, tln.WithToolResolver(callerB), tln.WithFactStore(store))
 	if err != nil {
 		t.Fatalf("NewSession B: %v", err)
 	}
@@ -176,7 +176,7 @@ workflow "Reorder" {
   step "s" { mcp "timly" "create-order" { quantity 10 } }
 }`
 	caller := newCaller()
-	s, err := tln.NewSession(src, tln.WithMCP(caller))
+	s, err := tln.NewSession(src, tln.WithToolResolver(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -262,7 +262,7 @@ on change attr "current_stock" to 0 {
 }
 workflow "Refill" { step "s" { mcp "inv" "order" {} } }`
 	caller := newCaller()
-	s, err := tln.NewSession(src, tln.WithMCP(caller))
+	s, err := tln.NewSession(src, tln.WithToolResolver(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -294,7 +294,7 @@ workflow "Ping" {
   step "s" { mcp "svc" "ping" {} }
 }`
 	caller := newCaller()
-	s, err := tln.NewSession(src, tln.WithMCP(caller))
+	s, err := tln.NewSession(src, tln.WithToolResolver(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
