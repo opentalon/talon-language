@@ -118,33 +118,13 @@ and what each REPL command does — is in [`docs/repl.md`](docs/repl.md).
 |---|---|---|
 | `datalevin` (default) | Production today. JVM sidecar, native Datalog, FTS, raft. | `cd datalevin-server && clojure -M:run` |
 | `memory` | REPL, demos, unit tests, CI smoke runs. Entirely in-process. | None — works out of the box |
-| `talon-db` | Phase-3 Go-native backend. Embedded bbolt + bitmap indexes; gRPC over Unix socket (or TCP / HTTP). | `talondb-server --db ./tln.bbolt --socket /tmp/talondb.sock` (see [opentalon/talon-db](https://github.com/opentalon/talon-db)) |
 
-Example with the talon-db sidecar:
-
-```bash
-# Terminal 1: start the daemon
-talondb-server --db /tmp/tln.bbolt --socket /tmp/talondb.sock
-
-# Terminal 2: run a .tln program against it
-tln run examples/fleet_maintenance.tln \
-  --seed test/fleet_maintenance.tln.test \
-  --store talon-db \
-  --talondb unix:///tmp/talondb.sock
-```
-
-The adapter (`internal/talondb`) translates the planner's structured
-queries into talon-db's RPC surface (Lookup, LookupNumericRange,
-WindowQuery, GroupCount, Stats, LastSeen, Ancestors, Descendants,
-plus the composite Query / ClusterQuery / SequenceJoin / Subscribe
-RPCs and the per-scope HNSW vector index — VectorInsert / VectorSearch
-/ VectorDelete / VectorDropScope / VectorListScopes). Pattern,
-Predicate, Or, Not, FullText, RuleCall, Aggregates + GroupBy, and
-PullSpec all flow through end-to-end today; numeric predicates push
-down into `LookupNumericRange` automatically. Transport failures
-surface as typed `ErrUnavailable` / `ErrNotFound` / `ErrInvalidArgument`
-sentinels so callers can branch on `errors.Is` instead of
-string-scraping.
+> **tln-db backend (planned plugin).** The Go-native gRPC backend
+> (embedded bbolt + bitmap/HNSW indexes) previously lived in core as the
+> `--store talon-db` adapter. It has been **cut from core** — tln has no
+> Go dependency on the database — and will return as an external plugin so
+> the language stays storage-agnostic and code-free at the boundary. The
+> server lives at [opentalon/tln-db](https://github.com/opentalon/tln-db).
 
 ## Architecture
 
@@ -248,7 +228,7 @@ tln has built-in ML keywords. Not heavyweight neural nets — lightweight statis
 | `predict` | Likelihood of an outcome | Decision tree (interpretable) |
 | `classify` | Categorize records | kNN over feature vectors |
 | `forecast` | When will a value hit a threshold? | Exponential smoothing |
-| `find similar` | Records resembling a given one | Cosine similarity, or HNSW vector index via talon-db |
+| `find similar` | Records resembling a given one | Cosine similarity, or HNSW vector index via the tln-db plugin |
 
 Every prediction is explainable. A decision tree says "this item is at risk because operating_hours > 2000 AND repair_count > 3." The user can read the reasoning.
 
@@ -416,10 +396,10 @@ detect "Unusual consumption" {
 
 ### Vector similarity (HNSW)
 
-`find similar` can route through talon-db's per-scope HNSW index when
-the rule names a vector scope. Each tenant can hold multiple embedding
-models side-by-side — dimension is locked on first insert into a scope
-so a 384-dim model never collides with a 1536-dim one:
+`find similar` can route through a per-scope HNSW index when the rule names
+a vector scope. Each tenant can hold multiple embedding models side-by-side —
+dimension is locked on first insert into a scope so a 384-dim model never
+collides with a 1536-dim one:
 
 ```tln
 find similar "Find related vehicles" {
@@ -431,12 +411,13 @@ find similar "Find related vehicles" {
 }
 ```
 
-The executor reads the seed's `:vector/<scope>` fact, asks the
-adapter for `top+1` neighbours, drops the seed, applies `within` as
-a metric-distance threshold, and narrows the candidate set to the
-surviving ids. SIFT-5K runs at `recall@10 = 0.998` on the production
-HNSW params; see [opentalon/talon-db](https://github.com/opentalon/talon-db#vector-index)
-for tuning details.
+The executor reads the seed's `:vector/<scope>` fact, asks the store for
+`top+1` neighbours, drops the seed, applies `within` as a metric-distance
+threshold, and narrows the candidate set to the surviving ids. The HNSW index
+itself is served by the tln-db backend, which is packaged as a plugin (see
+[opentalon/tln-db](https://github.com/opentalon/tln-db#vector-index)); with the
+`memory`/`datalevin` stores, `find similar` needs a store that provides the
+vector scope.
 
 ### Failure prediction
 
@@ -564,7 +545,7 @@ will work across both editors; tracked in
 - [Self-contained language](https://github.com/opentalon/tln-language/issues/5) — tln compiles directly to query plans, no intermediate layer
 - [ML primitives as keywords](https://github.com/opentalon/tln-language/issues/6) — predict, forecast, anomaly, cluster, classify, similar
 - [FactStore abstraction](https://github.com/opentalon/tln-language/issues/14) — database independence
-- [opentalon/talon-db](https://github.com/opentalon/talon-db) — Go-native Phase-3 backend (bbolt + roaring + vellum, gRPC sidecar)
+- [opentalon/tln-db](https://github.com/opentalon/tln-db) — Go-native backend (bbolt + roaring + vellum, gRPC sidecar); consumed as a plugin, not a core dependency
 
 ### Compiler
 

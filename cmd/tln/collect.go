@@ -13,7 +13,6 @@ import (
 	"github.com/opentalon/tln-language/internal/factstore"
 	"github.com/opentalon/tln-language/internal/lexer"
 	"github.com/opentalon/tln-language/internal/parser"
-	"github.com/opentalon/tln-language/internal/talondb"
 )
 
 // runCollect dispatches `tln collect <list|run> ...`. tln does not run
@@ -75,14 +74,13 @@ func runCollectList() {
 // the SDK; here `run` wires the store and reports what was asserted.
 func runCollectRun() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: tln collect run <file.tln> --name NAME [--store memory|datalevin|talon-db]")
+		fmt.Fprintln(os.Stderr, "usage: tln collect run <file.tln> --name NAME [--store memory|datalevin]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	path := os.Args[3]
 	name := ""
 	storeKind := "memory"
 	serverURL := "http://localhost:8898"
-	talondbURL := "unix:///tmp/talondb.sock"
 	tenant := ""
 	for i := 4; i < len(os.Args); i++ {
 		switch {
@@ -94,9 +92,6 @@ func runCollectRun() {
 			i++
 		case os.Args[i] == "--datalevin" && i+1 < len(os.Args):
 			serverURL = os.Args[i+1]
-			i++
-		case os.Args[i] == "--talondb" && i+1 < len(os.Args):
-			talondbURL = os.Args[i+1]
 			i++
 		case os.Args[i] == "--tenant" && i+1 < len(os.Args):
 			tenant = os.Args[i+1]
@@ -121,7 +116,7 @@ func runCollectRun() {
 	}
 
 	ctx := context.Background()
-	store := collectStore(ctx, storeKind, serverURL, talondbURL, tenant)
+	store := collectStore(storeKind, serverURL, tenant)
 	exec := executor.NewExecutor(store)
 	// exec.MCP stays nil: the standalone CLI has no MCP transport. A host
 	// injects a caller via the SDK; here the fetch is a no-op.
@@ -165,7 +160,7 @@ func parseCollectBlocks(path string) []*ast.CollectBlock {
 	return out
 }
 
-func collectStore(ctx context.Context, kind, serverURL, talondbURL, tenant string) factstore.FactStore {
+func collectStore(kind, serverURL, tenant string) factstore.FactStore {
 	switch kind {
 	case "memory":
 		return factstore.NewMemoryStore()
@@ -175,18 +170,8 @@ func collectStore(ctx context.Context, kind, serverURL, talondbURL, tenant strin
 			client = client.WithTenant(tenant)
 		}
 		return client
-	case "talon-db":
-		tdb, err := talondb.NewClient(ctx, talondbURL)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "tln collect run: dial talondb-server at %s: %v\n", talondbURL, err)
-			os.Exit(diagnostic.ExitError)
-		}
-		if tenant != "" {
-			tdb = tdb.WithTenant(tenant)
-		}
-		return talondb.New(tdb)
 	default:
-		fmt.Fprintf(os.Stderr, "tln collect run: unknown --store %q (want memory, datalevin, or talon-db)\n", kind)
+		fmt.Fprintf(os.Stderr, "tln collect run: unknown --store %q (want memory or datalevin)\n", kind)
 		os.Exit(diagnostic.ExitUsage)
 		return nil
 	}
