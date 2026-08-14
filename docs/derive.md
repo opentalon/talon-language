@@ -106,5 +106,9 @@ Tracked follow-ups (the machinery is already present — see the recursive
   cheap once RETE (#89) lands. v1 is lazy (inline-per-query).
 - **Alt B `produce {…}`** — derived facts that carry attributes (full EAV
   entities), as sketched in #91. v1 is boolean predicates only.
-- **Negation through recursion** — forbidden by the acyclicity check in v1;
-  well-founded/stable-model semantics are out of scope.
+- **Negation through recursion** — the recursive resolver now evaluates
+  negative literals under **well-founded semantics** (a unique true/false/
+  undefined model), so `win(X) :- move(X, Y), not win(Y)` has a meaning at the
+  `factstore.Rule` level. See [docs/well-founded.md](./well-founded.md). A
+  grammar surface for it rides with self-hosting (#13). Stable-model/ASP
+  semantics stay out of core (proposed as a plugin, #171).
