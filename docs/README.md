@@ -43,6 +43,7 @@
 - [ADR-0003: Explainability tiers](./design/0003-explainability.md)
 - [ADR-0006: classify_knn primitive](./design/0006-classify-knn.md)
 - [ADR-0007: predict_decision_tree primitive](./design/0007-predict-decision-tree.md)
+- [ADR-0008: ASP / stable-models as an external plugin](./design/0008-asp-plugin.md)
 - [JS runtime](./js-runtime.md)
 
 ## Where the code lives
