@@ -9,9 +9,9 @@
 //
 // For multi-objective or nonlinear cases, drop `solver linear` to use GA.
 //
-//   ./talon build examples/parts_reorder_exact.tln
-//   ./talon test examples/parts_reorder_exact.tln test/parts_reorder_exact.tln.test
-//   ./talon explain examples/parts_reorder_exact.tln test/parts_reorder_exact.tln.test
+//   ./tln build examples/parts_reorder_exact.tln
+//   ./tln test examples/parts_reorder_exact.tln test/parts_reorder_exact.tln.test
+//   ./tln explain examples/parts_reorder_exact.tln test/parts_reorder_exact.tln.test
 
 combine "Reorder exact" {
   for records where type == "stock_item" and status == "active"

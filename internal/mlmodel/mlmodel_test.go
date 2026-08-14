@@ -27,10 +27,10 @@ func TestTrainingRowsFromExamples(t *testing.T) {
 	}
 }
 
-// TestResolverPrefersTalonThenGo: a name present in both providers resolves to
-// the Talon model; a name only in the Go registry resolves to "go".
-func TestResolverPrefersTalonThenGo(t *testing.T) {
-	talonM := sampleModel()
+// TestResolverPrefersTlnThenGo: a name present in both providers resolves to
+// the tln model; a name only in the Go registry resolves to "go".
+func TestResolverPrefersTlnThenGo(t *testing.T) {
+	tlnM := sampleModel()
 	goM := sampleModel()
 	goM.K = 99 // make it distinguishable
 
@@ -38,12 +38,12 @@ func TestResolverPrefersTalonThenGo(t *testing.T) {
 	goReg.Register("fleet.ml.failure_risk", goM)
 	goReg.Register("vendor.ml.churn", goM)
 
-	r := NewResolver(map[string]*Model{"fleet.ml.failure_risk": talonM}, goReg)
+	r := NewResolver(map[string]*Model{"fleet.ml.failure_risk": tlnM}, goReg)
 
-	// Talon wins the shared name.
+	// tln wins the shared name.
 	m, provider, ok := r.Resolve("fleet.ml.failure_risk")
-	if !ok || provider != "talon" || m.K != 3 {
-		t.Fatalf("shared name should resolve to Talon (k=3), got ok=%v provider=%q k=%d", ok, provider, m.K)
+	if !ok || provider != "tln" || m.K != 3 {
+		t.Fatalf("shared name should resolve to tln (k=3), got ok=%v provider=%q k=%d", ok, provider, m.K)
 	}
 	// Go-only name resolves to the Go provider.
 	m, provider, ok = r.Resolve("vendor.ml.churn")

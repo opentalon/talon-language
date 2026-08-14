@@ -15,7 +15,7 @@ export type ActionHandler = (...args: any[]) => void
 export type Subscriber = (actions: ActionResult[]) => void
 export type Unsubscribe = () => void
 
-export class TalonStore {
+export class TlnStore {
   private state = new Map<string, any>()
   private ruleSets = new Map<string, Rule[]>()
   private defines = new Map<string, Define>()

@@ -15,9 +15,9 @@
 // number: here, an item is overdue once its odometer passes the last service
 // by more than the cached interval.
 //
-//   ./talon build   examples/cached_threshold.tln
-//   ./talon test    examples/cached_threshold.tln test/cached_threshold.tln.test
-//   ./talon explain examples/cached_threshold.tln test/cached_threshold.tln.test
+//   ./tln build   examples/cached_threshold.tln
+//   ./tln test    examples/cached_threshold.tln test/cached_threshold.tln.test
+//   ./tln explain examples/cached_threshold.tln test/cached_threshold.tln.test
 
 threshold "service_interval" {
   value 18200

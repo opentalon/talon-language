@@ -10,7 +10,7 @@ import (
 //
 // ABC is well-suited to continuous bounded optimization with a noisy or
 // non-differentiable objective — the "tune a ML primitive's threshold against
-// labeled data" use case in Talon. Compared to GA, ABC has fewer control
+// labeled data" use case in tln. Compared to GA, ABC has fewer control
 // parameters (no crossover/mutation rates) and stronger automatic exploration
 // via scout bees that restart abandoned food sources from random positions.
 type ABCConfig struct {

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // ErrNoVectorBackend is returned when a plan contains a

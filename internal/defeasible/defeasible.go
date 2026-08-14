@@ -22,7 +22,7 @@ package defeasible
 import (
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/ast"
 )
 
 // Resolve takes the set of rules that match a given target and returns the

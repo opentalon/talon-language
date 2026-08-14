@@ -1,4 +1,4 @@
-export { TalonStore } from "./store"
+export { TlnStore } from "./store"
 export type { ActionResult, ActionHandler, Subscriber, Unsubscribe } from "./store"
 export type {
   Program,

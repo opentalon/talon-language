@@ -2,7 +2,7 @@
 
 The simplest `combine` shape: multi-objective ranking over individual records.
 No subset selection, no constraints — every selected record is one decision
-point, and Talon labels which ones lie on the Pareto frontier.
+point, and tln labels which ones lie on the Pareto frontier.
 
 ## Problem
 
@@ -16,9 +16,9 @@ today. Which 5? Three competing criteria:
 There are no weights any of us trust. Pareto ranking surfaces the
 genuine trade-offs and a human picks 5 from the frontier.
 
-## Talon source
+## tln source
 
-```talon
+```tln
 define "overdue" {
   type == "item" and category == "Vehicles"
   and attr "km" > attr "last_service_km"
@@ -42,7 +42,7 @@ DatalevinQuery → candidates    # selector + 3 objective attrs bound
 GoComputation  optimize_pareto(candidates) → frontier
 ```
 
-## What `talon explain` shows
+## What `tln explain` shows
 
 For each entity on rank 0 (the Pareto frontier), the output cites the
 objective values, the pareto_rank, and the **crowding distance** — `+Inf`

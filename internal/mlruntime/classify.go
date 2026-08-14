@@ -32,7 +32,7 @@ import (
 //
 // Result.Value is the predicted class string. The Explanation records the
 // confidence and the K neighbours (id, label, distance) that voted, so
-// `talon trace` can show exactly who outvoted whom.
+// `tln trace` can show exactly who outvoted whom.
 type KNNClassifier struct{}
 
 // NewKNNClassifier constructs the primitive.
@@ -51,7 +51,7 @@ func (c *KNNClassifier) Compute(_ context.Context, in Input) ([]Result, error) {
 	if len(in.Training) == 0 {
 		// No labeled examples reached the primitive (e.g. the executor path,
 		// which doesn't yet materialise a training set — see ADR-0006). Emit
-		// no predictions rather than erroring, so a `talon run` over a
+		// no predictions rather than erroring, so a `tln run` over a
 		// classify block degrades to "unclassified" instead of aborting.
 		return nil, nil
 	}

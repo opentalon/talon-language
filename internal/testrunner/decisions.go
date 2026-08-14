@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/explain"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/mlruntime"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/template"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/explain"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/mlruntime"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/template"
 )
 
 // Decisions runs every test block and returns the per-test list of
@@ -118,7 +118,7 @@ func buildDecisionsForBlock(
 			}
 		}
 		// Surface a supervised primitive's decision path — the CART splits
-		// taken, or the kNN vote — so `talon explain` reads "operating_hours
+		// taken, or the kNN vote — so `tln explain` reads "operating_hours
 		// > 3000 AND repair_count > 3" rather than just a class.
 		if w := dn.Why[id]; len(w) > 0 {
 			why = append(why, w...)
@@ -600,7 +600,7 @@ func blockLoggers(b ast.Block) []*ast.LoggerAction {
 
 // FireBlockLoggers emits the per-row logger statements declared on a
 // block, given the matched entity set. Used by both the testrunner's
-// run path (`talon test`) and the explain pathway (`talon explain`) so
+// run path (`tln test`) and the explain pathway (`tln explain`) so
 // loggers fire consistently regardless of which entry point ran the
 // rule. Returns the number of records emitted, mainly for tests.
 func FireBlockLoggers(b ast.Block, flagged []int, entities map[int]*entity, now time.Time) int {
@@ -633,7 +633,7 @@ func emitLogger(ls *ast.LoggerAction, blockName string, entityID int, ctx templa
 		return
 	}
 	msg := template.Render(ls.Message, ctx)
-	logger := talonlog.Default().With(
+	logger := tlnlog.Default().With(
 		"source", "block_logger",
 		"block", blockName,
 		"entity_id", entityID,

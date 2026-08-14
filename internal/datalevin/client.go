@@ -55,7 +55,7 @@ type QueryResult struct {
 
 // RawQuery executes a raw Datalog query string. The structured Query method
 // is the one the executor calls; RawQuery is exposed for the few call sites
-// (notably `talon trace --raw` and the CLI seeding hot-path) that already
+// (notably `tln trace --raw` and the CLI seeding hot-path) that already
 // have hand-written Datalog text.
 func (c *Client) RawQuery(ctx context.Context, query string) ([][]any, error) {
 	body := map[string]any{"query": query}

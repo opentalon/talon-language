@@ -1,10 +1,10 @@
-// Package gen renders Talon AST nodes back into canonical .tln source.
+// Package gen renders tln AST nodes back into canonical .tln source.
 //
 // It is a pure printer: no I/O, no FactStore dependency, no evaluation. The
 // discovery algorithms that produce specs (workflow compilation, threshold
 // discovery, pattern mining, feedback-adjusted rules) live host-side in
 // OpenTalon; this package is the one canonical renderer they — and IDE
-// auto-fix, the REPL, and `talon explain` — share instead of ad-hoc
+// auto-fix, the REPL, and `tln explain` — share instead of ad-hoc
 // fmt.Sprintf calls. It lives here because it is intrinsically tied to the
 // grammar: every new clause or block type teaches the printer one more shape,
 // kept in lockstep with internal/parser and internal/ast.
@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/ast"
 )
 
 // Program renders an entire program: imports first (in order), then blocks

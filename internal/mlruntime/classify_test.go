@@ -125,7 +125,7 @@ func TestClassifyTieBreaks(t *testing.T) {
 }
 
 // TestClassifyEmptyTraining degrades to no predictions (not an error) so a
-// `talon run` over a classify block whose training set is empty doesn't abort.
+// `tln run` over a classify block whose training set is empty doesn't abort.
 func TestClassifyEmptyTraining(t *testing.T) {
 	in := classifyInput(map[int][2]float64{500: {1, 1}}, nil, 3)
 	results, err := NewKNNClassifier().Compute(context.Background(), in)

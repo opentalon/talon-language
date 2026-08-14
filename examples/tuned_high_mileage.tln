@@ -9,9 +9,9 @@
 // that maximizes F1 against the tenant's labeled high-mileage incidents
 // (vehicles that actually needed early intervention).
 //
-//   ./talon build examples/tuned_high_mileage.tln
-//   ./talon test examples/tuned_high_mileage.tln test/tuned_high_mileage.tln.test
-//   ./talon explain examples/tuned_high_mileage.tln test/tuned_high_mileage.tln.test
+//   ./tln build examples/tuned_high_mileage.tln
+//   ./tln test examples/tuned_high_mileage.tln test/tuned_high_mileage.tln.test
+//   ./tln explain examples/tuned_high_mileage.tln test/tuned_high_mileage.tln.test
 
 detect "Tuned high mileage" {
   for records where type == "item"

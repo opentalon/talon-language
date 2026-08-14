@@ -3,10 +3,10 @@ package planner
 import (
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/mlmodel"
-	"github.com/opentalon/talon-language/internal/mlruntime"
-	"github.com/opentalon/talon-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/mlmodel"
+	"github.com/opentalon/tln-language/internal/mlruntime"
+	"github.com/opentalon/tln-language/internal/parser"
 )
 
 func classifyStep(t *testing.T, plan *QueryPlan) *MLComputation {
@@ -20,9 +20,9 @@ func classifyStep(t *testing.T, plan *QueryPlan) *MLComputation {
 	return nil
 }
 
-// TestUsingModelTalon: a Talon `model` block supplies the classify training
+// TestUsingModelTln: a tln `model` block supplies the classify training
 // set inline, and no training FactQuery is emitted.
-func TestUsingModelTalon(t *testing.T) {
+func TestUsingModelTln(t *testing.T) {
 	plans := planAll(t, `
 model "failure_risk" {
   classify knn k 3
@@ -41,7 +41,7 @@ classify "Risk" {
 	if !ok || len(rows) != 2 {
 		t.Fatalf("expected 2 fitted rows from the model, got %+v", ml.Params["fitted_rows"])
 	}
-	if ml.Params["model_provider"] != "talon" || ml.Params["k"] != 3 {
+	if ml.Params["model_provider"] != "tln" || ml.Params["k"] != 3 {
 		t.Fatalf("provider/k mismatch: %v / %v", ml.Params["model_provider"], ml.Params["k"])
 	}
 	names, _ := ml.Params["feature_names"].([]string)
@@ -80,7 +80,7 @@ predict "Risk" {
 	if !ok || len(tree) != 3 {
 		t.Fatalf("expected 3 fitted tree nodes, got %+v", ml.Params["fitted_tree"])
 	}
-	if ml.Params["model_provider"] != "talon" {
+	if ml.Params["model_provider"] != "tln" {
 		t.Fatalf("provider: %v", ml.Params["model_provider"])
 	}
 	// No training FactQuery should be present.

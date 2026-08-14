@@ -16,7 +16,7 @@
    keeps the existing layout so single-tenant callers don't see any
    path change; named tenants get a `<base>/t/<name>` subdir."
   [tenant]
-  (let [base (or (System/getenv "DATALEVIN_PATH") "/tmp/talon-datalevin")]
+  (let [base (or (System/getenv "DATALEVIN_PATH") "/tmp/tln-datalevin")]
     (if (str/blank? tenant)
       base
       (str base "/t/" tenant))))
@@ -213,7 +213,7 @@
 
 (defn -main [& args]
   (let [port    (Integer/parseInt (or (System/getenv "PORT") "8898"))
-        db-path (or (System/getenv "DATALEVIN_PATH") "/tmp/talon-datalevin")]
+        db-path (or (System/getenv "DATALEVIN_PATH") "/tmp/tln-datalevin")]
     ;; Bootstrap the default tenant so single-tenant callers see no
     ;; lazy-init latency on first request.
     (init-db! "" db-path {})

@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // execRecordSequence keeps Input rows whose entity (the grouping

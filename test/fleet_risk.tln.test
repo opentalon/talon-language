@@ -6,8 +6,8 @@
 // candidate on the boundary splits its vote and is dropped.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/fleet_risk.tln test/fleet_risk.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/fleet_risk.tln test/fleet_risk.tln.test
 
 test "kNN model (imported) classifies open vehicles by risk" {
   given {

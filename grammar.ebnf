@@ -1,4 +1,4 @@
-(* Talon Language Grammar — EBNF
+(* tln Language Grammar — EBNF
    Notation: [ x ] = optional, { x } = zero or more, ( x | y ) = alternation.
    Terminal tokens are UPPER_CASE or quoted strings.
    This file is the canonical grammar reference for the lexer and parser. *)
@@ -30,9 +30,9 @@ Block     = DetectBlock
 
 (* ─── collect ────────────────────────────────────────────────────────────────── *)
 
-(* collect declares scheduled, host-driven MCP fact ingestion. Talon runs
+(* collect declares scheduled, host-driven MCP fact ingestion. tln runs
    no scheduler: `schedule` is metadata a host cron reads via
-   `talon collect list`, and the host fires `talon collect run` on time.
+   `tln collect list`, and the host fires `tln collect run` on time.
    The `cron "<expr>"` escape hatch replaces the RFC's `@cron` (`@` isn't
    tokenised). Response items are asserted as records of the store type. *)
 CollectBlock  = "collect" STRING "{"
@@ -98,7 +98,7 @@ PredicateCall = IDENT "(" IDENT ")"   (* reference to a derived predicate *)
    `module` namespaces its `export`ed members; an exported model "m" inside
    `module "ns"` is referenceable as "ns.m".
 
-   Models resolve from two providers under the same qualified name: Talon
+   Models resolve from two providers under the same qualified name: tln
    `model` blocks (in-source, possibly imported) and host-registered Go models
    (planner.PlanWithModels). A classify block draws its training set from one
    via `using model "<qualified name>"` instead of `trained_on`.
@@ -237,7 +237,7 @@ OverridesClause = "overrides" STRING { "," STRING }
    requires), a `do` clause, or both. The validator enforces "at least one";
    the grammar can't express it.
 
-   DoClause names a host-executed action. Talon does not execute it and does
+   DoClause names a host-executed action. tln does not execute it and does
    not know what any verb means — the engine decides *which* actions fire,
    resolves their arguments against the matched row, and hands them back as
    data for the host to carry out, so an action is decided independently of
@@ -257,7 +257,7 @@ OverridesClause = "overrides" STRING { "," STRING }
    reads that row's attribute, a string literal is rendered as a Template so
    {attr.x} interpolates, numbers and booleans pass through. An `attr` the row
    does not carry resolves to nothing rather than an empty string, so a host
-   can still tell a missing fact from a blank one. Since Talon is not
+   can still tell a missing fact from a blank one. Since tln is not
    newline-sensitive, an argument list ends at the next clause keyword. *)
 DoClause        = "do" VERB { Expr }
 
@@ -524,7 +524,7 @@ Condition       = NotCondition
      attr "X" approaching within N UNIT  → attr "X" >= today
                                             and attr "X" <= today + N UNIT
    Evaluation status: `approaching` and the `< today` date bound now filter
-   in the testrunner (`talon test`) — the goCondition evaluator handles
+   in the testrunner (`tln test`) — the goCondition evaluator handles
    today / date-arithmetic / older_than. Still NOT evaluated: cross-record
    existence (the `has record type "X"` part of has_open/has_expired needs a
    relationship model), and the executor Run/Filter path (pass-through). *)

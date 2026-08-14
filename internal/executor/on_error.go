@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/template"
+	"github.com/opentalon/tln-language/internal/ast"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/template"
 )
 
 // dispatchMCP calls an MCP tool applying the call's on_error policy:
@@ -37,7 +37,7 @@ func (e *Executor) dispatchMCP(ctx context.Context, server, tool string, args ma
 		if err != nil {
 			status = "error"
 		}
-		talonlog.MCPCall(ctx, server, tool, status, time.Since(start), err)
+		tlnlog.MCPCall(ctx, server, tool, status, time.Since(start), err)
 		if err == nil {
 			return res, false, nil
 		}
@@ -78,7 +78,7 @@ func retryCount(oe *ast.OnErrorClause) int {
 // context plus {error} and writes it at warn level.
 func logMCPError(ctx context.Context, a *ast.LogErrorAction, row map[string]any, cause error) {
 	rc := template.RenderContext{Row: rowWithError(row, cause)}
-	talonlog.Default().WarnContext(ctx, template.Render(a.Message, rc), "source", "mcp_on_error")
+	tlnlog.Default().WarnContext(ctx, template.Render(a.Message, rc), "source", "mcp_on_error")
 }
 
 func rowWithError(row map[string]any, cause error) template.Row {

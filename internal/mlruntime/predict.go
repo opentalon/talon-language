@@ -81,7 +81,7 @@ func (d *DecisionTreePredictor) Compute(_ context.Context, in Input) ([]Result, 
 	if len(in.Training) == 0 {
 		// No labeled examples reached the primitive (e.g. the executor path;
 		// see ADR-0006/0007). Emit no predictions rather than erroring, so a
-		// `talon run` degrades gracefully instead of aborting.
+		// `tln run` degrades gracefully instead of aborting.
 		return nil, nil
 	}
 	maxDepth := readIntOr(in.Params, "max_depth", 5)

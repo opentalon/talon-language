@@ -55,7 +55,7 @@ func (c GAConfig) withDefaults() GAConfig {
 }
 
 // GenerationStats summarizes one generation for the audit trail. The GA emits
-// one per generation so `talon explain` can render "ran 100 generations,
+// one per generation so `tln explain` can render "ran 100 generations,
 // hypervolume plateaued at gen 47" without storing the entire population.
 type GenerationStats struct {
 	Generation     int

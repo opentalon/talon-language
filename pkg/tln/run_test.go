@@ -1,4 +1,4 @@
-package talon_test
+package tln_test
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 // fakeStore is an in-memory FactStore used to exercise Run / Seed
@@ -46,7 +46,7 @@ func (f *fakeStore) Retract(_ context.Context, _ factstore.RetractPattern) error
 
 // Compile-time guard: fakeStore satisfies the public FactStore type
 // aliased from the canonical factstore interface.
-var _ talon.FactStore = (*fakeStore)(nil)
+var _ tln.FactStore = (*fakeStore)(nil)
 
 // queryMentions reports whether any clause in q targets the given attr.
 // Used in tests as a structured analogue of the old `strings.Contains`
@@ -86,7 +86,7 @@ func TestRun_DetectBlockHitsFactStore(t *testing.T) {
 			return rows, nil
 		},
 	}
-	result, err := talon.Run(context.Background(), detectSrc, talon.WithFactStore(fs))
+	result, err := tln.Run(context.Background(), detectSrc, tln.WithFactStore(fs))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -105,22 +105,22 @@ func TestRun_DetectBlockHitsFactStore(t *testing.T) {
 }
 
 func TestRun_MissingFactStore_ErrRequiresFactStore(t *testing.T) {
-	_, err := talon.Run(context.Background(), detectSrc)
-	if !errors.Is(err, talon.ErrRequiresFactStore) {
+	_, err := tln.Run(context.Background(), detectSrc)
+	if !errors.Is(err, tln.ErrRequiresFactStore) {
 		t.Fatalf("err = %v, want ErrRequiresFactStore", err)
 	}
 }
 
 func TestRunWorkflow_RejectsDetectBlocks(t *testing.T) {
-	_, err := talon.RunWorkflow(context.Background(), detectSrc)
-	if !errors.Is(err, talon.ErrRequiresFactStore) {
+	_, err := tln.RunWorkflow(context.Background(), detectSrc)
+	if !errors.Is(err, tln.ErrRequiresFactStore) {
 		t.Fatalf("err = %v, want ErrRequiresFactStore", err)
 	}
 }
 
 func TestRunWorkflow_StillWorksForWorkflowOnly(t *testing.T) {
 	// Regression: the new gate in RunWorkflow must not break
-	// existing workflow-only callers (i.e. talon-plugin's
+	// existing workflow-only callers (i.e. tln-plugin's
 	// execute_workflow path).
 	src := `
 workflow "ok" {
@@ -130,7 +130,7 @@ workflow "ok" {
     }
   }
 }`
-	result, err := talon.RunWorkflow(context.Background(), src)
+	result, err := tln.RunWorkflow(context.Background(), src)
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
@@ -153,7 +153,7 @@ test "seed" {
   }
 }`
 	fs := &fakeStore{}
-	n, err := talon.Seed(context.Background(), fs, src)
+	n, err := tln.Seed(context.Background(), fs, src)
 	if err != nil {
 		t.Fatalf("Seed: %v", err)
 	}
@@ -166,7 +166,7 @@ test "seed" {
 }
 
 func TestSeed_NilStore(t *testing.T) {
-	_, err := talon.Seed(context.Background(), nil, `test "x" { given {} when detect "y" expect {} }`)
+	_, err := tln.Seed(context.Background(), nil, `test "x" { given {} when detect "y" expect {} }`)
 	if err == nil {
 		t.Fatal("expected error when store is nil")
 	}
@@ -179,8 +179,8 @@ func TestRun_WithDatalevinURL_FailsFastOnUnreachable(t *testing.T) {
 	// The URL sugar runs Health() on first store access; an
 	// unreachable URL should surface as a clean Run error, not a
 	// panic deep in the executor.
-	_, err := talon.Run(context.Background(), detectSrc,
-		talon.WithDatalevinURL("http://127.0.0.1:1"), // closed port
+	_, err := tln.Run(context.Background(), detectSrc,
+		tln.WithDatalevinURL("http://127.0.0.1:1"), // closed port
 	)
 	if err == nil {
 		t.Fatal("expected error from unreachable datalevin URL")
@@ -193,10 +193,10 @@ func TestRun_WithDatalevinURL_FailsFastOnUnreachable(t *testing.T) {
 func TestNewFactStore_FailsAtFirstUse(t *testing.T) {
 	// Construction returns a usable handle even with an unreachable
 	// URL — the health check fires lazily on first Query/Transact/
-	// Schema. That contract lets callers (e.g. talon-plugin) build
+	// Schema. That contract lets callers (e.g. tln-plugin) build
 	// the store at startup without blocking on the backend being
 	// up; the error surfaces the moment any operation needs it.
-	fs := talon.NewFactStore("http://127.0.0.1:1")
+	fs := tln.NewFactStore("http://127.0.0.1:1")
 	if fs == nil {
 		t.Fatal("NewFactStore returned nil")
 	}
@@ -218,12 +218,12 @@ func TestNewFactStore_FailsAtFirstUse(t *testing.T) {
 // Compile-time surface guards — any rename in the public API breaks
 // the test build instead of silently slipping through.
 var (
-	_ = talon.Run
-	_ = talon.Seed
-	_ = talon.WithFactStore
-	_ = talon.WithDatalevinURL
-	_ = talon.NewFactStore
-	_ = talon.ErrRequiresFactStore
+	_ = tln.Run
+	_ = tln.Seed
+	_ = tln.WithFactStore
+	_ = tln.WithDatalevinURL
+	_ = tln.NewFactStore
+	_ = tln.ErrRequiresFactStore
 )
 
 // ─── remediate (issue #53) ─────────────────────────────────────────────────
@@ -243,8 +243,8 @@ detect "Defective without ticket" {
 
 func seedDefectiveItems(t *testing.T) *factstore.MemoryStore {
 	t.Helper()
-	store := talon.NewMemoryStore()
-	facts := []talon.Fact{
+	store := tln.NewMemoryStore()
+	facts := []tln.Fact{
 		{RecordID: "1", Attribute: ":record/status", Value: "defective"},
 		{RecordID: "1", Attribute: ":attr/name", Value: "Broken Drill"},
 		{RecordID: "2", Attribute: ":record/status", Value: "defective"},
@@ -261,8 +261,8 @@ func seedDefectiveItems(t *testing.T) *factstore.MemoryStore {
 func TestRun_RemediateFiresPerFlaggedRow(t *testing.T) {
 	store := seedDefectiveItems(t)
 	caller := &mockCaller{}
-	_, err := talon.Run(context.Background(), remediateSrc,
-		talon.WithFactStore(store), talon.WithMCP(caller))
+	_, err := tln.Run(context.Background(), remediateSrc,
+		tln.WithFactStore(store), tln.WithMCP(caller))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestRun_RemediateFiresPerFlaggedRow(t *testing.T) {
 func TestRun_RemediateNoCallerNoDispatch(t *testing.T) {
 	store := seedDefectiveItems(t)
 	// No WithMCP: remediate must be a no-op, not an error.
-	if _, err := talon.Run(context.Background(), remediateSrc, talon.WithFactStore(store)); err != nil {
+	if _, err := tln.Run(context.Background(), remediateSrc, tln.WithFactStore(store)); err != nil {
 		t.Fatalf("Run without MCP caller should not error: %v", err)
 	}
 }
@@ -311,12 +311,12 @@ enrich "Refresh stock" {
 }`
 
 func TestRun_EnrichRefreshesStaleFacts(t *testing.T) {
-	store := talon.NewMemoryStore()
+	store := tln.NewMemoryStore()
 	ctx := context.Background()
 
 	// Seed current_stock as written 2h ago — stale for a 1h window.
 	store.SetClock(func() time.Time { return time.Now().Add(-2 * time.Hour) })
-	if err := store.Assert(ctx, []talon.Fact{
+	if err := store.Assert(ctx, []tln.Fact{
 		{RecordID: "1", Attribute: ":record/type", Value: "stock_item"},
 		{RecordID: "1", Attribute: ":attr/current_stock", Value: 3.0},
 	}); err != nil {
@@ -330,7 +330,7 @@ func TestRun_EnrichRefreshesStaleFacts(t *testing.T) {
 		}
 		return map[string]any{"current_stock": 42.0}, nil
 	}}
-	if _, err := talon.Run(ctx, enrichSrc, talon.WithFactStore(store), talon.WithMCP(caller)); err != nil {
+	if _, err := tln.Run(ctx, enrichSrc, tln.WithFactStore(store), tln.WithMCP(caller)); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(caller.calls) != 1 {
@@ -343,17 +343,17 @@ func TestRun_EnrichRefreshesStaleFacts(t *testing.T) {
 }
 
 func TestRun_EnrichSkipsFreshFacts(t *testing.T) {
-	store := talon.NewMemoryStore()
+	store := tln.NewMemoryStore()
 	ctx := context.Background()
 	// Written just now — fresh for a 1h window.
-	if err := store.Assert(ctx, []talon.Fact{
+	if err := store.Assert(ctx, []tln.Fact{
 		{RecordID: "1", Attribute: ":record/type", Value: "stock_item"},
 		{RecordID: "1", Attribute: ":attr/current_stock", Value: 3.0},
 	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	caller := &mockCaller{}
-	if _, err := talon.Run(ctx, enrichSrc, talon.WithFactStore(store), talon.WithMCP(caller)); err != nil {
+	if _, err := tln.Run(ctx, enrichSrc, tln.WithFactStore(store), tln.WithMCP(caller)); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(caller.calls) != 0 {

@@ -7,7 +7,7 @@ of nobody knowing. For safety-critical detections, that's too long.
 
 ## Syntax
 
-```talon
+```tln
 // Fire when an attribute changes.
 on change attr "current_stock" {
   when new_value <= record.attr "minimum_amount"
@@ -28,7 +28,7 @@ on retract item {
 
 `on change` optionally narrows to a specific target value:
 
-```talon
+```tln
 on change attr "status" to "defective" { ... }
 ```
 

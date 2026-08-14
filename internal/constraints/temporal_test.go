@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/ast"
 )
 
 var testNow = time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)

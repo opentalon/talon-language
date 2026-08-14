@@ -9,11 +9,11 @@ The engine is k-nearest-neighbours (kNN): to classify a record, find the *k*
 labeled examples whose features are closest to it and take the majority vote.
 No training run, no model file — the labeled examples *are* the model, read
 fresh from the FactStore each time. That keeps the decision fully auditable:
-`talon explain` can name the exact neighbours that voted.
+`tln explain` can name the exact neighbours that voted.
 
 ## Syntax
 
-```talon
+```tln
 classify "Failure mode" {
   for records where type == "incident" and status == "open"
   features [attr "vibration", attr "temp"]
@@ -79,12 +79,12 @@ Three open incidents arrive to be classified:
 Run it:
 
 ```
-./talon build   examples/incident_triage.tln
-./talon test    examples/incident_triage.tln test/incident_triage.tln.test
-./talon explain examples/incident_triage.tln test/incident_triage.tln.test
+./tln build   examples/incident_triage.tln
+./tln test    examples/incident_triage.tln test/incident_triage.tln.test
+./tln explain examples/incident_triage.tln test/incident_triage.tln.test
 ```
 
-`talon test` confirms 100 and 101 are flagged and 102 is not. `talon explain`
+`tln test` confirms 100 and 101 are flagged and 102 is not. `tln explain`
 shows the rendered class per incident:
 
 ```
@@ -103,12 +103,12 @@ Every prediction carries its neighbours in the explanation: the `k` training
 rows that voted, each with its id, label, and distance. That's the audit
 trail — "incident 100 was called `bearing` because its five nearest resolved
 incidents (#1, #4, #2, #5, #3) were all bearing failures" — not a black-box
-score. This is the same first-class-explanation contract every Talon ML
+score. This is the same first-class-explanation contract every tln ML
 primitive follows (see [ADR-0001](design/0001-ml-runtime-strategy.md)).
 
 ## Limitations
 
-- **`talon test` / `talon explain` are fully supported.** The `talon run`
+- **`tln test` / `tln explain` are fully supported.** The `tln run`
   executor path doesn't yet materialise the in-memory training set for
   multi-attribute primitives (the same pending work `find similar` and
   `cluster` need); classify degrades to "no predictions" there rather than

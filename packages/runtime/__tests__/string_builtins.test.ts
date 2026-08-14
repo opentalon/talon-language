@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { resolveExpr, type EvalContext } from "../src/evaluator"
 import { lex } from "../src/lexer"
 import { parse } from "../src/parser"
-import { TalonStore } from "../src/store"
+import { TlnStore } from "../src/store"
 
 // evalExprString parses `<expr>` as the left side of a rule condition and
 // evaluates it against the given state.
@@ -39,7 +39,7 @@ describe("string builtins — evaluation", () => {
 
 describe("string builtins — in a rule action", () => {
   it("resolves a string function as an action argument", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const fired: any[] = []
     store.set("recall_code", "rb7")
     store.loadRules(`

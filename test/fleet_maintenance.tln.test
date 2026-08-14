@@ -1,8 +1,8 @@
 // Fleet maintenance test suite.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/fleet_maintenance.tln examples/fleet_maintenance.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/fleet_maintenance.tln examples/fleet_maintenance.tln.test
 
 test "Overdue service flags only overdue vehicles" {
   given {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { lex } from "../src/lexer"
 import { parse } from "../src/parser"
-import { TalonStore } from "../src/store"
+import { TlnStore } from "../src/store"
 
 describe("modules — reactive runtime", () => {
   it("namespaces exported rules and defines as ns.name", () => {
@@ -37,7 +37,7 @@ describe("modules — reactive runtime", () => {
   })
 
   it("a namespaced define resolves at runtime via its qualified name", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const fired: any[] = []
     store.loadRules(`
       module "fleet.ui" {

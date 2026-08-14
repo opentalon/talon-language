@@ -1,8 +1,8 @@
 // Test suite for talooner_review.tln — the Talooner phase-0 exit artifact.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/talooner_review.tln examples/talooner_review.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/talooner_review.tln examples/talooner_review.tln.test
 //
 // Synthetic PR facts only. No GitHub, no cluster, no bot.
 //

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/diagnostic"
 )
 
 func TestValidateThresholdClean(t *testing.T) {

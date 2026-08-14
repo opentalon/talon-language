@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { TalonStore } from "../src/store"
+import { TlnStore } from "../src/store"
 import { lex } from "../src/lexer"
 import { parse } from "../src/parser"
 
@@ -51,7 +51,7 @@ describe("control flow — parsing", () => {
 
 describe("control flow — evaluation", () => {
   it("takes the then branch when the guard holds", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const fired: any[] = []
     store.loadRules(`
       rule "Severity" {
@@ -69,7 +69,7 @@ describe("control flow — evaluation", () => {
   })
 
   it("takes the else branch when the guard is false", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const fired: any[] = []
     store.loadRules(`
       rule "Severity" {
@@ -87,7 +87,7 @@ describe("control flow — evaluation", () => {
   })
 
   it("iterates a list literal, binding the loop variable per element", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const fired: any[] = []
     store.loadRules(`
       rule "Fan out" {
@@ -104,7 +104,7 @@ describe("control flow — evaluation", () => {
   })
 
   it("iterates over a store array path", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const fired: any[] = []
     store.set("channels", ["a", "b", "c"])
     store.loadRules(`
@@ -122,7 +122,7 @@ describe("control flow — evaluation", () => {
   })
 
   it("runs while until the mutable guard flips, then stops", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const fired: any[] = []
     store.set("pending", 3)
     store.loadRules(`

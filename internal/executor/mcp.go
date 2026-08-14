@@ -26,7 +26,7 @@ type QueuedCall struct {
 }
 
 // Queue receives `remediate queue` calls for later, host-driven dispatch.
-// batch is a free-form group name Talon does not interpret.
+// batch is a free-form group name tln does not interpret.
 type Queue interface {
 	Enqueue(ctx context.Context, batch string, call QueuedCall) error
 }

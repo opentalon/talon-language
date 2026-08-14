@@ -1,6 +1,6 @@
 // Escalation playbook — imperative control flow inside a remediate body.
 //
-// Groundwork for self-hosting (issue #13): Talon's declarative blocks gain
+// Groundwork for self-hosting (issue #13): Tln's declarative blocks gain
 // `if`/`else` branching and `for each` iteration in their action bodies. The
 // guards reuse the ordinary condition grammar (`attr "priority" == "CRITICAL"`
 // is the same condition a `when`/`having` clause accepts) and are evaluated
@@ -10,8 +10,8 @@
 // state to be useful, so it is not exercised here.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/escalation_playbook.tln test/escalation_playbook.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/escalation_playbook.tln test/escalation_playbook.tln.test
 
 detect "Overdue for service" {
   for records where type == "vehicle"

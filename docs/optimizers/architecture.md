@@ -7,7 +7,7 @@ per-backend worked examples in this folder.
 ## Package responsibilities
 
 ```
-internal/optimize/        Pure algorithms — no Talon types
+internal/optimize/        Pure algorithms — no tln types
   ├── doc.go              Package preamble
   ├── types.go            Direction, Objective, Individual, Solution, Result
   ├── pareto.go           NSGA-II non-dominated sort + crowding distance
@@ -17,13 +17,13 @@ internal/optimize/        Pure algorithms — no Talon types
   ├── ilp.go              0/1 branch-and-bound, ILPProblem + LinearConstraint
   └── *_test.go           Knapsack / square-TSP / hand fixtures with known optima
 
-internal/executor/        Talon → optimize bridge for production runs
+internal/executor/        tln → optimize bridge for production runs
   ├── optimize.go         optimize_pareto dispatch
   ├── optimize_ga.go      optimize_ga dispatch + aggregate closures
   ├── optimize_aco.go     optimize_aco dispatch
   └── optimize_ilp.go     optimize_ilp dispatch + linear coefficient extractor
 
-internal/testrunner/      Talon → optimize bridge for `talon test` and `talon explain`
+internal/testrunner/      tln → optimize bridge for `tln test` and `tln explain`
   ├── optimize.go         Pareto narrowing for in-memory entities
   ├── optimize_ga.go      GA narrowing
   └── optimize_aco_ilp.go ACO + ILP narrowings, Decision evidence builders
@@ -47,7 +47,7 @@ A combine block goes through this pipeline:
 ```
 
 The same plan runs through the **testrunner** path when invoked by
-`talon test` or `talon explain`, with in-memory `entity` fixtures
+`tln test` or `tln explain`, with in-memory `entity` fixtures
 standing in for a real Datalevin store. The narrowing functions in
 `internal/testrunner/optimize*.go` mirror the executor's dispatchers
 on this lighter substrate.
@@ -62,7 +62,7 @@ The pattern is well-trodden. To add (say) Simulated Annealing:
 3. **Parser.** Recognize the clauses inside `parseCombine`.
 4. **Validator.** Reject invalid combinations (e.g., SA on multi-objective).
 5. **Algorithm in `internal/optimize/<name>.go`.** Pure functions; no
-   Talon types in the package.
+   tln types in the package.
 6. **Planner branch.** A `planCombine<Name>` that emits the right
    `FuncOptimize<Name>` constant in a `GoComputation` step.
 7. **Executor dispatcher.** Add a case in `execComputation`'s switch
@@ -84,7 +84,7 @@ needs Pareto selection — it's exported test-helper-style for this.
 ## Explanation contract
 
 Every optimizer is responsible for synthesizing per-entity Decision
-evidence that `talon explain` can render. The pattern (see
+evidence that `tln explain` can render. The pattern (see
 `internal/testrunner/optimize_aco_ilp.go`) is:
 
 ```go

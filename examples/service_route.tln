@@ -7,9 +7,9 @@
 // without select). ACO is the right backend; combine + `sequence` opts
 // in. The technician visits every flagged vehicle exactly once.
 //
-//   ./talon build examples/service_route.tln
-//   ./talon test examples/service_route.tln test/service_route.tln.test
-//   ./talon explain examples/service_route.tln test/service_route.tln.test
+//   ./tln build examples/service_route.tln
+//   ./tln test examples/service_route.tln test/service_route.tln.test
+//   ./tln explain examples/service_route.tln test/service_route.tln.test
 
 define "needs_service" {
   type == "item"

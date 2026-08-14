@@ -6,11 +6,11 @@ Tier 1 implemented (this PR). Tiers 2 and 3 deferred — see "Roadmap" below.
 
 ## Context
 
-Talon's pitch is deterministic, audit-first reasoning. The README promises:
+tln's pitch is deterministic, audit-first reasoning. The README promises:
 
 > Detections are explainable and auditable.
 
-Today, the explainability surface is mostly developer-facing: `talon
+Today, the explainability surface is mostly developer-facing: `tln
 trace` emits JSON, and ML primitives carry an `Explanation` struct. A
 procurement manager looking at a "*Order 100 bags of cement*"
 recommendation cannot see *why* without help from an engineer.
@@ -60,10 +60,10 @@ type Fact struct {
 }
 ```
 
-### `talon explain` command
+### `tln explain` command
 
 ```
-talon explain <rules.tln> <tests.tln.test> [--test NAME] [--json]
+tln explain <rules.tln> <tests.tln.test> [--test NAME] [--json]
 ```
 
 Renders a Tier-1 view for every Decision produced by the test fixtures.
@@ -135,10 +135,10 @@ Two policies make the Tier-1 view readable:
 - **Confidence computation.** The `Confidence` field is present but
   not populated. Wiring it from ML primitives' confidence scores is
   follow-up work, not blocking the Tier-1 demo.
-- **Recommend in `talon test` flagged assertions.** Recommend blocks
+- **Recommend in `tln test` flagged assertions.** Recommend blocks
   don't populate the testrunner's `flagged` set today (their plan
   has no `DatalevinQuery` step). `Decisions` works around it via
-  upstream chain walking, but `talon test`'s assertion checker
+  upstream chain walking, but `tln test`'s assertion checker
   doesn't — out of scope for Tier 1.
 
 ## Roadmap
@@ -146,7 +146,7 @@ Two policies make the Tier-1 view readable:
 - **Tier 2 (Datalevin extension).** Surface per-datom transaction time
   through the `FactStore` interface; populate `Fact.ObservedAt`
   truthfully; add `Fact.Source` from MCP ingest metadata. Adds an
-  `--audit` flag to `talon explain` that emits the full chain with
+  `--audit` flag to `tln explain` that emits the full chain with
   source attribution.
 - **Tier 3 (talon-db).** Persist `Decision` records keyed by stable
   IDs; replay decisions against historical fact states; counter-factual
@@ -161,6 +161,6 @@ Two policies make the Tier-1 view readable:
   produces per-test `[]Decision` with cross-block linking.
 - `internal/testrunner/decisions_test.go` — cement detect + recommend
   end-to-end.
-- `cmd/talon/main.go` — `runExplain()` and `explain` subcommand.
+- `cmd/tln/main.go` — `runExplain()` and `explain` subcommand.
 - `examples/cement_explain.tln`, `test/cement_explain.tln.test` —
   Tier-1 demo fixture.

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	adapterpkg "github.com/opentalon/talon-language/internal/talondb"
+	"github.com/opentalon/tln-language/internal/factstore"
+	adapterpkg "github.com/opentalon/tln-language/internal/talondb"
 	pb "github.com/opentalon/talon-db/proto/talondbpb"
 
 	"google.golang.org/grpc"

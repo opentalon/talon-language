@@ -5,7 +5,7 @@ about the **past**: did the inner condition hold about this record *N units
 ago*? It is how an agent reasons about change — "flag machines that are
 defective now but were certified 90 days ago."
 
-```talon
+```tln
 detect "Certification regressed" {
   for records where type == "machine"
     and status == "defective"

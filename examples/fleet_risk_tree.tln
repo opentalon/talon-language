@@ -5,8 +5,8 @@
 // the kNN `using model` in fleet_risk.tln.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/fleet_risk_tree.tln test/fleet_risk_tree.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/fleet_risk_tree.tln test/fleet_risk_tree.tln.test
 
 import "risk.tree"
 

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/lexer"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/validator"
+	"github.com/opentalon/tln-language/internal/lexer"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/validator"
 )
 
 // installLogCapture swaps in a JSON logger writing to a buffer for the
@@ -21,8 +21,8 @@ func installLogCapture(t *testing.T) (*bytes.Buffer, func() []map[string]any) {
 	t.Helper()
 	var buf bytes.Buffer
 	h := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
-	talonlog.SetDefault(slog.New(h))
-	t.Cleanup(func() { talonlog.SetDefault(nil) })
+	tlnlog.SetDefault(slog.New(h))
+	t.Cleanup(func() { tlnlog.SetDefault(nil) })
 	return &buf, func() []map[string]any {
 		var out []map[string]any
 		for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {

@@ -1,6 +1,6 @@
 # Ant Colony Optimization — worked example
 
-When the decision is an **ordering**, not a subset, Talon routes the
+When the decision is an **ordering**, not a subset, tln routes the
 `combine` block to Ant Colony Optimization. Use `sequence` instead of
 `select K from records`.
 
@@ -10,9 +10,9 @@ A service technician will visit every overdue vehicle in the depot
 yard today. The visit order matters — total walking distance scales
 non-linearly with sequence. We want the shortest Hamiltonian tour.
 
-## Talon source
+## tln source
 
-```talon
+```tln
 define "needs_service" {
   type == "item" and category == "Vehicles" and status == "overdue"
 }
@@ -46,7 +46,7 @@ GoComputation  optimize_aco(candidates) → tour
 - No `select K` — sequence mode visits every candidate, never a subset.
 - No `subject_to` — not yet supported in sequence mode.
 
-## What `talon explain` shows
+## What `tln explain` shows
 
 ```
 COMBINE   Service tour — stop 1 of 4 on the shortest tour (length 40.00 via (yard_x, yard_y))

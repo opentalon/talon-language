@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	talonlog "github.com/opentalon/talon-language/internal/log"
+	"github.com/opentalon/tln-language/internal/ast"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
 )
 
 // failNTimes returns a handler that errors on the first n calls, then
@@ -82,9 +82,9 @@ func TestDispatchMCP_SkipSwallowsFailure(t *testing.T) {
 
 func TestDispatchMCP_LogInterpolatesErrorAndRow(t *testing.T) {
 	var buf bytes.Buffer
-	orig := talonlog.Default()
-	talonlog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
-	defer talonlog.SetDefault(orig)
+	orig := tlnlog.Default()
+	tlnlog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer tlnlog.SetDefault(orig)
 
 	mock := &mockMCP{handler: func(_, _ string, _ map[string]any) (any, error) {
 		return nil, errors.New("connection refused")

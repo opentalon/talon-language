@@ -6,7 +6,7 @@ Implemented.
 
 ## Context
 
-Talon's `find similar` primitive (`internal/planner/planner.go:18`,
+tln's `find similar` primitive (`internal/planner/planner.go:18`,
 `internal/mlruntime/...`) ranks entities by pairwise feature distance —
 cosine on hand-engineered vectors per ADR-0001. That's the right answer
 for "give me records that look alike on attributes A, B, C," but a
@@ -15,10 +15,10 @@ known weakness: it can't follow multi-hop relations.
 HippoRAG ([NeurIPS '24](https://arxiv.org/abs/2405.14831)) demonstrated
 that Personalized PageRank (PPR) over a graph built from a corpus
 recovers multi-hop relevance without per-query LLM inference. That
-property aligns with Talon's deterministic, audit-first contract — the
+property aligns with tln's deterministic, audit-first contract — the
 graph build and the power iteration are pure functions of the input.
 
-We want associative-memory retrieval inside Talon for use cases that
+We want associative-memory retrieval inside tln for use cases that
 `find similar` cannot serve cleanly:
 
 - "Find parts related to this part" via shared categories, suppliers,
@@ -102,7 +102,7 @@ O(triples × avg-bucket-size); query is O(iterations × edges).
 
 ## Language Surface
 
-```talon
+```tln
 // Standalone: rank stock items most associated with part 808.
 find related "Co-consumed parts" {
   for records where type == "stock_item"
@@ -165,12 +165,12 @@ Tested in `internal/mlruntime/ppr_test.go::TestPPRDeterministic*`.
   unfiltered FactStore data should set per-attribute weights or
   exclude lists.
 - **Cold-start.** First call on a large FactStore pays the full
-  snapshot build. A `talon graph warm` CLI is out of scope for v1.
+  snapshot build. A `tln graph warm` CLI is out of scope for v1.
 - **Performance ceiling.** Power iteration is O(iters × edges).
   Interactive query latency holds to ~10M edges; beyond that, switch
   to push-based PPR via the `mlruntime.Backend` escape hatch reserved
   in ADR-0001.
-- **Numeric vs string IDs.** Talon test rows use integer IDs; the
+- **Numeric vs string IDs.** tln test rows use integer IDs; the
   primitive parses entity strings back with a hash fallback. The
   original string always lives in `Explanation.Inputs["entity"]` so
   audit trails round-trip cleanly.

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 	pb "github.com/opentalon/talon-db/proto/talondbpb"
 )
 
@@ -21,7 +21,7 @@ import (
 //
 // Other recursive rule shapes — arbitrary user-defined recursion,
 // rules without a :category/parent step — return ErrUnsupported with
-// a clear message. Talon-language's MemoryStore covers those today;
+// a clear message. Tln-language's MemoryStore covers those today;
 // users who need them stay on the in-memory or Datalevin backends
 // until the adapter grows a general semi-naive evaluator.
 type ruleResolution struct {
@@ -139,7 +139,7 @@ func (r *ruleResolution) resolve(ctx context.Context, call *factstore.RuleCall) 
 //   - One Descendants RPC to enumerate descendant docIDs.
 //   - One Query per descendant docID to resolve back to its
 //     `:category/name`. Could be batched in a future PR; for the
-//     tree sizes talon-language consumers exercise (~dozens), the
+//     tree sizes tln-language consumers exercise (~dozens), the
 //     per-doc round-trip is fine.
 func (r *ruleResolution) descendantNames(ctx context.Context, root any) (map[any]bool, error) {
 	out := map[any]bool{root: true}

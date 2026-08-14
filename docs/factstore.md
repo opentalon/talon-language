@@ -1,10 +1,10 @@
-# FactStore — Talon's database abstraction
+# FactStore — tln's database abstraction
 
-Talon's compiler and runtime never talk to a database directly. They talk
+tln's compiler and runtime never talk to a database directly. They talk
 to the **FactStore** interface — a small Go contract any backend can
 implement. Two implementations ship today (Datalevin over HTTP, in-process
 MemoryStore); a future SQL or purpose-built backend plugs in without
-touching the planner or executor. See [issue #14](https://github.com/opentalon/talon-language/issues/14).
+touching the planner or executor. See [issue #14](https://github.com/opentalon/tln-language/issues/14).
 
 ## The interface
 
@@ -60,10 +60,10 @@ holds facts in a `map[int]map[string]any` keyed by record-ID and
 evaluates `Query` values directly with first-attempt variable binding +
 short-circuit clause matching. No serialisation, no network, no JVM.
 
-### `talon run --store memory`
+### `tln run --store memory`
 
 ```bash
-talon run examples/cement_explain.tln --store memory --seed test/cement_explain.tln.test
+tln run examples/cement_explain.tln --store memory --seed test/cement_explain.tln.test
 # → 2 entities seeded, "Cement running low" matches 1 row, no Datalevin sidecar required.
 ```
 
@@ -87,13 +87,13 @@ func (s *MyStore) Assert(ctx context.Context, facts []factstore.Fact) error {
 }
 ```
 
-Wire it into `pkg/talon.WithFactStore(MyStore{...})` for embedded use,
-or behind a new `--store` value in `cmd/talon/main.go`.
+Wire it into `pkg/tln.WithFactStore(MyStore{...})` for embedded use,
+or behind a new `--store` value in `cmd/tln/main.go`.
 
 ## Helpful affordances
 
 - `Query.String()` renders any query as Datalog text (used by the
-  Datalevin client, the test runner's trace output, and `talon build`'s
+  Datalevin client, the test runner's trace output, and `tln build`'s
   step listing).
 - `MemoryStore.Snapshot()` returns a deep copy of the entity map for
   display (used by the REPL's `:facts` command).
@@ -110,5 +110,5 @@ time-travel queries, and explicit retraction respectively), rather than
 sitting on the interface as undefined optional methods.
 
 A SQL backend (Postgres / SQLite) and the eventual `talon-db` custom
-engine are tracked under [#14](https://github.com/opentalon/talon-language/issues/14)
-and [#4](https://github.com/opentalon/talon-language/issues/4).
+engine are tracked under [#14](https://github.com/opentalon/tln-language/issues/14)
+and [#4](https://github.com/opentalon/tln-language/issues/4).

@@ -23,7 +23,7 @@ trail — completely deterministic.
 
 ## Syntax
 
-```talon
+```tln
 detect "Tuned consumption anomaly" {
   for records where type == "stock_item"
     and attr "weekly_consumption" is anomaly compared_to last 12 weeks
@@ -35,9 +35,9 @@ detect "Tuned consumption anomaly" {
 ```
 
 The `tune against test "name"` clause names a labeled `test` block (in the
-same `.tln.test` file passed to `talon test` or `talon explain`):
+same `.tln.test` file passed to `tln test` or `tln explain`):
 
-```talon
+```tln
 test "labeled_consumption_history" {
   given {
     // ... 12 stock_items with weekly_consumption values ...
@@ -52,13 +52,13 @@ test "labeled_consumption_history" {
 }
 ```
 
-Talon reads the `expect flagged X` lines as **ground-truth positive labels**;
+tln reads the `expect flagged X` lines as **ground-truth positive labels**;
 entities in `given` that aren't listed positive are negative under
 closed-world assumption.
 
 ## What happens at evaluation time
 
-At `talon test` / `talon explain`:
+At `tln test` / `tln explain`:
 
 1. The testrunner scans every detect block for a `tune` clause.
 2. For each, it locates the named labeled test, extracts entities + labels.
@@ -70,7 +70,7 @@ At `talon test` / `talon explain`:
 Cost: 40-100ms of one-time ABC for a 100-row fixture. Subsequent evaluations
 use the cached value with no overhead.
 
-## What `talon explain` shows
+## What `tln explain` shows
 
 ```
 COMBINE   Tuned consumption anomaly — Coolant (entity #411) flagged
@@ -161,7 +161,7 @@ just below the cutoff. ABC searches percentile ∈ [50, 99], rounds to
 integer, and finds **p90 with F1 = 1.00** — both labeled vehicles now
 flag, nothing else does.
 
-`talon explain` renders:
+`tln explain` renders:
 
 ```
 WHY
@@ -221,7 +221,7 @@ better fit. That's why we placed it here, not as a `combine` backend.
 
 Right now ABC tunes a single scalar (the z-threshold). If we extend to,
 say, DBSCAN — which needs ε *and* minPts together — ABC handles that
-natively (2-D bounded search). The Talon language surface stays the
+natively (2-D bounded search). The tln language surface stays the
 same (`tune against test`); the internal change is which primitive's
 parameter space we register.
 

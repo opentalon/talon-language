@@ -16,15 +16,15 @@
 // ≤ 5, ≥ 5 samples per leaf), then each in-service machine is walked down the
 // tree to a leaf. The predicted class is the leaf's majority outcome;
 // confidence is the leaf's purity. The splits taken *are* the explanation —
-// `talon explain` shows "operating_hours > 2000 AND repair_count > 3", not an
+// `tln explain` shows "operating_hours > 2000 AND repair_count > 3", not an
 // opaque score.
 //
-//   ./talon build   examples/failure_risk.tln
-//   ./talon test    examples/failure_risk.tln test/failure_risk.tln.test
-//   ./talon explain examples/failure_risk.tln test/failure_risk.tln.test
+//   ./tln build   examples/failure_risk.tln
+//   ./tln test    examples/failure_risk.tln test/failure_risk.tln.test
+//   ./tln explain examples/failure_risk.tln test/failure_risk.tln.test
 //
-// Note: predict runs end-to-end under `talon test` / `talon explain`. The
-// `talon run` executor path shares the pending training-materialisation work
+// Note: predict runs end-to-end under `tln test` / `tln explain`. The
+// `tln run` executor path shares the pending training-materialisation work
 // tracked for the other supervised/multi-attribute primitives — see ADR-0006.
 
 predict "Failure risk" {

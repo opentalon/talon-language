@@ -1,19 +1,19 @@
-package talon
+package tln
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/datalevin"
-	"github.com/opentalon/talon-language/internal/executor"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/imports"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/validator"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/datalevin"
+	"github.com/opentalon/tln-language/internal/executor"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/imports"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/validator"
 )
 
 // FactStore is the storage backend [Run] uses to evaluate detect /
@@ -32,7 +32,7 @@ type FactStore = executor.FactStore
 // contains detect / query blocks that need a fact store. Switch to
 // [Run] with [WithFactStore] (or [WithDatalevinURL] for the default
 // backend) on the same source.
-var ErrRequiresFactStore = errors.New("talon: program contains detect/query blocks; use Run with a FactStore")
+var ErrRequiresFactStore = errors.New("tln: program contains detect/query blocks; use Run with a FactStore")
 
 // WithFactStore installs a FactStore for [Run] and [Seed]. Required
 // for programs containing detect or query blocks; ignored otherwise.
@@ -97,7 +97,7 @@ func (h *healthCheckedClient) check(ctx context.Context) error {
 		return nil
 	}
 	if err := h.client.Health(ctx); err != nil {
-		return fmt.Errorf("talon: datalevin at %s unreachable: %w", h.url, err)
+		return fmt.Errorf("tln: datalevin at %s unreachable: %w", h.url, err)
 	}
 	h.checked = true
 	return nil
@@ -124,7 +124,7 @@ func (h *healthCheckedClient) Retract(ctx context.Context, p factstore.RetractPa
 	return h.client.Retract(ctx, p)
 }
 
-// Run compiles and executes a full Talon source (workflow + detect /
+// Run compiles and executes a full tln source (workflow + detect /
 // query / ML primitives). Returns [ErrRequiresFactStore] when the
 // program needs a fact store but none was wired up.
 //
@@ -132,7 +132,7 @@ func (h *healthCheckedClient) Retract(ctx context.Context, p factstore.RetractPa
 // Compile-stage errors return *CompileError; runtime errors from
 // MCP steps or the fact store surface as plain errors.
 func Run(ctx context.Context, src string, opts ...Option) (*Result, error) {
-	cfg := &runConfig{file: "<talon>"}
+	cfg := &runConfig{file: "<tln>"}
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -180,7 +180,7 @@ func Run(ctx context.Context, src string, opts ...Option) (*Result, error) {
 // out of the public surface.
 func Seed(ctx context.Context, store FactStore, src string, opts ...Option) (int, error) {
 	if store == nil {
-		return 0, errors.New("talon: Seed requires a FactStore")
+		return 0, errors.New("tln: Seed requires a FactStore")
 	}
 
 	cfg := &runConfig{file: "<seed>"}

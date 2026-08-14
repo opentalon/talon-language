@@ -6,22 +6,22 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/datalevin"
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/executor"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/talondb"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/datalevin"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/executor"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/talondb"
 )
 
-// runCollect dispatches `talon collect <list|run> ...`. Talon does not run
+// runCollect dispatches `tln collect <list|run> ...`. tln does not run
 // a scheduler: `list` emits schedule metadata for a host cron to consume,
 // and `run` fires one execution when the host decides to.
 func runCollect() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: talon collect <list|run> <file.tln> [--name NAME] [--store ...]")
+		fmt.Fprintln(os.Stderr, "usage: tln collect <list|run> <file.tln> [--name NAME] [--store ...]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	switch os.Args[2] {
@@ -30,7 +30,7 @@ func runCollect() {
 	case "run":
 		runCollectRun()
 	default:
-		fmt.Fprintf(os.Stderr, "talon collect: unknown subcommand %q (want list or run)\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "tln collect: unknown subcommand %q (want list or run)\n", os.Args[2])
 		os.Exit(diagnostic.ExitUsage)
 	}
 }
@@ -49,7 +49,7 @@ type collectInfo struct {
 // populate its own job queue.
 func runCollectList() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon collect list <file.tln>")
+		fmt.Fprintln(os.Stderr, "usage: tln collect list <file.tln>")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	blocks := parseCollectBlocks(os.Args[3])
@@ -64,7 +64,7 @@ func runCollectList() {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(out); err != nil {
-		fmt.Fprintf(os.Stderr, "talon collect list: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln collect list: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 }
@@ -75,7 +75,7 @@ func runCollectList() {
 // the SDK; here `run` wires the store and reports what was asserted.
 func runCollectRun() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: talon collect run <file.tln> --name NAME [--store memory|datalevin|talon-db]")
+		fmt.Fprintln(os.Stderr, "usage: tln collect run <file.tln> --name NAME [--store memory|datalevin|talon-db]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	path := os.Args[3]
@@ -104,7 +104,7 @@ func runCollectRun() {
 		}
 	}
 	if name == "" {
-		fmt.Fprintln(os.Stderr, "talon collect run: --name is required")
+		fmt.Fprintln(os.Stderr, "tln collect run: --name is required")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
@@ -116,7 +116,7 @@ func runCollectRun() {
 		}
 	}
 	if target == nil {
-		fmt.Fprintf(os.Stderr, "talon collect run: no collect block named %q in %s\n", name, path)
+		fmt.Fprintf(os.Stderr, "tln collect run: no collect block named %q in %s\n", name, path)
 		os.Exit(diagnostic.ExitError)
 	}
 
@@ -127,12 +127,12 @@ func runCollectRun() {
 	// injects a caller via the SDK; here the fetch is a no-op.
 	n, err := exec.RunCollect(ctx, target)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon collect run: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln collect run: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	fmt.Printf("collected %d record(s) for %q\n", n, name)
 	if exec.MCP == nil {
-		fmt.Fprintln(os.Stderr, "note: standalone talon has no MCP transport; a host drives collection via the SDK (WithMCP).")
+		fmt.Fprintln(os.Stderr, "note: standalone tln has no MCP transport; a host drives collection via the SDK (WithMCP).")
 	}
 }
 
@@ -141,7 +141,7 @@ func runCollectRun() {
 func parseCollectBlocks(path string) []*ast.CollectBlock {
 	src, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "talon collect: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tln collect: %v\n", err)
 		os.Exit(diagnostic.ExitError)
 	}
 	label := path
@@ -178,7 +178,7 @@ func collectStore(ctx context.Context, kind, serverURL, talondbURL, tenant strin
 	case "talon-db":
 		tdb, err := talondb.NewClient(ctx, talondbURL)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "talon collect run: dial talondb-server at %s: %v\n", talondbURL, err)
+			fmt.Fprintf(os.Stderr, "tln collect run: dial talondb-server at %s: %v\n", talondbURL, err)
 			os.Exit(diagnostic.ExitError)
 		}
 		if tenant != "" {
@@ -186,7 +186,7 @@ func collectStore(ctx context.Context, kind, serverURL, talondbURL, tenant strin
 		}
 		return talondb.New(tdb)
 	default:
-		fmt.Fprintf(os.Stderr, "talon collect run: unknown --store %q (want memory, datalevin, or talon-db)\n", kind)
+		fmt.Fprintf(os.Stderr, "tln collect run: unknown --store %q (want memory, datalevin, or talon-db)\n", kind)
 		os.Exit(diagnostic.ExitUsage)
 		return nil
 	}

@@ -1,7 +1,7 @@
 // Imports shared.tln's defines and uses them in a detect block.
 // Compile + test with:
-//   ./talon build examples/imports/main.tln
-//   ./talon test  examples/imports/main.tln test/imports.tln.test
+//   ./tln build examples/imports/main.tln
+//   ./tln test  examples/imports/main.tln test/imports.tln.test
 
 import "./shared.tln"
 

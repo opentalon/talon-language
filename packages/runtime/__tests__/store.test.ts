@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest"
-import { TalonStore } from "../src/store"
+import { TlnStore } from "../src/store"
 
-describe("TalonStore", () => {
+describe("TlnStore", () => {
   it("loads rules and evaluates on set", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const actions: any[] = []
 
     store.loadRules(`
@@ -20,7 +20,7 @@ describe("TalonStore", () => {
   })
 
   it("does not fire rule when condition is false", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const actions: any[] = []
 
     store.loadRules(`
@@ -37,7 +37,7 @@ describe("TalonStore", () => {
   })
 
   it("supports cross-form rules", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const bookingActions: any[] = []
 
     store.loadRules(`
@@ -56,7 +56,7 @@ describe("TalonStore", () => {
   })
 
   it("supports tagged rule loading and unloading", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const actions: any[] = []
 
     store.loadRules(`rule "R1" { when "a" == 1 do show "x" }`, { tag: "set1" })
@@ -77,7 +77,7 @@ describe("TalonStore", () => {
   })
 
   it("fires changes condition only when path changes", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const emitted: string[] = []
 
     store.registerAction("emit", (event: string) => emitted.push(event))
@@ -97,7 +97,7 @@ describe("TalonStore", () => {
   })
 
   it("executes built-in set action", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
 
     store.loadRules(`
       rule "Calc subtotal" {
@@ -113,7 +113,7 @@ describe("TalonStore", () => {
   })
 
   it("executes validate action with pattern", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const actions: any[] = []
 
     store.loadRules(`
@@ -139,7 +139,7 @@ describe("TalonStore", () => {
   })
 
   it("calls registered action handlers", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const shown: string[] = []
 
     store.registerAction("show", (path: string) => shown.push(path))
@@ -155,7 +155,7 @@ describe("TalonStore", () => {
   })
 
   it("supports define references", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const actions: any[] = []
 
     store.loadRules(`
@@ -181,7 +181,7 @@ describe("TalonStore", () => {
   })
 
   it("resolves nested data paths", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const actions: any[] = []
 
     store.loadRules(`
@@ -205,7 +205,7 @@ describe("TalonStore", () => {
   })
 
   it("subscriber prefix filters actions", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const searchActions: any[] = []
     const bookingActions: any[] = []
 
@@ -226,7 +226,7 @@ describe("TalonStore", () => {
   })
 
   it("unsubscribe works", () => {
-    const store = new TalonStore()
+    const store = new TlnStore()
     const actions: any[] = []
 
     store.loadRules(`rule "R" { when "a" == 1 do show "x" }`)

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — implements [opentalon/talon-language#70](https://github.com/opentalon/talon-language/issues/70), gates parent [#11](https://github.com/opentalon/talon-language/issues/11).
+Proposed — implements [opentalon/tln-language#70](https://github.com/opentalon/tln-language/issues/70), gates parent [#11](https://github.com/opentalon/tln-language/issues/11).
 
 ## Context
 
@@ -61,7 +61,7 @@ expresses today.
    `execMLComputation` (`internal/executor/executor.go:704`) builds
    `Input{Rows, Schema, Params}` with no `Entities`; only the testrunner's
    `narrowByML` populates it (`testrunner.go:949`). Multi-attribute
-   primitives therefore only function under `talon test` today. kNN
+   primitives therefore only function under `tln test` today. kNN
    inherits this.
 
 5. **Class→label and confidence-filter are unwired.** A kNN result is a
@@ -165,11 +165,11 @@ Both dispatch paths materialise it:
   yet feed `Entities`/`Training` to *any* multi-attribute primitive
   (cosine / DBSCAN are equally test-only there). Rather than special-case
   classify, that materialisation is deferred as shared follow-up work
-  (gap #4). To avoid regressing `talon run`, the primitive degrades to "no
+  (gap #4). To avoid regressing `tln run`, the primitive degrades to "no
   predictions" when no training reaches it, and the executor treats a
   string-valued (labeling) result as non-filtering so candidate rows pass
   through unchanged. **kNN is delivered and verified through the testrunner**
-  (`talon test` / `talon explain`) — the same bar `forecast`, `wma`, and the
+  (`tln test` / `tln explain`) — the same bar `forecast`, `wma`, and the
   other primitives are held to.
 
 ### 4. The primitive — `internal/mlruntime/classify.go`
@@ -242,7 +242,7 @@ whichever labeled cluster it is numerically nearest.
 ## Out of scope (follow-ups)
 
 - **Executor entity/training materialisation (gap #4)** — shared with
-  cosine / DBSCAN; lifts classify from testrunner-only to `talon run`.
+  cosine / DBSCAN; lifts classify from testrunner-only to `tln run`.
 - **Validator flag for `{class}` outside classify** — template refs aren't
   validated today (unknown refs render as literal `{...}`); adding ref
   validation is its own change. `{class}` simply renders empty elsewhere.

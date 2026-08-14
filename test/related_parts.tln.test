@@ -11,8 +11,8 @@
 //   - no clique-B node (811/812/813) appears in the top 3
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/related_parts.tln test/related_parts.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/related_parts.tln test/related_parts.tln.test
 
 test "PPR ranks clique-A neighbours above clique-B" {
   given {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"unicode"
 
-	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/diagnostic"
 )
 
 type TokenType int

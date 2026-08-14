@@ -1,8 +1,8 @@
-// Package repl implements `talon repl` — an interactive read-eval-print loop
+// Package repl implements `tln repl` — an interactive read-eval-print loop
 // that lets users assert facts, define blocks inline, and evaluate them
 // against an in-memory store. See issue #21.
 //
-// The REPL reuses the same lex/parse/validate/plan pipeline as `talon build`
+// The REPL reuses the same lex/parse/validate/plan pipeline as `tln build`
 // and the testrunner's in-memory evaluator. It does not introduce a new
 // FactStore implementation; instead, it synthesises a TestBlock per eval so
 // the testrunner's existing in-memory path runs unchanged.
@@ -11,8 +11,8 @@ package repl
 import (
 	"sort"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 // Session holds everything the REPL accumulates across one interactive
@@ -30,7 +30,7 @@ type Session struct {
 	// `on` blocks is loaded (via :load or a preloaded file). Asserting a
 	// fact then fires matching on-blocks and prints the result. See
 	// watch.go.
-	watch *talon.Session
+	watch *tln.Session
 }
 
 // NewSession returns an empty session.

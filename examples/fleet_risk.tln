@@ -7,8 +7,8 @@
 // it as a Go-registered model under the same qualified name.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/fleet_risk.tln test/fleet_risk.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/fleet_risk.tln test/fleet_risk.tln.test
 
 import "fleet.ml"
 

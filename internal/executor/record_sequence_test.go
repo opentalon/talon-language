@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 // emitRecord writes one timestamped record of the given type pointing

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 func seedFleet(t *testing.T) *Adapter {

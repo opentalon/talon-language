@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	talondbadapter "github.com/opentalon/talon-language/internal/talondb"
+	talondbadapter "github.com/opentalon/tln-language/internal/talondb"
 
 	"github.com/opentalon/talon-db/bboltstore"
 	"github.com/opentalon/talon-db/grpcserver"

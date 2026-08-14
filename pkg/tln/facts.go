@@ -1,6 +1,6 @@
-package talon
+package tln
 
-import "github.com/opentalon/talon-language/internal/factstore"
+import "github.com/opentalon/tln-language/internal/factstore"
 
 // Fact is a single EAV triple written to a FactStore. RecordID +
 // Attribute identify the cell; Value carries the data. Entity holds the

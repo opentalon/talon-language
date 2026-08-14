@@ -9,9 +9,9 @@
 //   detect "Recall candidates" — overdue AND a recalled model
 //   recommend "Book recall"    — fires off the detect
 //
-//   ./talon build   examples/vehicle_recall.tln
-//   ./talon test    examples/vehicle_recall.tln test/vehicle_recall.tln.test
-//   ./talon explain examples/vehicle_recall.tln test/vehicle_recall.tln.test
+//   ./tln build   examples/vehicle_recall.tln
+//   ./tln test    examples/vehicle_recall.tln test/vehicle_recall.tln.test
+//   ./tln explain examples/vehicle_recall.tln test/vehicle_recall.tln.test
 //
 // v1 is arity-1 and non-recursive (the validator rejects cycles). Recursive /
 // arity-N predicates via the FactStore's recursive rule resolver are a tracked

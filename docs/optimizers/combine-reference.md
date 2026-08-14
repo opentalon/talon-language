@@ -1,6 +1,6 @@
 # `combine` block — language reference
 
-The `combine` block is Talon's optimization construct. This page is the
+The `combine` block is tln's optimization construct. This page is the
 authoritative reference for every clause it accepts and how clauses
 combine. For "when do I use combine", see the
 [optimizer overview](./README.md).
@@ -44,10 +44,10 @@ a single `*ast.CombineBlock`.
 
 ### `for ... where ...`
 
-Standard Talon selector. Filters the candidate population that the
+Standard tln selector. Filters the candidate population that the
 optimizer operates on. The same syntax as in `detect`, `rule`, etc.
 
-```talon
+```tln
 for records where type == "stock_item" and status == "active"
 ```
 
@@ -71,7 +71,7 @@ Switches the block to **subset mode**: pick exactly K records to
 optimize over aggregates. Without this, the block ranks individual
 records by their per-row objective values.
 
-```talon
+```tln
 select 3 from records
 ```
 
@@ -85,7 +85,7 @@ an aggregate expression (`total(...)`, `count(...)`, `avg(...)`); the
 RHS must be a numeric literal. Comparison operators: `<=`, `<`, `>=`,
 `>`, `==`, `!=`.
 
-```talon
+```tln
 subject_to total(attr "reorder_cost") <= 5000
 ```
 
@@ -98,7 +98,7 @@ Opt in to ACO routing. Required together. Visits every candidate in
 the optimal Hamiltonian tour minimizing total euclidean distance
 computed from the two coordinate attrs.
 
-```talon
+```tln
 sequence
 coordinates attr "yard_x", attr "yard_y"
 ```
@@ -118,7 +118,7 @@ Route to the ILP exact solver. Requires:
 
 The validator rejects invalid combinations at compile time.
 
-```talon
+```tln
 solver linear
 ```
 
@@ -129,7 +129,7 @@ literal. With a fixed seed, runs are reproducible; without (or with
 0), the runtime uses a stable default (also reproducible — pass any
 non-zero seed for varied runs).
 
-```talon
+```tln
 seed 42
 ```
 
@@ -143,7 +143,7 @@ coordinate). For now, `return` is **advisory** — the result is keyed
 by entity ID regardless. A future revision may filter the result rows
 to just these fields.
 
-```talon
+```tln
 return id, reorder_cost, downstream_blast_radius
 ```
 
@@ -151,9 +151,9 @@ return id, reorder_cost, downstream_blast_radius
 
 Renders a per-entity label using `{item.name}` and `{attr.X}`
 placeholders. Same template syntax as `detect`. Surfaces in
-`Decision.Action` (the first line of `talon explain` output).
+`Decision.Action` (the first line of `tln explain` output).
 
-```talon
+```tln
 label "Reorder {item.name}: ${attr.reorder_cost}, blocks {attr.downstream_blast_radius} jobs"
 ```
 
@@ -162,7 +162,7 @@ label "Reorder {item.name}: ${attr.reorder_cost}, blocks {attr.downstream_blast_
 Surfaces in `Decision.Priority`. Same semantics as other block types —
 informational; sorting/filtering by priority is the caller's job.
 
-```talon
+```tln
 priority HIGH
 ```
 

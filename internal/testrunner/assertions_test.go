@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 func TestRunScoreAndThresholdAssertionsPass(t *testing.T) {
@@ -134,7 +134,7 @@ func runResults(t *testing.T, rulesSrc, testSrc string) []TestResult {
 	if pd.HasErrors() {
 		t.Fatalf("plan: %v", pd)
 	}
-	// Mirror `talon test`: it merges the rules and test programs before
+	// Mirror `tln test`: it merges the rules and test programs before
 	// running, which is what gives the runner access to the source blocks.
 	merged := *rulesProg
 	merged.Blocks = append(merged.Blocks, testProg.Blocks...)

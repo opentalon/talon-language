@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — implements [opentalon/talon-language#71](https://github.com/opentalon/talon-language/issues/71), gates parent [#11](https://github.com/opentalon/talon-language/issues/11). Builds directly on [ADR-0006](0006-classify-knn.md) (supervised-block plumbing).
+Proposed — implements [opentalon/tln-language#71](https://github.com/opentalon/tln-language/issues/71), gates parent [#11](https://github.com/opentalon/tln-language/issues/11). Builds directly on [ADR-0006](0006-classify-knn.md) (supervised-block plumbing).
 
 ## Context
 
@@ -29,7 +29,7 @@ a supervised learner needs a named target, and uniformity with classify beats
 inventing a second convention. (The issue's syntax sketch omitted a target
 column; this is the same correction classify needed.)
 
-```talon
+```tln
 predict "Failure risk" {
   for records where type == "machine" and status == "in_service"
   features [attr "operating_hours", attr "repair_count"]
@@ -75,7 +75,7 @@ Walk(candidate):
 The decision path is the point of a tree. Each split taken is recorded in the
 `Explanation` as a structured `Rule{Attr, Op, Value, Observed}` plus a raw
 string list. The testrunner threads those `Rules` into the Decision's **WHY**
-lines (`ruleWhyLines`), so `talon explain` prints:
+lines (`ruleWhyLines`), so `tln explain` prints:
 
 ```
 WHY
@@ -102,7 +102,7 @@ no-op it was.
 - A second interpretable supervised model, sharing 100% of the classify
   plumbing — the ADR-0006 investment pays off with a ~250-LoC primitive + a
   one-line filter generalisation.
-- Decision paths render in `talon explain` for *any* primitive with `Rules`.
+- Decision paths render in `tln explain` for *any* primitive with `Rules`.
 
 **Paid**
 
@@ -113,7 +113,7 @@ no-op it was.
 
 ## Out of scope (follow-ups)
 
-- **Executor (`talon run`) training materialisation** — shared gap #4 with
+- **Executor (`tln run`) training materialisation** — shared gap #4 with
   classify / cosine / DBSCAN (ADR-0006). `predict` is delivered + verified via
   the testrunner.
 - Configurable `max_depth` / `min_samples_leaf` syntax, cost-complexity

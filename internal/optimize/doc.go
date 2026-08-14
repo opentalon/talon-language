@@ -1,5 +1,5 @@
 // Package optimize implements multi-objective optimization primitives for
-// Talon's `combine` block.
+// tln's `combine` block.
 //
 // v1 ships NSGA-II's fast non-dominated sort + crowding distance from Deb et
 // al. (2002). Each row that satisfies a combine selector becomes one
@@ -7,7 +7,7 @@
 // is a ranked population where rank 0 is the Pareto frontier.
 //
 // The dominated-count, crowding-distance, and rank values flow into the
-// Decision chain (see internal/explain) so `talon explain` can answer "why
+// Decision chain (see internal/explain) so `tln explain` can answer "why
 // did combine pick this entity" with population-relative evidence, the same
 // way the ML primitives in internal/mlruntime emit per-row Explanations.
 // See ADR-0001 for the explainability contract.

@@ -1,8 +1,8 @@
-// Package talon is the public Go SDK for the Talon language.
+// Package tln is the public Go SDK for the tln language.
 //
-// It exposes the compile + execute pipeline that the talon CLI uses
+// It exposes the compile + execute pipeline that the tln CLI uses
 // internally, so other Go programs (in particular the OpenTalon
-// talon-plugin) can run Talon workflow source against a host-supplied
+// tln-plugin) can run tln workflow source against a host-supplied
 // MCP caller without depending on internal packages.
 //
 // This package currently supports workflow-only programs — those whose
@@ -13,8 +13,8 @@
 //
 // Minimal example:
 //
-//	caller := myMCPCaller{...}              // implements talon.MCPCaller
-//	result, err := talon.RunWorkflow(ctx, src, talon.WithMCP(caller))
+//	caller := myMCPCaller{...}              // implements tln.MCPCaller
+//	result, err := tln.RunWorkflow(ctx, src, tln.WithMCP(caller))
 //	if err != nil { ... }
 //	for name, block := range result.Blocks {
 //	    fmt.Println(name, "→", len(block.Steps), "steps")
@@ -31,4 +31,4 @@
 // program and reacts as facts arrive — use [NewSession]. Assert facts
 // into the session and its `on` blocks fire their referenced workflows,
 // returning the [Firing] list for each mutation.
-package talon
+package tln

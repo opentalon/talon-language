@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/constraints"
-	"github.com/opentalon/talon-language/internal/factstore"
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/template"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/constraints"
+	"github.com/opentalon/tln-language/internal/factstore"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/template"
 )
 
 // execRemediate fires a detect/recommend block's remediate body once per
@@ -183,7 +183,7 @@ func (e *Executor) fireMCP(ctx context.Context, call *ast.MCPCall, row map[strin
 			if err := e.Queue.Enqueue(ctx, g.batch, QueuedCall{Server: call.Server, Tool: call.Tool, Args: args}); err != nil {
 				return 0, false, fmt.Errorf("remediate queue %s/%s: %w", call.Server, call.Tool, err)
 			}
-			talonlog.MCPCall(ctx, call.Server, call.Tool, "queued", 0, nil)
+			tlnlog.MCPCall(ctx, call.Server, call.Tool, "queued", 0, nil)
 			return 1, false, nil
 		}
 		return 0, false, nil
@@ -196,10 +196,10 @@ func (e *Executor) fireMCP(ctx context.Context, call *ast.MCPCall, row map[strin
 	// Gate the call according to the mode.
 	switch g.mode {
 	case "auto":
-		talonlog.MCPCall(ctx, call.Server, call.Tool, "auto", 0, nil)
+		tlnlog.MCPCall(ctx, call.Server, call.Tool, "auto", 0, nil)
 	case "approve":
 		if e.ApprovalHook == nil {
-			talonlog.MCPCall(ctx, call.Server, call.Tool, "unapproved", 0, nil)
+			tlnlog.MCPCall(ctx, call.Server, call.Tool, "unapproved", 0, nil)
 			return 0, false, nil // no approver wired → cannot approve
 		}
 		ok, err := e.ApprovalHook(ctx, g.role, g.blockName, args)
@@ -207,10 +207,10 @@ func (e *Executor) fireMCP(ctx context.Context, call *ast.MCPCall, row map[strin
 			return 0, false, fmt.Errorf("remediate approve %s/%s: %w", call.Server, call.Tool, err)
 		}
 		if !ok {
-			talonlog.MCPCall(ctx, call.Server, call.Tool, "denied", 0, nil)
+			tlnlog.MCPCall(ctx, call.Server, call.Tool, "denied", 0, nil)
 			return 0, false, nil
 		}
-		talonlog.MCPCall(ctx, call.Server, call.Tool, "approved", 0, nil)
+		tlnlog.MCPCall(ctx, call.Server, call.Tool, "approved", 0, nil)
 	default: // propose
 		if e.ConfirmHook != nil {
 			proceed, err := e.ConfirmHook(ctx, call.Tool, call.Server, call.Tool)
@@ -218,7 +218,7 @@ func (e *Executor) fireMCP(ctx context.Context, call *ast.MCPCall, row map[strin
 				return 0, false, fmt.Errorf("remediate confirm %s/%s: %w", call.Server, call.Tool, err)
 			}
 			if !proceed {
-				talonlog.MCPCall(ctx, call.Server, call.Tool, "proposed", 0, nil)
+				tlnlog.MCPCall(ctx, call.Server, call.Tool, "proposed", 0, nil)
 				return 0, false, nil
 			}
 		}

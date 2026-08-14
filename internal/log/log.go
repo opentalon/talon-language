@@ -1,4 +1,4 @@
-// Package log is the runtime observability surface for Talon. It wraps
+// Package log is the runtime observability surface for tln. It wraps
 // log/slog with two ergonomic affordances:
 //
 //  1. Init(format, level) configures the package-default logger from CLI
@@ -10,7 +10,7 @@
 //     attribute set the observability RFC (#20) defines. Callers that need
 //     ad-hoc structured logging fall back to the slog API.
 //
-// All output goes to stderr so it can never pollute `talon run` or REPL
+// All output goes to stderr so it can never pollute `tln run` or REPL
 // stdout (which carries the actual detection/decision payload).
 package log
 

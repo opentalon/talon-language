@@ -11,7 +11,7 @@ import "math"
 // observation sequence, compute P(observations | model). Low
 // probability under a "healthy" model is the anomaly signal.
 //
-// Talon's primitive only consumes models — there's no training
+// tln's primitive only consumes models — there's no training
 // surface yet (no Baum-Welch). Callers parameterise the model
 // inline (small expert-systems-style models) or from a separate
 // training pipeline (host responsibility).

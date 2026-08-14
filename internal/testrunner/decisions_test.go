@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/explain"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/explain"
 )
 
 func compileDecisions(t *testing.T, rulesSrc, testSrc string) (map[string][]explain.Decision, []string) {

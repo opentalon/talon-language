@@ -7,12 +7,12 @@
 //     attr 1 "cancer" true      // Dr. A reads the photo → positive
 //     attr 1 "cancer" false     // Dr. B reads the photo → negative
 //
-// Talon's FactStore is last-write-wins (no contradiction detection), so the
+// Tln's FactStore is last-write-wins (no contradiction detection), so the
 // second read silently OVERWRITES the first and the single most important
 // clinical signal — that two experts disagreed — is lost.
 //
 // The fix: give each observer its own attribute slot. Nothing overwrites, the
-// disagreement is data, and an explicit rule says what to do about it. Talon is
+// disagreement is data, and an explicit rule says what to do about it. Tln is
 // deterministic and auditable, not probabilistic — it does not fuse the two
 // opinions for you; you state the policy. Here the policy is:
 //
@@ -22,9 +22,9 @@
 //   detect "Conflicting reads" — the two human reads disagree → escalate,
 //                                CRITICAL. No verdict is forced.
 //
-//   ./talon build   examples/medical_diagnosis.tln
-//   ./talon test    examples/medical_diagnosis.tln test/medical_diagnosis.tln.test
-//   ./talon explain examples/medical_diagnosis.tln test/medical_diagnosis.tln.test
+//   ./tln build   examples/medical_diagnosis.tln
+//   ./tln test    examples/medical_diagnosis.tln test/medical_diagnosis.tln.test
+//   ./tln explain examples/medical_diagnosis.tln test/medical_diagnosis.tln.test
 
 // ── ML consensus: an independent machine read of the photo, gated on
 //    confidence, trained on biopsy-proven outcomes. ──

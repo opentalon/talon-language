@@ -1,4 +1,4 @@
-package talon_test
+package tln_test
 
 import (
 	"bytes"
@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	talonlog "github.com/opentalon/talon-language/internal/log"
-	"github.com/opentalon/talon-language/pkg/talon"
+	tlnlog "github.com/opentalon/tln-language/internal/log"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 // newCaller returns a mockCaller (defined in api_test.go) that answers
@@ -32,14 +32,14 @@ workflow "Refill stock" {
 
 func TestSession_FiresWorkflowWithTriggerPresets(t *testing.T) {
 	caller := newCaller()
-	s, err := talon.NewSession(refillSrc, talon.WithMCP(caller))
+	s, err := tln.NewSession(refillSrc, tln.WithMCP(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
 	defer s.Close()
 
 	// Establish the item at stock 3 — no crossing, no firing.
-	firings, err := s.Assert(context.Background(), []talon.Fact{
+	firings, err := s.Assert(context.Background(), []tln.Fact{
 		{RecordID: "42", Attribute: "current_stock", Value: 3},
 	})
 	if err != nil {
@@ -50,7 +50,7 @@ func TestSession_FiresWorkflowWithTriggerPresets(t *testing.T) {
 	}
 
 	// Drop to 0 — the `to 0` guard matches and the workflow fires once.
-	firings, err = s.Assert(context.Background(), []talon.Fact{
+	firings, err = s.Assert(context.Background(), []tln.Fact{
 		{RecordID: "42", Attribute: "current_stock", Value: 0},
 	})
 	if err != nil {
@@ -85,7 +85,7 @@ func TestSession_FiresWorkflowWithTriggerPresets(t *testing.T) {
 
 func TestSession_IdempotentReassertNoFiring(t *testing.T) {
 	caller := newCaller()
-	s, err := talon.NewSession(refillSrc, talon.WithMCP(caller))
+	s, err := tln.NewSession(refillSrc, tln.WithMCP(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -93,14 +93,14 @@ func TestSession_IdempotentReassertNoFiring(t *testing.T) {
 
 	ctx := context.Background()
 	// Establish stock 3 (assert), then drop to 0 (change) — fires once.
-	if _, err := s.Assert(ctx, []talon.Fact{{RecordID: "42", Attribute: "current_stock", Value: 3}}); err != nil {
+	if _, err := s.Assert(ctx, []tln.Fact{{RecordID: "42", Attribute: "current_stock", Value: 3}}); err != nil {
 		t.Fatalf("Assert(3): %v", err)
 	}
-	if _, err := s.Assert(ctx, []talon.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}}); err != nil {
+	if _, err := s.Assert(ctx, []tln.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}}); err != nil {
 		t.Fatalf("Assert(0): %v", err)
 	}
 	// Re-assert the same value: unchanged → no event → no firing.
-	firings, err := s.Assert(ctx, []talon.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}})
+	firings, err := s.Assert(ctx, []tln.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}})
 	if err != nil {
 		t.Fatalf("re-Assert(0): %v", err)
 	}
@@ -117,14 +117,14 @@ func TestSession_SnapshotHydrationNoReplayFiring(t *testing.T) {
 
 	// Session A brings an item from 3 down to 0 (one firing), then snapshots.
 	callerA := newCaller()
-	a, err := talon.NewSession(refillSrc, talon.WithMCP(callerA))
+	a, err := tln.NewSession(refillSrc, tln.WithMCP(callerA))
 	if err != nil {
 		t.Fatalf("NewSession A: %v", err)
 	}
-	if _, err := a.Assert(ctx, []talon.Fact{{RecordID: "42", Attribute: "current_stock", Value: 3}}); err != nil {
+	if _, err := a.Assert(ctx, []tln.Fact{{RecordID: "42", Attribute: "current_stock", Value: 3}}); err != nil {
 		t.Fatalf("A Assert(3): %v", err)
 	}
-	if _, err := a.Assert(ctx, []talon.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}}); err != nil {
+	if _, err := a.Assert(ctx, []tln.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}}); err != nil {
 		t.Fatalf("A Assert(0): %v", err)
 	}
 	if len(callerA.calls) != 1 {
@@ -135,11 +135,11 @@ func TestSession_SnapshotHydrationNoReplayFiring(t *testing.T) {
 
 	// Rebuild: hydrate a fresh store from the snapshot BEFORE NewSession
 	// subscribes, then start session B.
-	store := talon.NewMemoryStore()
-	var hydrate []talon.Fact
+	store := tln.NewMemoryStore()
+	var hydrate []tln.Fact
 	for id, attrs := range snap {
 		for attr, val := range attrs {
-			hydrate = append(hydrate, talon.Fact{RecordID: itoa(id), Attribute: attr, Value: val})
+			hydrate = append(hydrate, tln.Fact{RecordID: itoa(id), Attribute: attr, Value: val})
 		}
 	}
 	if err := store.Assert(ctx, hydrate); err != nil {
@@ -147,14 +147,14 @@ func TestSession_SnapshotHydrationNoReplayFiring(t *testing.T) {
 	}
 
 	callerB := newCaller()
-	b, err := talon.NewSession(refillSrc, talon.WithMCP(callerB), talon.WithFactStore(store))
+	b, err := tln.NewSession(refillSrc, tln.WithMCP(callerB), tln.WithFactStore(store))
 	if err != nil {
 		t.Fatalf("NewSession B: %v", err)
 	}
 	defer b.Close()
 
 	// Replaying stock 0 (already the state) must not re-fire.
-	firings, err := b.Assert(ctx, []talon.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}})
+	firings, err := b.Assert(ctx, []tln.Fact{{RecordID: "42", Attribute: "current_stock", Value: 0}})
 	if err != nil {
 		t.Fatalf("B Assert(0): %v", err)
 	}
@@ -176,7 +176,7 @@ workflow "Reorder" {
   step "s" { mcp "timly" "create-order" { quantity 10 } }
 }`
 	caller := newCaller()
-	s, err := talon.NewSession(src, talon.WithMCP(caller))
+	s, err := tln.NewSession(src, tln.WithMCP(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -184,15 +184,15 @@ workflow "Reorder" {
 	ctx := context.Background()
 
 	// Seed at 8 (no prior value → assert, not change): no firing.
-	if f, _ := s.Assert(ctx, []talon.Fact{{RecordID: "1", Attribute: "current_stock", Value: 8}}); len(f) != 0 {
+	if f, _ := s.Assert(ctx, []tln.Fact{{RecordID: "1", Attribute: "current_stock", Value: 8}}); len(f) != 0 {
 		t.Fatalf("initial assert should not fire change, got %d", len(f))
 	}
 	// 8 → 6: still >= 5, no crossing.
-	if f, _ := s.Assert(ctx, []talon.Fact{{RecordID: "1", Attribute: "current_stock", Value: 6}}); len(f) != 0 {
+	if f, _ := s.Assert(ctx, []tln.Fact{{RecordID: "1", Attribute: "current_stock", Value: 6}}); len(f) != 0 {
 		t.Fatalf("8→6 should not fire, got %d", len(f))
 	}
 	// 6 → 4: crosses below 5, fires once.
-	f, err := s.Assert(ctx, []talon.Fact{{RecordID: "1", Attribute: "current_stock", Value: 4}})
+	f, err := s.Assert(ctx, []tln.Fact{{RecordID: "1", Attribute: "current_stock", Value: 4}})
 	if err != nil {
 		t.Fatalf("Assert(4): %v", err)
 	}
@@ -200,7 +200,7 @@ workflow "Reorder" {
 		t.Fatalf("6→4 should fire once, got %d", len(f))
 	}
 	// 4 → 3: prev_value (4) already < 5, guard's prev>=5 fails → no fire.
-	if f, _ := s.Assert(ctx, []talon.Fact{{RecordID: "1", Attribute: "current_stock", Value: 3}}); len(f) != 0 {
+	if f, _ := s.Assert(ctx, []tln.Fact{{RecordID: "1", Attribute: "current_stock", Value: 3}}); len(f) != 0 {
 		t.Fatalf("4→3 should not re-fire, got %d", len(f))
 	}
 }
@@ -212,11 +212,11 @@ on change attr "current_stock" {
   workflow "W"
 }
 workflow "W" { step "s" { mcp "a" "b" {} } }`
-	_, err := talon.NewSession(src)
+	_, err := tln.NewSession(src)
 	if err == nil {
 		t.Fatal("expected NewSession to reject cross-fact when clause")
 	}
-	ce, ok := err.(*talon.CompileError)
+	ce, ok := err.(*tln.CompileError)
 	if !ok {
 		t.Fatalf("expected *CompileError, got %T: %v", err, err)
 	}
@@ -230,12 +230,12 @@ func TestSession_LoggerOnlyBodyFiresWithEmptyRef(t *testing.T) {
 on assert item {
   logger.info "new item {event.entity}"
 }`
-	s, err := talon.NewSession(src)
+	s, err := tln.NewSession(src)
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
 	defer s.Close()
-	firings, err := s.Assert(context.Background(), []talon.Fact{
+	firings, err := s.Assert(context.Background(), []tln.Fact{
 		{RecordID: "7", Attribute: "type", Value: "item"},
 	})
 	if err != nil {
@@ -251,9 +251,9 @@ on assert item {
 
 func TestSession_OnBlockLoggerRuns(t *testing.T) {
 	var buf bytes.Buffer
-	orig := talonlog.Default()
-	talonlog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
-	defer talonlog.SetDefault(orig)
+	orig := tlnlog.Default()
+	tlnlog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer tlnlog.SetDefault(orig)
 
 	src := `
 on change attr "current_stock" to 0 {
@@ -262,16 +262,16 @@ on change attr "current_stock" to 0 {
 }
 workflow "Refill" { step "s" { mcp "inv" "order" {} } }`
 	caller := newCaller()
-	s, err := talon.NewSession(src, talon.WithMCP(caller))
+	s, err := tln.NewSession(src, tln.WithMCP(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
 	defer s.Close()
 	ctx := context.Background()
-	if _, err := s.Assert(ctx, []talon.Fact{{RecordID: "5", Attribute: "current_stock", Value: 4}}); err != nil {
+	if _, err := s.Assert(ctx, []tln.Fact{{RecordID: "5", Attribute: "current_stock", Value: 4}}); err != nil {
 		t.Fatalf("Assert(4): %v", err)
 	}
-	firings, err := s.Assert(ctx, []talon.Fact{{RecordID: "5", Attribute: "current_stock", Value: 0}})
+	firings, err := s.Assert(ctx, []tln.Fact{{RecordID: "5", Attribute: "current_stock", Value: 0}})
 	if err != nil {
 		t.Fatalf("Assert(0): %v", err)
 	}
@@ -294,7 +294,7 @@ workflow "Ping" {
   step "s" { mcp "svc" "ping" {} }
 }`
 	caller := newCaller()
-	s, err := talon.NewSession(src, talon.WithMCP(caller))
+	s, err := tln.NewSession(src, tln.WithMCP(caller))
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}

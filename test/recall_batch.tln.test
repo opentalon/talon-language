@@ -1,8 +1,8 @@
 // Test suite for recall_batch.tln — string builtins in conditions + args.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/recall_batch.tln test/recall_batch.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/recall_batch.tln test/recall_batch.tln.test
 
 test "VIN prefix normalises and matches the recall batch; ticket fields are built with string fns" {
   given {

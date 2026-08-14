@@ -3,10 +3,10 @@ package testrunner
 import (
 	"fmt"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/explain"
-	"github.com/opentalon/talon-language/internal/optimize"
-	"github.com/opentalon/talon-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/explain"
+	"github.com/opentalon/tln-language/internal/optimize"
+	"github.com/opentalon/tln-language/internal/planner"
 )
 
 // paretoNarrowing holds the testrunner-side result of executing an
@@ -122,7 +122,7 @@ func paretoEvidence(sol optimize.Solution, objs []optimize.Objective) []explain.
 }
 
 // paretoWhy renders the population-relative "why this entity is on the
-// frontier" line that talon explain shows. Includes the objective names
+// frontier" line that tln explain shows. Includes the objective names
 // and how many other candidates this one dominates / is dominated by.
 func paretoWhy(sol optimize.Solution, objs []optimize.Objective, populationSize int) []string {
 	names := ""

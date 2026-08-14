@@ -1,4 +1,4 @@
-package talon
+package tln
 
 import (
 	"context"
@@ -6,15 +6,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/diagnostic"
-	"github.com/opentalon/talon-language/internal/executor"
-	"github.com/opentalon/talon-language/internal/lexer"
-	"github.com/opentalon/talon-language/internal/parser"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/validator"
+	"github.com/opentalon/tln-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/executor"
+	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/parser"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/validator"
 )
 
-// MCPCaller is the host callback Talon uses to dispatch MCP tool calls
+// MCPCaller is the host callback tln uses to dispatch MCP tool calls
 // produced by a workflow's mcp steps. Implementations route
 // (server, tool, args) to whatever transport the host uses and return
 // the structured result.
@@ -43,7 +43,7 @@ type StepResult = executor.StepResult
 
 // Action is one `do` clause a rule fired, resolved against one matched
 // row: the verb, its resolved arguments, the id of the row it fired for,
-// and the rule it came from. Talon executes none of them — deciding which
+// and the rule it came from. tln executes none of them — deciding which
 // actions fire and what their arguments are is the engine's job, running
 // them is the host's.
 //
@@ -97,10 +97,10 @@ type CompileError struct {
 
 func (e *CompileError) Error() string {
 	if len(e.Diags) == 0 {
-		return fmt.Sprintf("talon: %s failed", e.Stage)
+		return fmt.Sprintf("tln: %s failed", e.Stage)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "talon: %s: %d diagnostic(s)", e.Stage, len(e.Diags))
+	fmt.Fprintf(&b, "tln: %s: %d diagnostic(s)", e.Stage, len(e.Diags))
 	for _, d := range e.Diags {
 		if d.Severity != diagnostic.Error {
 			continue
@@ -157,7 +157,7 @@ func WithFilename(name string) Option {
 	return func(cfg *runConfig) { cfg.file = name }
 }
 
-// RunWorkflow compiles and executes a Talon source string in
+// RunWorkflow compiles and executes a tln source string in
 // workflow-only mode. The full pipeline runs:
 //
 //	lex → parse → validate → plan → execute

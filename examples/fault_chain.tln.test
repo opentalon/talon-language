@@ -1,8 +1,8 @@
 // Test suite for fault_chain.tln.
 //
 // Run:
-//   go build ./cmd/talon
-//   ./talon test examples/fault_chain.tln examples/fault_chain.tln.test
+//   go build ./cmd/tln
+//   ./tln test examples/fault_chain.tln examples/fault_chain.tln.test
 
 test "Electrical fault followed by engine failure within 30 days flags vehicle" {
   given {

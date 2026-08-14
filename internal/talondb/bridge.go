@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 	pb "github.com/opentalon/talon-db/proto/talondbpb"
 
 	"google.golang.org/grpc/codes"

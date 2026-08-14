@@ -1,6 +1,6 @@
-package talon
+package tln
 
-// Check compiles a Talon source string without executing it, running
+// Check compiles a tln source string without executing it, running
 // the full compile pipeline:
 //
 //	lex → parse → resolve imports → validate → plan
@@ -16,7 +16,7 @@ package talon
 // relative imports). Execution-only options such as [WithMCP] and
 // [WithFactStore] are accepted but ignored.
 func Check(src string, opts ...Option) error {
-	cfg := &runConfig{file: "<talon>"}
+	cfg := &runConfig{file: "<tln>"}
 	for _, opt := range opts {
 		opt(cfg)
 	}

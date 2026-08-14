@@ -9,7 +9,7 @@
    :attr/last_service_km {:db/valueType :db.type/long}
    :attr/current_stock   {:db/valueType :db.type/long}})
 
-(def conn (d/get-conn "/tmp/talon-fleet-test" schema))
+(def conn (d/get-conn "/tmp/tln-fleet-test" schema))
 
 (d/transact! conn
   [{:record/type "item" :record/status "active" :record/category "Vehicles"

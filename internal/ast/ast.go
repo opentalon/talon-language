@@ -549,8 +549,8 @@ func (b *ModuleBlock) QualifiedName(member string) string {
 // CollectBlock is scheduled, host-driven MCP fact ingestion: on the
 // declared Schedule, fetch a batch from an MCP tool and assert the
 // results into the FactStore as records of type StoreAs (tagged Tag).
-// Talon does not run the scheduler — Schedule is metadata a host cron
-// reads via `talon collect list`, and the host fires `talon collect run`.
+// tln does not run the scheduler — Schedule is metadata a host cron
+// reads via `tln collect list`, and the host fires `tln collect run`.
 type CollectBlock struct {
 	Pos      Pos
 	Name     string
@@ -1077,7 +1077,7 @@ type ApprovalExpr struct {
 	Role string
 }
 
-// DoAction is one `do <verb> [arg ...]` clause on a rule. Talon does not
+// DoAction is one `do <verb> [arg ...]` clause on a rule. tln does not
 // execute it and does not know what any verb means — the host does. The
 // engine's job is to decide *which* actions fire, resolve their arguments
 // against the matched row, and hand them back as data.

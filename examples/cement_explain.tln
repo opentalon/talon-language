@@ -1,11 +1,11 @@
 // Tier-1 explainability demo — see docs/design/0003-explainability.md.
 //
 // A detect block flags low stock; a recommend block fires when the
-// detect matches. `talon explain` renders the user-facing "why" + the
+// detect matches. `tln explain` renders the user-facing "why" + the
 // chain from recommendation back through the triggering detect.
 //
-//   go build ./cmd/talon
-//   ./talon explain examples/cement_explain.tln test/cement_explain.tln.test
+//   go build ./cmd/tln
+//   ./tln explain examples/cement_explain.tln test/cement_explain.tln.test
 
 detect "Cement running low" {
   for records where type == "stock_item"

@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/diagnostic"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/diagnostic"
 )
 
 // Run drives the REPL: reads lines from in, evaluates them, writes output
@@ -34,7 +34,7 @@ func RunWithVersion(in io.Reader, out io.Writer, version string) error {
 // then runs matching on-blocks (see :load).
 func RunWithVersionFile(in io.Reader, out io.Writer, version, preload string) error {
 	if version != "" {
-		fmt.Fprintf(out, "talon %s — type :help for commands, :quit to exit\n", version)
+		fmt.Fprintf(out, "tln %s — type :help for commands, :quit to exit\n", version)
 	}
 
 	s := NewSession()
@@ -92,7 +92,7 @@ func prompt(w io.Writer, continuation bool) {
 	if continuation {
 		fmt.Fprint(w, "  .. ")
 	} else {
-		fmt.Fprint(w, "talon> ")
+		fmt.Fprint(w, "tln> ")
 	}
 }
 

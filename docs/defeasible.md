@@ -1,6 +1,6 @@
 # Defeasible reasoning
 
-Talon supports two kinds of rules: **strict** and **defeasible**.
+tln supports two kinds of rules: **strict** and **defeasible**.
 
 - A **strict** rule cannot be defeated by anything. Use it for invariants
   that must always hold — safety, compliance, regulatory hard stops.
@@ -14,7 +14,7 @@ deterministic, debuggable answer.
 
 ## Syntax
 
-```talon
+```tln
 // Strict — cannot be overridden, ever.
 strict rule "Expired certification blocks assignment" {
   for records where type == "person"

@@ -4,14 +4,14 @@ import (
 	"context"
 	"sort"
 
-	"github.com/opentalon/talon-language/internal/actions"
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/internal/planner"
-	"github.com/opentalon/talon-language/internal/template"
+	"github.com/opentalon/tln-language/internal/actions"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/template"
 )
 
-// FiredAction is one `do` action resolved against one matched row. Talon
+// FiredAction is one `do` action resolved against one matched row. tln
 // does not execute it — the host does. This is the data the engine hands
 // back on the block result.
 type FiredAction = actions.Fired

@@ -1,11 +1,11 @@
-package talon_test
+package tln_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/factstore"
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/internal/factstore"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 const listContainsSrc = `
@@ -37,8 +37,8 @@ detect "List matches phrase" {
 
 func seedListPRs(t *testing.T) *factstore.MemoryStore {
 	t.Helper()
-	store := talon.NewMemoryStore()
-	facts := []talon.Fact{
+	store := tln.NewMemoryStore()
+	facts := []tln.Fact{
 		{RecordID: "1", Attribute: ":record/type", Value: "pr"},
 		{RecordID: "1", Attribute: ":attr/changed_files", Value: []any{"go.mod", "main.go"}},
 		{RecordID: "2", Attribute: ":record/type", Value: "pr"},
@@ -56,7 +56,7 @@ func seedListPRs(t *testing.T) *factstore.MemoryStore {
 // false, so only the joined-string entity matched. Both shapes must match.
 func TestRun_StringPredicateQuantifiesOverList(t *testing.T) {
 	store := seedListPRs(t)
-	res, err := talon.Run(context.Background(), listContainsSrc, talon.WithFactStore(store))
+	res, err := tln.Run(context.Background(), listContainsSrc, tln.WithFactStore(store))
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestRun_FullTextOverList(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := seedListPRs(t)
-			res, err := talon.Run(context.Background(), tc.src, talon.WithFactStore(store))
+			res, err := tln.Run(context.Background(), tc.src, tln.WithFactStore(store))
 			if err != nil {
 				t.Fatalf("Run: %v", err)
 			}

@@ -3,7 +3,7 @@
 // Package datalevin's integration_test.go drives the Go client against
 // a live datalevin-server. It runs only under `go test -tags=datalevin`
 // because spinning up the JVM is too heavy for the regular `go test
-// ./...` loop — CI's `talon-datalevin-smoke` job starts the server,
+// ./...` loop — CI's `tln-datalevin-smoke` job starts the server,
 // then runs this package with the build tag set. Locally:
 //
 //	cd datalevin-server && clojure -M:run &
@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/factstore"
+	"github.com/opentalon/tln-language/internal/factstore"
 )
 
 func smokeClient(t *testing.T) *Client {
@@ -155,7 +155,7 @@ func TestSmoke_FullText(t *testing.T) {
 	// Unique attribute per run: Datalevin's update-schema cannot
 	// retrofit :db/fulltext onto an attribute that was previously
 	// registered without it, so reusing :smoke/text across runs
-	// (CI ephemeral; local /tmp/talon-datalevin persistent) would
+	// (CI ephemeral; local /tmp/tln-datalevin persistent) would
 	// pin the first-seen schema and silently disable FTS for every
 	// subsequent run.
 	attr := fmt.Sprintf(":smoke/text-%s", uniqueID())
@@ -463,9 +463,9 @@ func TestSmoke_SearchDomains(t *testing.T) {
 	if err := c.Assert(ctx, []factstore.Fact{
 		// id1: needle in body only
 		{RecordID: id1, Attribute: titleAttr, Value: "Annual report"},
-		{RecordID: id1, Attribute: bodyAttr, Value: "Talon language overview, performance gains"},
+		{RecordID: id1, Attribute: bodyAttr, Value: "tln language overview, performance gains"},
 		// id2: needle in title only
-		{RecordID: id2, Attribute: titleAttr, Value: "Talon language deep dive"},
+		{RecordID: id2, Attribute: titleAttr, Value: "tln language deep dive"},
 		{RecordID: id2, Attribute: bodyAttr, Value: "Unrelated content here"},
 	}); err != nil {
 		t.Fatalf("assert: %v", err)
@@ -476,7 +476,7 @@ func TestSmoke_SearchDomains(t *testing.T) {
 		Find: []string{"?e"},
 		Where: []factstore.Clause{
 			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: titleAttr, Value: factstore.Var("t")},
-			&factstore.FullText{Entity: factstore.Var("e"), Attribute: titleAttr, Query: "Talon"},
+			&factstore.FullText{Entity: factstore.Var("e"), Attribute: titleAttr, Query: "tln"},
 		},
 	}
 	rows, err := c.Query(ctx, q)

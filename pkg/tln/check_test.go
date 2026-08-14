@@ -1,10 +1,10 @@
-package talon_test
+package tln_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/opentalon/talon-language/pkg/talon"
+	"github.com/opentalon/tln-language/pkg/tln"
 )
 
 func TestCheck_ValidWorkflow(t *testing.T) {
@@ -14,18 +14,18 @@ workflow "ok" {
     mcp "svc" "do" { arg "x" }
   }
 }`
-	if err := talon.Check(src); err != nil {
+	if err := tln.Check(src); err != nil {
 		t.Fatalf("Check on valid source: unexpected error: %v", err)
 	}
 }
 
 func TestCheck_ParseError(t *testing.T) {
 	src := `workflow "broken" { step "s1" {` // unterminated braces
-	err := talon.Check(src)
+	err := tln.Check(src)
 	if err == nil {
 		t.Fatal("expected a compile error")
 	}
-	ce, ok := err.(*talon.CompileError)
+	ce, ok := err.(*tln.CompileError)
 	if !ok {
 		t.Fatalf("expected *CompileError, got %T: %v", err, err)
 	}
@@ -45,11 +45,11 @@ recommend "act" {
   when detect "Nonexistent" matches
   suggest "never happens"
 }`
-	err := talon.Check(src)
+	err := tln.Check(src)
 	if err == nil {
 		t.Fatal("expected a compile error")
 	}
-	ce, ok := err.(*talon.CompileError)
+	ce, ok := err.(*tln.CompileError)
 	if !ok {
 		t.Fatalf("expected *CompileError, got %T: %v", err, err)
 	}
@@ -67,14 +67,14 @@ detect "Low stock" {
     and attr "current_stock" < attr "minimum_amount"
   flag matching items
 }`
-	if err := talon.Check(src); err != nil {
+	if err := tln.Check(src); err != nil {
 		t.Fatalf("Check on detect-only source: unexpected error: %v", err)
 	}
 }
 
 func TestCheck_FilenameOption(t *testing.T) {
 	src := `workflow "broken" { step "s1" {`
-	err := talon.Check(src, talon.WithFilename("agent.tln"))
+	err := tln.Check(src, tln.WithFilename("agent.tln"))
 	if err == nil {
 		t.Fatal("expected a compile error")
 	}
@@ -88,16 +88,16 @@ func TestCheck_FilenameOption(t *testing.T) {
 // obtained through the public API — the create-time path opentalon-agents
 // depends on.
 func TestFacts_UsableFromExternalModule(t *testing.T) {
-	store := talon.NewMemoryStore()
+	store := tln.NewMemoryStore()
 
-	var got talon.Event
+	var got tln.Event
 	var fired bool
-	store.Events().Subscribe(func(_ context.Context, ev talon.Event) {
+	store.Events().Subscribe(func(_ context.Context, ev tln.Event) {
 		got = ev
 		fired = true
 	})
 
-	facts := []talon.Fact{
+	facts := []tln.Fact{
 		{RecordID: "1", Attribute: "current_stock", Value: 3},
 	}
 	if err := store.Assert(context.Background(), facts); err != nil {
@@ -106,26 +106,26 @@ func TestFacts_UsableFromExternalModule(t *testing.T) {
 	if !fired {
 		t.Fatal("expected an event on first assert")
 	}
-	if got.Kind != talon.EventAssert {
+	if got.Kind != tln.EventAssert {
 		t.Errorf("Kind: got %v, want EventAssert", got.Kind)
 	}
 
 	// A value change on the same cell fires EventChange.
 	fired = false
-	if err := store.Assert(context.Background(), []talon.Fact{
+	if err := store.Assert(context.Background(), []tln.Fact{
 		{RecordID: "1", Attribute: "current_stock", Value: 0},
 	}); err != nil {
 		t.Fatalf("Assert (change): %v", err)
 	}
-	if !fired || got.Kind != talon.EventChange {
+	if !fired || got.Kind != tln.EventChange {
 		t.Errorf("expected EventChange, got fired=%v kind=%v", fired, got.Kind)
 	}
 
 	// Retract via the exported RetractPattern type.
-	if err := store.Retract(context.Background(), talon.RetractPattern{RecordID: "1"}); err != nil {
+	if err := store.Retract(context.Background(), tln.RetractPattern{RecordID: "1"}); err != nil {
 		t.Fatalf("Retract: %v", err)
 	}
-	if got.Kind != talon.EventRetract {
+	if got.Kind != tln.EventRetract {
 		t.Errorf("Kind after retract: got %v, want EventRetract", got.Kind)
 	}
 }

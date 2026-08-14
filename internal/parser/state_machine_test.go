@@ -3,8 +3,8 @@ package parser
 import (
 	"testing"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/lexer"
 )
 
 func parseSrc(t *testing.T, src string) *ast.Program {

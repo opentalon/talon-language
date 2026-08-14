@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opentalon/talon-language/internal/ast"
-	"github.com/opentalon/talon-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/internal/lexer"
 )
 
 func mustParse(t *testing.T, src string) *ast.Program {
@@ -1270,7 +1270,7 @@ func remediateCalls(body []ast.Action) []*ast.MCPCall {
 	return out
 }
 
-// Regression: an MCP arg whose name collides with a Talon keyword (e.g.
+// Regression: an MCP arg whose name collides with a tln keyword (e.g.
 // `priority`) must parse, not spin the arg loop forever.
 func TestParseMCPCallKeywordArgKey(t *testing.T) {
 	prog := mustParse(t, `

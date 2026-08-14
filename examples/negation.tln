@@ -3,8 +3,8 @@
 // set-difference (`factstore.Not`), so "not overdue" reads as the complement of
 // the derivation — no host glue, no second query.
 //
-//   ./talon build examples/negation.tln
-//   ./talon test  examples/negation.tln test/negation.tln.test
+//   ./tln build examples/negation.tln
+//   ./tln test  examples/negation.tln test/negation.tln.test
 //
 // Negation is *stratified*: a derived predicate may not depend on its own
 // negation (`derive p(v) { ... not p(v) }` is rejected — a predicate that is
