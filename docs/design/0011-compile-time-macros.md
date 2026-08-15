@@ -1,6 +1,8 @@
 # ADR 0011 — Compile-time macros in tln core
 
-Status: proposed
+Status: accepted · decision and the `macro.Expand` phase merged (#185); the phase
+ships as an identity transform and the `defmacro`/`quote`/`unquote` grammar +
+rewrite engine are the tracked follow-up (see "Status / next steps").
 
 ## Context
 

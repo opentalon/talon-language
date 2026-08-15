@@ -314,7 +314,7 @@ Both are mirrored in the JavaScript reactive runtime (`packages/runtime`) — th
 
 ## Metaprogramming — compile-time macros
 
-> Status: **proposed** ([ADR 0011](docs/design/0011-compile-time-macros.md)). The expansion phase is wired into the compiler (`internal/macro`) as an identity transform today; the grammar below is the design.
+> Status: the compile-time expansion **phase is merged** (`internal/macro`, [ADR 0011](docs/design/0011-compile-time-macros.md)) — today an identity transform. The `defmacro`/`quote`/`unquote` **grammar below is accepted design, not yet implemented**, so you can't write a macro just yet — but the ordinary blocks a macro expands into (shown below) are valid tln *today* (verified with `tln build`).
 
 tln does metaprogramming the **Elixir way**: macros are code that writes code, and they run at **compile time**. A `defmacro` expands into ordinary blocks *before* validation and planning — the runtime never sees a macro, so the engine stays exactly as deterministic and terminating as always. The one place unbounded computation is allowed is expansion itself, which is bounded by a step budget (a compile error, never a runtime hang).
 
