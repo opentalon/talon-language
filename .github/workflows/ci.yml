@@ -190,7 +190,14 @@ jobs:
           }
           EOF
       - name: tln bundle (compiles the 4 plugins) + tln run
+        env:
+          # The four plugin modules may be freshly published; skip the checksum
+          # DB and let direct git fetch use the Actions token, so the bundle's
+          # `go build` doesn't fail on proxy/sumdb propagation lag.
+          GOSUMDB: "off"
+          GOPROXY: "https://proxy.golang.org,direct"
         run: |
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
           cd demo
           tln bundle
           tln run rules.tln | tee out.txt
