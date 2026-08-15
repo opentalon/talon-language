@@ -678,3 +678,14 @@ COMMENT = ( "//" { CHAR } NEWLINE )
         | ( "/*" { CHAR } "*/" )
 
 EOF     = (* end of input *)
+
+(* ─── mod.tln (project manifest, ADR 0013) ──────────────────────────────────── *)
+
+(* mod.tln is a project's plugin manifest — Bundler's Gemfile analog. It is a
+   separate file from program source: one `plugin` line per dependency. `tln
+   bundle` compiles the declared plugins into a project-local `tln` binary; a
+   program then reaches them through `connector "…" via <name>`. `store` marks a
+   FactStore plugin; `from` overrides the default module path
+   (github.com/opentalon/tln-<name>). Comments start with `#` or `//`. *)
+Manifest    = { PluginLine }
+PluginLine  = "plugin" STRING STRING [ "store" ] [ "from" STRING ]

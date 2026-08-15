@@ -158,3 +158,47 @@ jobs:
         env:
           DATALEVIN_URL: http://localhost:8898
         run: go test -tags=datalevin -run Smoke -v ./internal/datalevin/...
+
+  bundle-e2e:
+    name: Bundle E2E (4 base plugins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: go build -o /usr/local/bin/tln ./cmd/tln
+      - name: tln init + a program using all four base plugins
+        run: |
+          tln init demo
+          cd demo
+          cat > mod.tln <<'EOF'
+          plugin "io"     "v0.1.0"
+          plugin "prolog" "v0.1.0"
+          plugin "asp"    "v0.1.0"
+          plugin "mcp"    "v0.1.0"
+          EOF
+          cat > rules.tln <<'EOF'
+          connector "log"    via io     { }
+          connector "reason" via prolog { }
+          connector "solver" via asp    { }
+
+          workflow "demo" {
+            step "greet"     { tool "log" "writeln" { text "bundle-e2e: 4 plugins loaded" } }
+            step "ancestors" { tool "reason" "query" { program "parent(tom,bob). parent(bob,ann). ancestor(X,Y):-parent(X,Y). ancestor(X,Y):-parent(X,Z),ancestor(Z,Y)." goal "ancestor(tom, D)" } }
+            step "models"    { tool "solver" "solve" { program "p :- not q.  q :- not p." } }
+          }
+          EOF
+      - name: tln bundle (compiles the 4 plugins) + tln run
+        env:
+          # The four plugin modules may be freshly published; skip the checksum
+          # DB and let direct git fetch use the Actions token, so the bundle's
+          # `go build` doesn't fail on proxy/sumdb propagation lag.
+          GOSUMDB: "off"
+          GOPROXY: "https://proxy.golang.org,direct"
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          cd demo
+          tln bundle
+          tln run rules.tln | tee out.txt
+          grep -q "bundle-e2e: 4 plugins loaded" out.txt || { echo "FAIL: bundle did not run the io plugin"; exit 1; }
