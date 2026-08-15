@@ -312,6 +312,51 @@ for records where upper(substring(attr "vin", 0, 3)) == "1FT"
 
 Both are mirrored in the JavaScript reactive runtime (`packages/runtime`) — the client-side engine for reactive rules stays in step with the Go compiler.
 
+## Metaprogramming — compile-time macros
+
+> Status: **proposed** ([ADR 0011](docs/design/0011-compile-time-macros.md)). The expansion phase is wired into the compiler (`internal/macro`) as an identity transform today; the grammar below is the design.
+
+tln does metaprogramming the **Elixir way**: macros are code that writes code, and they run at **compile time**. A `defmacro` expands into ordinary blocks *before* validation and planning — the runtime never sees a macro, so the engine stays exactly as deterministic and terminating as always. The one place unbounded computation is allowed is expansion itself, which is bounded by a step budget (a compile error, never a runtime hang).
+
+This is why metaprogramming lives **in core, not a plugin**: only core owns the grammar and the compile phases. (Runtime "code-as-data" over Prolog terms is a different thing — that belongs to the [tln-prolog](https://github.com/opentalon/tln-prolog) engine, which brings its own term structure.)
+
+`quote` turns a block into an AST value; `unquote` splices a value in; `defmacro` is a compile-time function from arguments to AST. A macro that kills boilerplate across near-identical `detect` rules:
+
+```tln
+defmacro over_threshold(name, metric, limit, prio) {
+  quote {
+    detect "High {unquote(name)}" {
+      for records where type == "item" and attr unquote(metric) > unquote(limit)
+      flag matching items
+      label "{item.name}: high {unquote(name)}"
+      priority unquote(prio)
+    }
+  }
+}
+
+over_threshold("temperature", "temp_c", 80, HIGH)
+over_threshold("pressure",    "psi",   200, MEDIUM)
+```
+
+expands at compile time into two ordinary `detect` blocks — all the validator, planner, and runtime ever see:
+
+```tln
+detect "High temperature" {
+  for records where type == "item" and attr "temp_c" > 80
+  flag matching items
+  label "{item.name}: high temperature"
+  priority HIGH
+}
+detect "High pressure" {
+  for records where type == "item" and attr "psi" > 200
+  flag matching items
+  label "{item.name}: high pressure"
+  priority MEDIUM
+}
+```
+
+Because a macro emits nothing but ordinary AST, everything downstream — explainability, testing, the reactive runtime — treats generated rules identically to hand-written ones.
+
 ## Expert-in-the-Loop
 
 Traditional AI systems use **human-in-the-loop** — a human reviews every AI decision. This doesn't scale. tln introduces **expert-in-the-loop** — a deterministic expert system that collaborates with the LLM in real time.
