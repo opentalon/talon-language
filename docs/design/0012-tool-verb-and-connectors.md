@@ -92,11 +92,20 @@ External access is a **capability the host grants**, not something source can ta
   `tool` calls that run through its own policy/credential path. Core exposes the
   capability set; the host decides it.
 
-### 6. Metaprogramming
+### 6. Metaprogramming — macros may emit `tool`, never `connector`
 
-`tool` and `connector` are ordinary blocks, so a compile-time macro
-([ADR 0011](0011-compile-time-macros.md)) can emit them like any other AST —
-e.g. a macro that generates a `tool "audit" "writeln"` line for every rule.
+A compile-time macro ([ADR 0011](0011-compile-time-macros.md)) may emit **`tool`
+calls** — e.g. splice `tool "audit" "writeln"` into every rule it generates. It
+may **not** emit a **`connector`** (or an `env` value): the expansion phase
+rejects any macro output containing a `ConnectorBlock`, and `env` is
+unreachable from the macro grammar for the same reason it is unreachable from
+the general expression grammar.
+
+This is a security boundary. A connector grants external access with
+credentials; letting macro-generated (and thus potentially injected) code mint
+one would defeat the whole capability model. **Connectors are author-only** —
+they must appear verbatim in the source a human wrote, never be conjured by
+expansion.
 
 ## Consequences
 
@@ -118,4 +127,6 @@ e.g. a macro that generates a `tool "audit" "writeln"` line for every rule.
   the host-wins / connector-fallback / built-in-`io` / error resolution order.
   io-tln reads `path` / `stream`.
 - **Next PR (sandbox):** capability gating so `tln-plugin` cuts `env` and
-  restricts the `io` server for LLM-authored source.
+  restricts the `io` server for LLM-authored source; and the macro-expansion
+  phase (ADR 0011) rejecting any expansion output that contains a
+  `ConnectorBlock` (connectors are author-only).
