@@ -182,24 +182,32 @@ func (rc *ruleCtx) enumGen(gens []Clause, i int, b map[string]any, yield func(ma
 			rc.enumGen(gens, i+1, next, yield)
 		}
 	case *Predicate:
-		if c.Op != "=" && c.Op != "==" {
-			return
-		}
-		l := resolveTerm(c.Left, b)
-		r := resolveTerm(c.Right, b)
-		switch {
-		case l != nil && r != nil:
-			if equalValues(l, r) {
+		switch c.Op {
+		case "=", "==":
+			// Unify-or-check: may bind an unbound side.
+			l := resolveTerm(c.Left, b)
+			r := resolveTerm(c.Right, b)
+			switch {
+			case l != nil && r != nil:
+				if equalValues(l, r) {
+					rc.enumGen(gens, i+1, b, yield)
+				}
+			case c.Left.IsVar() && r != nil:
+				next := cloneBindings(b)
+				next[c.Left.Var] = r
+				rc.enumGen(gens, i+1, next, yield)
+			case c.Right.IsVar() && l != nil:
+				next := cloneBindings(b)
+				next[c.Right.Var] = l
+				rc.enumGen(gens, i+1, next, yield)
+			}
+		default:
+			// Guard on already-bound values (comparisons, string, membership):
+			// filters, never binds, so it stays within range restriction and the
+			// alternating fixpoint still converges. See ADR 0010.
+			if matchPredicate(c, b) {
 				rc.enumGen(gens, i+1, b, yield)
 			}
-		case c.Left.IsVar() && r != nil:
-			next := cloneBindings(b)
-			next[c.Left.Var] = r
-			rc.enumGen(gens, i+1, next, yield)
-		case c.Right.IsVar() && l != nil:
-			next := cloneBindings(b)
-			next[c.Right.Var] = l
-			rc.enumGen(gens, i+1, next, yield)
 		}
 	}
 }

@@ -135,24 +135,37 @@ func (rc *ruleCtx) enumerate(body []Clause, i int, bindings map[string]any, yiel
 			}
 		}
 	case *Predicate:
-		if c.Op != "=" && c.Op != "==" {
-			return
-		}
-		l := resolveTerm(c.Left, bindings)
-		r := resolveTerm(c.Right, bindings)
-		switch {
-		case l != nil && r != nil:
-			if equalValues(l, r) {
+		switch c.Op {
+		case "=", "==":
+			// Unify-or-check: equality may *bind* an unbound side, so it can
+			// introduce a value the rest of the body carries forward.
+			l := resolveTerm(c.Left, bindings)
+			r := resolveTerm(c.Right, bindings)
+			switch {
+			case l != nil && r != nil:
+				if equalValues(l, r) {
+					rc.enumerate(body, i+1, bindings, yield)
+				}
+			case c.Left.IsVar() && r != nil:
+				next := cloneBindings(bindings)
+				next[c.Left.Var] = r
+				rc.enumerate(body, i+1, next, yield)
+			case c.Right.IsVar() && l != nil:
+				next := cloneBindings(bindings)
+				next[c.Right.Var] = l
+				rc.enumerate(body, i+1, next, yield)
+			}
+		default:
+			// Every other predicate is a GUARD on already-bound values —
+			// comparisons (< <= > >= !=), string tests, and membership. A guard
+			// only filters existing bindings; it never binds a fresh variable,
+			// so it cannot invent values outside the EDB and the semi-naive
+			// fixpoint still terminates. matchPredicate returns false when an
+			// operand is unbound (the range-restriction / safety condition),
+			// which prunes the branch. See ADR 0010.
+			if matchPredicate(c, bindings) {
 				rc.enumerate(body, i+1, bindings, yield)
 			}
-		case c.Left.IsVar() && r != nil:
-			next := cloneBindings(bindings)
-			next[c.Left.Var] = r
-			rc.enumerate(body, i+1, next, yield)
-		case c.Right.IsVar() && l != nil:
-			next := cloneBindings(bindings)
-			next[c.Right.Var] = l
-			rc.enumerate(body, i+1, next, yield)
 		}
 	}
 }
