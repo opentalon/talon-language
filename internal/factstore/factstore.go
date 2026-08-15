@@ -13,10 +13,10 @@ package factstore
 
 import "context"
 
-// FactStore is the single interface the executor talks to. Implementations
-// shipped in this repo: *datalevin.Client (Datalevin over HTTP) and
-// MemoryStore (Prolog-style in-memory store). External callers can plug
-// in their own; the contract is small enough to mock.
+// FactStore is the single interface the executor talks to. Core ships only
+// MemoryStore (Prolog-style in-memory); every other backend is a store plugin
+// implementing this interface (e.g. tln-datalevin, tln-db). The contract is
+// small enough to mock.
 type FactStore interface {
 	// Query evaluates a structured query and returns one row per match,
 	// columns ordered by Query.Find.

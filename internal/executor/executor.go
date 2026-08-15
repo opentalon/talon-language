@@ -28,12 +28,9 @@ func newDeterministicRNG(seed int64) *rand.Rand {
 // alias so consumers don't need to import the factstore package
 // transitively.
 //
-// Implementations shipped in this repo:
-//
-//   - *datalevin.Client — Datalevin over HTTP (default for `tln run`)
-//   - *factstore.MemoryStore — Prolog-style in-memory (REPL, tests, CI)
-//
-// External callers can supply their own. See docs/factstore.md.
+// Core ships only *factstore.MemoryStore (in-memory). Every other backend is a
+// store plugin implementing this interface (tln-datalevin, tln-db), selected via
+// config/store.tln or passed to a host's WithFactStore. See docs/factstore.md.
 type FactStore = factstore.FactStore
 
 // BlockResult is the outcome of executing one block's query plan.
