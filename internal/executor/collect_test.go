@@ -19,7 +19,7 @@ func TestRunCollect_FetchesAndAsserts(t *testing.T) {
 			map[string]any{"id": float64(502), "name": "Cracked Saw", "status": "defective"},
 		}}, nil
 	}}
-	e := &Executor{MCP: mock, Client: store}
+	e := &Executor{Tools: mock, Client: store}
 
 	block := &ast.CollectBlock{
 		Name:     "Failure training data",

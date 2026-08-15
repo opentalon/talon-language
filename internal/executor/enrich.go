@@ -65,7 +65,7 @@ func (e *Executor) execEnrich(ctx context.Context, gc *planner.GoComputation, va
 		row["id"] = id
 		rctx := template.RenderContext{Row: row}
 
-		if e.MCP == nil {
+		if e.Tools == nil {
 			continue // no caller: stub
 		}
 		args := make(map[string]any, len(call.Args))

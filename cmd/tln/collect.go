@@ -118,7 +118,7 @@ func runCollectRun() {
 	ctx := context.Background()
 	store := collectStore(storeKind, serverURL, tenant)
 	exec := executor.NewExecutor(store)
-	// exec.MCP stays nil: the standalone CLI has no MCP transport. A host
+	// exec.Tools stays nil: the standalone CLI has no MCP transport. A host
 	// injects a caller via the SDK; here the fetch is a no-op.
 	n, err := exec.RunCollect(ctx, target)
 	if err != nil {
@@ -126,7 +126,7 @@ func runCollectRun() {
 		os.Exit(diagnostic.ExitError)
 	}
 	fmt.Printf("collected %d record(s) for %q\n", n, name)
-	if exec.MCP == nil {
+	if exec.Tools == nil {
 		fmt.Fprintln(os.Stderr, "note: standalone tln has no MCP transport; a host drives collection via the SDK (WithToolResolver).")
 	}
 }

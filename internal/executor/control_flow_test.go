@@ -24,7 +24,7 @@ func runRemediateBody(t *testing.T, id int, attrs map[string]any, body []ast.Act
 	must(t, store.Assert(context.Background(), facts))
 
 	mock := &mockMCP{}
-	e := &Executor{Client: store, MCP: mock}
+	e := &Executor{Client: store, Tools: mock}
 	gc := &planner.GoComputation{
 		Function: planner.FuncRemediateMCP,
 		Input:    "candidates",
@@ -132,7 +132,7 @@ func TestWhileHitsIterationCap(t *testing.T) {
 		{RecordID: "1", Attribute: ":attr/open", Value: float64(1)},
 	}))
 	mock := &mockMCP{}
-	e := &Executor{Client: store, MCP: mock}
+	e := &Executor{Client: store, Tools: mock}
 	body := []ast.Action{
 		&ast.WhileAction{
 			Cond: &ast.CompareCondition{

@@ -16,7 +16,7 @@ import (
 // number of records asserted. With no MCP caller wired it's a no-op
 // (the standalone CLI has no MCP transport; a host injects one).
 func (e *Executor) RunCollect(ctx context.Context, b *ast.CollectBlock) (int, error) {
-	if b == nil || b.Call == nil || e.MCP == nil {
+	if b == nil || b.Call == nil || e.Tools == nil {
 		return 0, nil
 	}
 	// collect args are literals (no per-row context); resolve against an

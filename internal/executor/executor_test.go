@@ -52,7 +52,7 @@ func mcpStep(name, server, tool string, deps []string, args map[string]ast.Expr)
 
 func TestWorkflowMCPDispatch(t *testing.T) {
 	mock := &mockMCP{}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	ctx := context.Background()
 
 	plan := workflowPlan(
@@ -89,7 +89,7 @@ func TestWorkflowStepResultChaining(t *testing.T) {
 			return map[string]any{"ok": true}, nil
 		},
 	}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	ctx := context.Background()
 
 	plan := workflowPlan(
@@ -120,7 +120,7 @@ func TestWorkflowConfirmDeny(t *testing.T) {
 	hook := func(_ context.Context, step, server, tool string) (bool, error) {
 		return false, nil // deny all
 	}
-	e := &Executor{MCP: mock, ConfirmHook: hook}
+	e := &Executor{Tools: mock, ConfirmHook: hook}
 	ctx := context.Background()
 
 	plan := workflowPlan(
@@ -163,7 +163,7 @@ func TestWorkflowCollectAll(t *testing.T) {
 			}, nil
 		},
 	}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	ctx := context.Background()
 
 	plan := workflowPlan(
@@ -214,7 +214,7 @@ func TestWorkflowMapExpr(t *testing.T) {
 			return map[string]any{"ok": true}, nil
 		},
 	}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	ctx := context.Background()
 
 	plan := workflowPlan(
@@ -279,7 +279,7 @@ func TestWorkflowMCPError(t *testing.T) {
 			return nil, fmt.Errorf("connection refused")
 		},
 	}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	ctx := context.Background()
 
 	plan := workflowPlan(

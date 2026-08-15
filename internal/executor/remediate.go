@@ -189,7 +189,7 @@ func (e *Executor) fireMCP(ctx context.Context, call *ast.MCPCall, row map[strin
 		return 0, false, nil
 	}
 
-	if e.MCP == nil {
+	if e.Tools == nil {
 		return 0, false, nil // no caller: stub, like workflow mcp steps
 	}
 

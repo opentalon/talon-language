@@ -44,7 +44,7 @@ func runRemediateMode(t *testing.T, e *Executor, mode, role, batch string) {
 
 func TestRemediateAutoFiresDirectly(t *testing.T) {
 	mock := &mockMCP{}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	runRemediateMode(t, e, "auto", "", "")
 	if len(mock.calls) != 1 || mock.calls[0].Args["item_id"] != 501 {
 		t.Fatalf("auto should call MCP once with item_id 501, got %+v", mock.calls)
@@ -54,14 +54,14 @@ func TestRemediateAutoFiresDirectly(t *testing.T) {
 func TestRemediateProposeRespectsConfirmHook(t *testing.T) {
 	// Deny → no call.
 	mock := &mockMCP{}
-	e := &Executor{MCP: mock, ConfirmHook: func(context.Context, string, string, string) (bool, error) { return false, nil }}
+	e := &Executor{Tools: mock, ConfirmHook: func(context.Context, string, string, string) (bool, error) { return false, nil }}
 	runRemediateMode(t, e, "propose", "", "")
 	if len(mock.calls) != 0 {
 		t.Errorf("propose denied should not call, got %d", len(mock.calls))
 	}
 	// Allow → call.
 	mock2 := &mockMCP{}
-	e2 := &Executor{MCP: mock2, ConfirmHook: func(context.Context, string, string, string) (bool, error) { return true, nil }}
+	e2 := &Executor{Tools: mock2, ConfirmHook: func(context.Context, string, string, string) (bool, error) { return true, nil }}
 	runRemediateMode(t, e2, "propose", "", "")
 	if len(mock2.calls) != 1 {
 		t.Errorf("propose allowed should call once, got %d", len(mock2.calls))
@@ -72,7 +72,7 @@ func TestRemediateApprove(t *testing.T) {
 	// Granted.
 	mock := &mockMCP{}
 	var gotRole, gotRule string
-	e := &Executor{MCP: mock, ApprovalHook: func(_ context.Context, role, rule string, _ map[string]any) (bool, error) {
+	e := &Executor{Tools: mock, ApprovalHook: func(_ context.Context, role, rule string, _ map[string]any) (bool, error) {
 		gotRole, gotRule = role, rule
 		return true, nil
 	}}
@@ -86,7 +86,7 @@ func TestRemediateApprove(t *testing.T) {
 
 	// Denied.
 	mock2 := &mockMCP{}
-	e2 := &Executor{MCP: mock2, ApprovalHook: func(context.Context, string, string, map[string]any) (bool, error) { return false, nil }}
+	e2 := &Executor{Tools: mock2, ApprovalHook: func(context.Context, string, string, map[string]any) (bool, error) { return false, nil }}
 	runRemediateMode(t, e2, "approve", "manager", "")
 	if len(mock2.calls) != 0 {
 		t.Errorf("denied should not call, got %d", len(mock2.calls))
@@ -94,7 +94,7 @@ func TestRemediateApprove(t *testing.T) {
 
 	// No approver wired → skipped.
 	mock3 := &mockMCP{}
-	e3 := &Executor{MCP: mock3}
+	e3 := &Executor{Tools: mock3}
 	runRemediateMode(t, e3, "approve", "manager", "")
 	if len(mock3.calls) != 0 {
 		t.Errorf("no approver should skip, got %d calls", len(mock3.calls))
@@ -104,7 +104,7 @@ func TestRemediateApprove(t *testing.T) {
 func TestRemediateQueueDefersCall(t *testing.T) {
 	mock := &mockMCP{}
 	q := &stubQueue{}
-	e := &Executor{MCP: mock, Queue: q}
+	e := &Executor{Tools: mock, Queue: q}
 	runRemediateMode(t, e, "queue", "", "weekly-cleanup")
 	if len(mock.calls) != 0 {
 		t.Errorf("queue must not call MCP, got %d", len(mock.calls))
@@ -115,7 +115,7 @@ func TestRemediateQueueDefersCall(t *testing.T) {
 }
 
 func TestRemediateApproveHookError(t *testing.T) {
-	e := &Executor{MCP: &mockMCP{}, ApprovalHook: func(context.Context, string, string, map[string]any) (bool, error) {
+	e := &Executor{Tools: &mockMCP{}, ApprovalHook: func(context.Context, string, string, map[string]any) (bool, error) {
 		return false, errors.New("approver down")
 	}}
 	call := &ast.MCPCall{Server: "inv", Tool: "do"}
