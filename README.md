@@ -152,6 +152,51 @@ tln.Run(ctx, program, tln.WithFactStore(tlnstore.New(cli)))
 It also serves the HNSW index behind `find similar` (see
 [Vector similarity](#vector-similarity-hnsw)).
 
+## Plugins & bundling (`mod.tln`)
+
+tln core is plugin-free — every external capability is a plugin behind an SPI
+(`ToolResolver` for tools, `FactStore` for stores). You add them the way Ruby's
+Bundler adds gems: declare them in **`mod.tln`**, run **`tln bundle`**, and
+`tln run` uses them — **no Go**.
+
+```tln
+# mod.tln  — one line per plugin (source defaults to github.com/opentalon/tln-<name>)
+plugin "mcp"    "v0.1.0"
+plugin "io"     "v0.1.0"
+plugin "prolog" "v0.1.0"
+plugin "asp"    "v0.1.0"
+```
+
+```tln
+# rules.tln  — name a plugin with `connector`, call it with `tool`
+connector "inventory" via mcp    { endpoint env "INV_URL" bearer env "INV_TOKEN" }
+connector "reason"    via prolog { }
+
+workflow "demo" {
+  step "list"  { tool "inventory" "list-items" { query "x" } }
+  step "kin"   { tool "reason" "query" { program "parent(tom,bob). ancestor(X,Y):-parent(X,Y)." goal "ancestor(tom, D)" } }
+}
+```
+
+```bash
+tln init demo && cd demo   # scaffold mod.tln + rules.tln
+tln bundle                 # like `bundle install`: compile the declared plugins in
+tln run rules.tln          # connectors resolve; no main.go, ever
+```
+
+Go can't load Go code at runtime without a dependency cycle (core must never
+import a plugin), so `tln bundle` **generates a bootstrap and compiles** a
+project-local `tln` with the plugins baked in (registering each plugin's
+`Factory` via `WithPlugin`). Credentials come from the environment via `env`,
+never inlined — and `env` is valid only inside a `connector`, so secrets can't
+leak into labels, facts, or tool args. Design: [ADR 0013](docs/design/0013-mod-tln-plugin-loading.md).
+
+The four base plugins ([tln-mcp](https://github.com/opentalon/tln-mcp),
+[tln-io](https://github.com/opentalon/tln-io),
+[tln-prolog](https://github.com/opentalon/tln-prolog),
+[tln-asp](https://github.com/opentalon/tln-asp)) each expose a `Factory`; any
+GitHub module with one is a plugin (use `from "…"` for a non-conventional path).
+
 ## Architecture
 
 ```mermaid

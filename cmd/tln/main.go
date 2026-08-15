@@ -56,6 +56,10 @@ func main() {
 		runTest()
 	case "run":
 		runExecute()
+	case "init":
+		runInit()
+	case "bundle":
+		runBundle()
 	case "repl":
 		preload := ""
 		if len(os.Args) > 2 {
@@ -402,6 +406,9 @@ func runExecute() {
 	}
 
 	path := os.Args[2]
+	// If the project has been bundled (`tln bundle`), run through the
+	// project-local binary so declared plugins are loaded. Exits on completion.
+	maybeExecBundle(path, nil)
 	serverURL := "http://localhost:8898"
 	seedPath := ""
 	storeKind := "datalevin"
