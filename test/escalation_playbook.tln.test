@@ -25,9 +25,9 @@ test "Critical overdue vehicle pages on-call; both branches and the loop fire" {
     attr 3 "priority" "CRITICAL"
   }
 
-  mock mcp "ops" "page_oncall" { returns { paged 1 } }
-  mock mcp "ops" "open_ticket" { returns { ticket 900 } }
-  mock mcp "slack" "notify" { returns { ok 1 } }
+  mock tool "ops" "page_oncall" { returns { paged 1 } }
+  mock tool "ops" "open_ticket" { returns { ticket 900 } }
+  mock tool "slack" "notify" { returns { ok 1 } }
 
   when detect "Overdue for service"
 
@@ -37,12 +37,12 @@ test "Critical overdue vehicle pages on-call; both branches and the loop fire" {
     not flagged 3
 
     // `if` branch taken for the CRITICAL vehicle only.
-    mcp_called "ops" "page_oncall" with { vehicle == 1 severity == "critical" }
+    tool_called "ops" "page_oncall" with { vehicle == 1 severity == "critical" }
     // `else` branch taken for the HIGH vehicle.
-    mcp_called "ops" "open_ticket" with { vehicle == 2 }
+    tool_called "ops" "open_ticket" with { vehicle == 2 }
 
     // `for each` fanned the notice to both channels.
-    mcp_called "slack" "notify" with { channel == "fleet-ops" }
-    mcp_called "slack" "notify" with { channel == "maintenance" }
+    tool_called "slack" "notify" with { channel == "fleet-ops" }
+    tool_called "slack" "notify" with { channel == "maintenance" }
   }
 }

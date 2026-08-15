@@ -413,8 +413,8 @@ func runOneTuned(
 	// MCP mocking: when a test stubs or asserts MCP calls, run the block
 	// through the real executor (with a recording caller seeded from the
 	// mocks) so remediate / enrich / workflow mcp steps actually fire,
-	// then verify the mcp_called assertions. This is additive — tests
-	// without mock/mcp_called clauses are unaffected.
+	// then verify the tool_called assertions. This is additive — tests
+	// without mock/tool_called clauses are unaffected.
 	if len(tb.Mocks) > 0 || len(tb.MCPCalls) > 0 {
 		result.Errors = append(result.Errors, runMCPAssertions(tb, plan, entities)...)
 	}

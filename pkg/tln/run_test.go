@@ -125,7 +125,7 @@ func TestRunWorkflow_StillWorksForWorkflowOnly(t *testing.T) {
 	src := `
 workflow "ok" {
   step "s1" {
-    mcp "srv" "tool" {
+    tool "srv" "tool" {
       x 1
     }
   }
@@ -233,7 +233,7 @@ detect "Defective without ticket" {
   for records where status == "defective"
   flag matching items
   remediate {
-    mcp "inventory" "create-ticket" {
+    tool "inventory" "create-ticket" {
       title "Auto: {item.name} is defective"
       item_id attr "id"
       priority "high"
@@ -304,7 +304,7 @@ const enrichSrc = `
 enrich "Refresh stock" {
   for records where type == "stock_item"
   stale_after 1 hour
-  mcp "inventory" "show-item" {
+  tool "inventory" "show-item" {
     id attr "id"
   }
   update attr "current_stock" from result.current_stock

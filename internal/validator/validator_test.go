@@ -225,7 +225,7 @@ on change attr "current_stock" to 0 {
 }
 workflow "Refill stock" {
   step "order" {
-    mcp "timly" "create-order" { quantity 50 }
+    tool "timly" "create-order" { quantity 50 }
   }
 }`)
 }
@@ -298,12 +298,12 @@ func TestValidateWorkflowClean(t *testing.T) {
 	mustClean(t, `
 workflow "Onboard" {
   step "create" {
-    mcp "hr" "create-person" {
+    tool "hr" "create-person" {
       name "Alice"
     }
   }
   step "assign" depends_on "create" {
-    mcp "inv" "assign-item" {
+    tool "inv" "assign-item" {
       person_id step("create").result.id
     }
   }
@@ -314,10 +314,10 @@ func TestValidateWorkflowDuplicateStep(t *testing.T) {
 	mustError(t, `
 workflow "Dup" {
   step "a" {
-    mcp "s" "t" { x 1 }
+    tool "s" "t" { x 1 }
   }
   step "a" {
-    mcp "s" "t" { y 2 }
+    tool "s" "t" { y 2 }
   }
 }`, "duplicate step name")
 }
@@ -326,7 +326,7 @@ func TestValidateWorkflowUndefinedDep(t *testing.T) {
 	mustError(t, `
 workflow "Bad dep" {
   step "a" depends_on "missing" {
-    mcp "s" "t" { x 1 }
+    tool "s" "t" { x 1 }
   }
 }`, "undefined step")
 }
@@ -335,10 +335,10 @@ func TestValidateWorkflowCycle(t *testing.T) {
 	mustError(t, `
 workflow "Cycle" {
   step "a" depends_on "b" {
-    mcp "s" "t" { x 1 }
+    tool "s" "t" { x 1 }
   }
   step "b" depends_on "a" {
-    mcp "s" "t" { x 1 }
+    tool "s" "t" { x 1 }
   }
 }`, "circular dependency")
 }
@@ -438,7 +438,7 @@ detect "Act" {
   for records where status == "defective"
   flag matching items
   remediate {
-    mcp "inventory" "create-ticket" { title "x" }
+    tool "inventory" "create-ticket" { title "x" }
   }
 }`)
 }
@@ -448,7 +448,7 @@ func TestValidateEnrichOK(t *testing.T) {
 enrich "R" {
   for records where type == "stock_item"
   stale_after 1 hour
-  mcp "inv" "show" { id attr "id" }
+  tool "inv" "show" { id attr "id" }
   update attr "current_stock" from result.current_stock
 }`)
 }
@@ -458,7 +458,7 @@ func TestValidateEnrichRequiresUpdate(t *testing.T) {
 enrich "R" {
   for records where type == "stock_item"
   stale_after 1 hour
-  mcp "inv" "show" { id attr "id" }
+  tool "inv" "show" { id attr "id" }
 }`, "at least one 'update")
 }
 

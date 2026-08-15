@@ -8,7 +8,7 @@
 
 collect "Failure training data" {
   schedule weekly
-  mcp "inventory" "list-items" {
+  tool "inventory" "list-items" {
     query    "status:defective"
     per_page 100
     on_error {
@@ -22,6 +22,6 @@ collect "Failure training data" {
 
 collect "Daily stock snapshot" {
   schedule every 6 hours
-  mcp "inventory" "list-stock-items" {}
+  tool "inventory" "list-stock-items" {}
   store results as stock_snapshot tag "stock"
 }

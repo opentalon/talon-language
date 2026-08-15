@@ -190,7 +190,7 @@ detect "Needs cleanup" {
   flag matching items
   remediate approve {
     requires role "manager"
-    mcp "inventory" "flag" {
+    tool "inventory" "flag" {
       id attr "id"
     }
   }
@@ -257,12 +257,12 @@ define "active_vehicle"(a, b) {
 		"workflow_steps": `
 workflow "Refill" {
   step "check" {
-    mcp "inventory" "level" {
+    tool "inventory" "level" {
       sku attr "sku"
     }
   }
   step "order" depends_on "check" {
-    mcp "supplier" "order" {
+    tool "supplier" "order" {
       sku attr "sku"
       qty 10
       on_error {
@@ -273,7 +273,7 @@ workflow "Refill" {
     }
   }
   step "notify" depends_on ["check", "order"] {
-    mcp "slack" "post" {
+    tool "slack" "post" {
       text "done"
     }
   }
@@ -365,7 +365,7 @@ state_machine "Flight" {
 enrich "Refresh stock" {
   for records where type == "stock_item"
   stale_after 7 days
-  mcp "inventory" "get_level" {
+  tool "inventory" "get_level" {
     sku attr "sku"
   }
   update attr "current_stock" from result.level
@@ -374,7 +374,7 @@ enrich "Refresh stock" {
 		"collect_every": `
 collect "Ingest orders" {
   schedule every 6 hours
-  mcp "erp" "list_orders" {
+  tool "erp" "list_orders" {
     since attr "last_sync"
   }
   store results as order tag "erp"
@@ -382,7 +382,7 @@ collect "Ingest orders" {
 		"collect_cron": `
 collect "Nightly sync" {
   schedule cron "0 2 * * *"
-  mcp "erp" "dump" {
+  tool "erp" "dump" {
     full true
   }
   store results as snapshot
@@ -456,7 +456,7 @@ detect "Learned" {
 		"expr_context_step_map": `
 workflow "Ctx" {
   step "a" {
-    mcp "s" "t" {
+    tool "s" "t" {
       who context.actor
       first step("prev").result.items.map(id)
       one step("prev").result.value
@@ -510,17 +510,17 @@ test "flags low stock" {
     priority == CRITICAL
   }
 }`,
-		"test_mock_mcp_called": `
+		"test_mock_tool_called": `
 test "orders when low" {
   given {
     record 1 type "stock_item"
   }
-  mock mcp "supplier" "order" {
+  mock tool "supplier" "order" {
     returns { status "ok" id 42 }
   }
   when detect "Low stock"
   expect {
-    mcp_called "supplier" "order" with { sku == "AB1" qty >= 10 }
+    tool_called "supplier" "order" with { sku == "AB1" qty >= 10 }
   }
 }`,
 		"test_mock_fails": `
@@ -528,7 +528,7 @@ test "handles failure" {
   given {
     record 1 type "item"
   }
-  mock mcp "flaky" "call" {
+  mock tool "flaky" "call" {
     fails "boom"
   }
   when detect "X"
@@ -566,7 +566,7 @@ recommend "Rec" {
 
 workflow "W" {
   step "s" {
-    mcp "srv" "tool" {
+    tool "srv" "tool" {
       x 1
     }
   }

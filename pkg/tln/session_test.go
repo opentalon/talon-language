@@ -26,7 +26,7 @@ on change attr "current_stock" to 0 {
 }
 workflow "Refill stock" {
   step "create_refill" {
-    mcp "timly" "create-order" { item_id step("trigger").result.entity  quantity 50 }
+    tool "timly" "create-order" { item_id step("trigger").result.entity  quantity 50 }
   }
 }`
 
@@ -173,7 +173,7 @@ on change attr "current_stock" {
   workflow "Reorder"
 }
 workflow "Reorder" {
-  step "s" { mcp "timly" "create-order" { quantity 10 } }
+  step "s" { tool "timly" "create-order" { quantity 10 } }
 }`
 	caller := newCaller()
 	s, err := tln.NewSession(src, tln.WithToolResolver(caller))
@@ -211,7 +211,7 @@ on change attr "current_stock" {
   when new_value <= attr "minimum_amount"
   workflow "W"
 }
-workflow "W" { step "s" { mcp "a" "b" {} } }`
+workflow "W" { step "s" { tool "a" "b" {} } }`
 	_, err := tln.NewSession(src)
 	if err == nil {
 		t.Fatal("expected NewSession to reject cross-fact when clause")
@@ -260,7 +260,7 @@ on change attr "current_stock" to 0 {
   logger.warn "stock-out for {event.entity}"
   workflow "Refill"
 }
-workflow "Refill" { step "s" { mcp "inv" "order" {} } }`
+workflow "Refill" { step "s" { tool "inv" "order" {} } }`
 	caller := newCaller()
 	s, err := tln.NewSession(src, tln.WithToolResolver(caller))
 	if err != nil {
@@ -291,7 +291,7 @@ workflow "Refill" { step "s" { mcp "inv" "order" {} } }`
 func TestSession_RunAll(t *testing.T) {
 	src := `
 workflow "Ping" {
-  step "s" { mcp "svc" "ping" {} }
+  step "s" { tool "svc" "ping" {} }
 }`
 	caller := newCaller()
 	s, err := tln.NewSession(src, tln.WithToolResolver(caller))

@@ -15,7 +15,7 @@ detect "Recall batch match" {
     and upper(substring(attr "vin", 0, 3)) == "1FT"
   flag matching items
   remediate {
-    mcp "ops" "open_recall" {
+    tool "ops" "open_recall" {
       vehicle attr "id"
       code upper(attr "recall_code")
       region upper(substring(attr "vin", 0, 3))

@@ -818,7 +818,7 @@ func actionAssertionStr(a ast.ActionAssertion) string {
 }
 
 func (p *printer) mock(m ast.MockClause) {
-	p.open("mock mcp " + quote(m.Server) + " " + quote(m.Tool))
+	p.open("mock tool " + quote(m.Server) + " " + quote(m.Tool))
 	if m.Returns != nil {
 		var kvs []string
 		for _, k := range sortedKeys(m.Returns) {
@@ -840,7 +840,7 @@ func (p *printer) mock(m ast.MockClause) {
 }
 
 func mcpCalledStr(c ast.MCPCalledAssertion) string {
-	s := "mcp_called " + quote(c.Server) + " " + quote(c.Tool)
+	s := "tool_called " + quote(c.Server) + " " + quote(c.Tool)
 	if len(c.Args) > 0 {
 		var preds []string
 		for _, a := range c.Args {
@@ -905,7 +905,7 @@ func (p *printer) actionBody(actions []ast.Action) {
 }
 
 func (p *printer) mcpCall(c *ast.MCPCall) {
-	p.open("mcp " + quote(c.Server) + " " + quote(c.Tool))
+	p.open("tool " + quote(c.Server) + " " + quote(c.Tool))
 	for _, k := range sortedExprKeys(c.Args) {
 		p.line(k + " " + exprStr(c.Args[k]))
 	}

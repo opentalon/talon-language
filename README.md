@@ -294,12 +294,12 @@ tln stays declarative where it counts, but action bodies (today: `remediate`) su
 ```tln
 remediate {
   if attr "priority" == "CRITICAL" {
-    mcp "ops" "page_oncall" { vehicle attr "id" }
+    tool "ops" "page_oncall" { vehicle attr "id" }
   } else {
-    mcp "ops" "open_ticket" { vehicle attr "id" }
+    tool "ops" "open_ticket" { vehicle attr "id" }
   }
   for each channel in ["fleet-ops", "maintenance"] {
-    mcp "slack" "notify" { channel channel text "Vehicle {item.id} overdue" }
+    tool "slack" "notify" { channel channel text "Vehicle {item.id} overdue" }
   }
 }
 ```
@@ -355,7 +355,7 @@ detect "High pressure" {
 }
 ```
 
-Because a macro emits nothing but ordinary AST, everything downstream — explainability, testing, the reactive runtime — treats generated rules identically to hand-written ones.
+Because a macro emits nothing but ordinary AST, everything downstream — explainability, testing, the reactive runtime — treats generated rules identically to hand-written ones. That includes `tool` calls: a macro can splice `tool "audit" "writeln" { … }` into every rule it generates, so effect boilerplate is generated too (see [ADR 0012](docs/design/0012-tool-verb-and-connectors.md)).
 
 ## Expert-in-the-Loop
 
@@ -513,7 +513,7 @@ predict "Equipment failure risk" {
 ```tln
 workflow "Onboard new team member" {
   step "create_person" {
-    mcp "hr" "create-person" {
+    tool "hr" "create-person" {
       first_name context.first_name
       last_name context.last_name
       org_unit_id context.org_unit
@@ -521,14 +521,14 @@ workflow "Onboard new team member" {
   }
 
   step "assign_equipment" depends_on "create_person" {
-    mcp "inventory" "assign-item" {
+    tool "inventory" "assign-item" {
       item_id context.laptop_id
       person_id step("create_person").result.id
     }
   }
 
   step "notify" depends_on ["create_person", "assign_equipment"] {
-    mcp "notifications" "send" {
+    tool "notifications" "send" {
       channel context.manager_channel
       message "{context.first_name} onboarded. Equipment assigned."
     }

@@ -17,7 +17,7 @@ test "VIN prefix normalises and matches the recall batch; ticket fields are buil
     attr 2 "recall_code" "rb7"
   }
 
-  mock mcp "ops" "open_recall" { returns { ticket 900 } }
+  mock tool "ops" "open_recall" { returns { ticket 900 } }
 
   when detect "Recall batch match"
 
@@ -26,7 +26,7 @@ test "VIN prefix normalises and matches the recall batch; ticket fields are buil
     not flagged 2
 
     // Args are computed by upper()/substring()/concat().
-    mcp_called "ops" "open_recall" with {
+    tool_called "ops" "open_recall" with {
       vehicle == 1
       code == "RB7"
       region == "1FT"
