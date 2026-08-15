@@ -12,9 +12,10 @@ import (
 )
 
 // bundleTlnVersion pins the tln-language version the generated bundle compiles
-// against. v0.11.0 is the first release with the connector runtime
-// (WithPlugin/WithEnv) the bundle relies on.
-const bundleTlnVersion = "v0.11.0"
+// against. v0.12.0 is the first release with both the connector runtime
+// (WithPlugin/WithEnv) and the store path (LoadStoreConfig) the bundle relies
+// on.
+const bundleTlnVersion = "v0.12.0"
 
 const bundleDir = ".tln/bundle"
 
