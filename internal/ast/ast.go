@@ -1247,8 +1247,8 @@ type TestBlock struct {
 	WhenKind  string // "detect", "rule", "forecast", etc.
 	WhenBlock string // block name
 	Expect    []TestAssertion
-	Mocks     []MockClause         // `mock mcp ...` stubs installed before `when`
-	MCPCalls  []MCPCalledAssertion // `mcp_called ...` assertions inside `expect`
+	Mocks     []MockClause         // `mock tool ...` stubs installed before `when`
+	MCPCalls  []MCPCalledAssertion // `tool_called ...` assertions inside `expect`
 	Actions   []ActionAssertion    // `did` / `did_not` assertions inside `expect`
 }
 
@@ -1274,7 +1274,7 @@ type ActionArgMatch struct {
 	Value    any
 }
 
-// MockClause stubs one MCP tool for a test: `mock mcp "server" "tool" {
+// MockClause stubs one MCP tool for a test: `mock tool "server" "tool" {
 // returns { k v ... } | fails "msg" | fails after N }`. Returns holds the
 // canned response; Fails makes the call error (after FailAfter successes,
 // if set).
@@ -1288,7 +1288,7 @@ type MockClause struct {
 }
 
 // MCPCalledAssertion checks that the block called an MCP tool, optionally
-// constraining the arguments: `mcp_called "server" "tool" [with { name OP
+// constraining the arguments: `tool_called "server" "tool" [with { name OP
 // value ... }]`.
 type MCPCalledAssertion struct {
 	Server string
@@ -1296,7 +1296,7 @@ type MCPCalledAssertion struct {
 	Args   []ArgPredicate
 }
 
-// ArgPredicate is one `name OP value` check inside `mcp_called ... with`.
+// ArgPredicate is one `name OP value` check inside `tool_called ... with`.
 // Op is one of "==", "!=", "contains".
 type ArgPredicate struct {
 	Name  string

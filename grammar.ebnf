@@ -304,7 +304,11 @@ WorkflowStep  = "step" STRING
 
 StepBody      = MCPCall { Condition }
 
-MCPCall       = "mcp" STRING STRING "{" { MCPArg | OnErrorClause } "}"
+(* The tool-call verb is "tool" (server-agnostic): it dispatches to the host
+   ToolResolver as Call(server, tool, args). mcp/io/etc. are servers, never
+   keywords. Connectors (ADR 0012) may bind a server's backing plugin in
+   source. *)
+MCPCall       = "tool" STRING STRING "{" { MCPArg | OnErrorClause } "}"
 
 MCPArg        = IDENT Expr
 

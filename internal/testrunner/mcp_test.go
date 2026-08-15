@@ -10,7 +10,7 @@ detect "Defective without ticket" {
   for records where status == "defective"
   flag matching items
   remediate {
-    mcp "inventory" "create-ticket" {
+    tool "inventory" "create-ticket" {
       item_id attr "id"
       title "Auto: {item.name}"
       priority "high"
@@ -26,11 +26,11 @@ test "creates ticket" {
     record 501 type "item" status "defective"
     attr 501 "name" "Broken Drill"
   }
-  mock mcp "inventory" "create-ticket" { returns { id 801  status "open" } }
+  mock tool "inventory" "create-ticket" { returns { id 801  status "open" } }
   when detect "Defective without ticket"
   expect {
     flagged 501
-    mcp_called "inventory" "create-ticket" with {
+    tool_called "inventory" "create-ticket" with {
       item_id == 501
       title contains "Broken Drill"
       priority == "high"
@@ -49,10 +49,10 @@ test "wrong arg" {
     record 501 type "item" status "defective"
     attr 501 "name" "Broken Drill"
   }
-  mock mcp "inventory" "create-ticket" { returns { id 801 } }
+  mock tool "inventory" "create-ticket" { returns { id 801 } }
   when detect "Defective without ticket"
   expect {
-    mcp_called "inventory" "create-ticket" with { item_id == 999 }
+    tool_called "inventory" "create-ticket" with { item_id == 999 }
   }
 }`)
 	if len(res) != 1 || res[0].Passed {
@@ -72,7 +72,7 @@ test "not defective" {
   }
   when detect "Defective without ticket"
   expect {
-    mcp_called "inventory" "create-ticket"
+    tool_called "inventory" "create-ticket"
   }
 }`)
 	if len(res) != 1 || res[0].Passed {
@@ -89,7 +89,7 @@ detect "Defective without ticket" {
   for records where status == "defective"
   flag matching items
   remediate {
-    mcp "inventory" "create-ticket" {
+    tool "inventory" "create-ticket" {
       item_id attr "id"
       on_error { log "failed: {error}"  then skip }
     }
@@ -100,11 +100,11 @@ test "mock failure is swallowed by on_error skip" {
   given {
     record 501 type "item" status "defective"
   }
-  mock mcp "inventory" "create-ticket" { fails "boom" }
+  mock tool "inventory" "create-ticket" { fails "boom" }
   when detect "Defective without ticket"
   expect {
     flagged 501
-    mcp_called "inventory" "create-ticket"
+    tool_called "inventory" "create-ticket"
   }
 }`)
 	// The call was attempted (and recorded) then skipped; the block still

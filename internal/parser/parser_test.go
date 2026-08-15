@@ -272,12 +272,12 @@ func TestParseWorkflow(t *testing.T) {
 	prog := mustParse(t, `
 workflow "Onboard new team member" {
   step "create_person" {
-    mcp "hr" "create-person" {
+    tool "hr" "create-person" {
       first_name context.first_name
     }
   }
   step "assign_equipment" depends_on "create_person" {
-    mcp "inventory" "assign-item" {
+    tool "inventory" "assign-item" {
       person_id step("create_person").result.id
     }
   }
@@ -304,13 +304,13 @@ func TestParseWorkflowMapExpr(t *testing.T) {
 	prog := mustParse(t, `
 workflow "Delete items" {
   step "find" {
-    mcp "srv" "list" {
+    tool "srv" "list" {
       query "test"
       collect_all true
     }
   }
   step "delete" depends_on "find" {
-    mcp "srv" "batch-delete" {
+    tool "srv" "batch-delete" {
       ids step("find").result.items.map(id)
     }
   }
@@ -1080,11 +1080,11 @@ detect "Defective without ticket" {
   for records where status == "defective"
   flag matching items
   remediate {
-    mcp "inventory" "create-ticket" {
+    tool "inventory" "create-ticket" {
       title "Auto: {item.name}"
       item_id attr "id"
     }
-    mcp "slack" "notify" { text "defective item" }
+    tool "slack" "notify" { text "defective item" }
   }
 }`)
 	b := block[*ast.DetectBlock](t, prog, 0)
@@ -1110,7 +1110,7 @@ recommend "Order more" {
   when detect "Low stock" matches
   suggest "Order now"
   remediate {
-    mcp "inventory" "create-order" { quantity 50 }
+    tool "inventory" "create-order" { quantity 50 }
   }
 }`)
 	b := block[*ast.RecommendBlock](t, prog, 0)
@@ -1208,17 +1208,17 @@ detect "Escalate" {
   flag matching items
   remediate {
     if attr "priority" == "CRITICAL" {
-      mcp "ops" "page" { id attr "id" }
+      tool "ops" "page" { id attr "id" }
     } else if attr "priority" == "HIGH" {
-      mcp "ops" "ticket" { id attr "id" }
+      tool "ops" "ticket" { id attr "id" }
     } else {
-      mcp "ops" "log" { id attr "id" }
+      tool "ops" "log" { id attr "id" }
     }
     for each channel in ["a", "b"] {
-      mcp "slack" "notify" { channel channel }
+      tool "slack" "notify" { channel channel }
     }
     while attr "open" == 1 {
-      mcp "ops" "retry" { id attr "id" }
+      tool "ops" "retry" { id attr "id" }
     }
   }
 }`)
@@ -1278,7 +1278,7 @@ detect "Act" {
   for records where status == "defective"
   flag matching items
   remediate {
-    mcp "inventory" "create-ticket" {
+    tool "inventory" "create-ticket" {
       priority "high"
       status "open"
       title "x"
@@ -1303,7 +1303,7 @@ func TestParseEnrich(t *testing.T) {
 enrich "Refresh stock" {
   for records where type == "stock_item"
   stale_after 1 hour
-  mcp "inventory" "show-item" { id attr "id" }
+  tool "inventory" "show-item" { id attr "id" }
   update attr "current_stock" from result.current_stock
   update attr "stock_assigned" from result.data.assigned
 }`)
@@ -1329,7 +1329,7 @@ func TestParseMCPOnError(t *testing.T) {
 	prog := mustParse(t, `
 workflow "W" {
   step "s" {
-    mcp "inv" "create" {
+    tool "inv" "create" {
       title "x"
       on_error {
         retry 3 times
@@ -1359,11 +1359,11 @@ func TestParseTestMockAndMCPCalled(t *testing.T) {
 	prog := mustParse(t, `
 test "t" {
   given { record 1 type "item" status "defective" }
-  mock mcp "inventory" "create-ticket" { returns { id 801  status "open" } }
+  mock tool "inventory" "create-ticket" { returns { id 801  status "open" } }
   when detect "D"
   expect {
     flagged 1
-    mcp_called "inventory" "create-ticket" with {
+    tool_called "inventory" "create-ticket" with {
       item_id == 501
       title contains "Drill"
     }
@@ -1377,7 +1377,7 @@ test "t" {
 		t.Errorf("mock: %+v", tb.Mocks[0])
 	}
 	if len(tb.MCPCalls) != 1 || len(tb.MCPCalls[0].Args) != 2 {
-		t.Fatalf("mcp_called: %+v", tb.MCPCalls)
+		t.Fatalf("tool_called: %+v", tb.MCPCalls)
 	}
 	if tb.MCPCalls[0].Args[0].Name != "item_id" || tb.MCPCalls[0].Args[0].Op != "==" || tb.MCPCalls[0].Args[0].Value != 501 {
 		t.Errorf("arg 0: %+v", tb.MCPCalls[0].Args[0])
@@ -1395,12 +1395,12 @@ func TestParseCollect(t *testing.T) {
 	prog := mustParse(t, `
 collect "Failure training data" {
   schedule weekly
-  mcp "inventory" "list-items" { query "status:defective"  per_page 100 }
+  tool "inventory" "list-items" { query "status:defective"  per_page 100 }
   store results as training_facts tag "failure_training"
 }
 collect "Snapshot" {
   schedule every 6 hours
-  mcp "inventory" "list" {}
+  tool "inventory" "list" {}
   store results as snap
 }`)
 	a := block[*ast.CollectBlock](t, prog, 0)
@@ -1423,7 +1423,7 @@ detect "d" {
   flag matching items
   remediate approve {
     requires role "manager"
-    mcp "inventory" "delete-item" { item_id attr "id" }
+    tool "inventory" "delete-item" { item_id attr "id" }
   }
 }`)
 	b := block[*ast.DetectBlock](t, prog, 0)
@@ -1435,7 +1435,7 @@ detect "d" {
 detect "q" {
   for records where status == "stale"
   flag matching items
-  remediate queue { batch "weekly"  mcp "inv" "update" {} }
+  remediate queue { batch "weekly"  tool "inv" "update" {} }
 }`)
 	q := block[*ast.DetectBlock](t, prog2, 0)
 	if q.Remediate.Mode != "queue" || q.Remediate.Batch != "weekly" {
@@ -1447,7 +1447,7 @@ detect "q" {
 detect "p" {
   for records where status == "x"
   flag matching items
-  remediate { mcp "inv" "t" {} }
+  remediate { tool "inv" "t" {} }
 }`)
 	p := block[*ast.DetectBlock](t, prog3, 0)
 	if p.Remediate.Mode != "propose" {

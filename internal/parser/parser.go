@@ -213,7 +213,7 @@ func (p *parser) parseDetectClause(b *ast.DetectBlock) bool {
 }
 
 // parseRemediateClause parses `remediate [mode] { [requires role "R"]
-// [batch "B"] mcp "s" "t" { ... } ... }`. Mode is auto | propose (default)
+// [batch "B"] tool "s" "t" { ... } ... }`. Mode is auto | propose (default)
 // | approve | queue.
 func (p *parser) parseRemediateClause() *ast.RemediateClause {
 	tok := p.advance() // remediate
@@ -264,13 +264,13 @@ func (p *parser) parseActionStmt() ast.Action {
 		return p.parseWhileAction()
 	case p.at(lexer.TokenFor) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenEach:
 		return p.parseForEachAction()
-	case p.at(lexer.TokenMcp):
+	case p.at(lexer.TokenTool):
 		if call := p.parseMCPCall(); call != nil {
 			return &ast.MCPAction{Call: call}
 		}
 		return nil
 	default:
-		p.errorf("unexpected token %q inside action body (expected mcp / if / for each / while / requires role / batch)", p.peek().Value)
+		p.errorf("unexpected token %q inside action body (expected tool / if / for each / while / requires role / batch)", p.peek().Value)
 		p.advance()
 		return nil
 	}
@@ -761,7 +761,7 @@ func (p *parser) parseWorkflowStep() ast.WorkflowStep {
 	}
 	p.expect(lexer.TokenLBrace)
 	step := ast.WorkflowStep{Name: name, DependsOn: dependsOn}
-	if p.at(lexer.TokenMcp) {
+	if p.at(lexer.TokenTool) {
 		step.MCPCall = p.parseMCPCall()
 	}
 	p.expect(lexer.TokenRBrace)
@@ -769,7 +769,7 @@ func (p *parser) parseWorkflowStep() ast.WorkflowStep {
 }
 
 func (p *parser) parseMCPCall() *ast.MCPCall {
-	p.advance() // mcp
+	p.advance() // tool
 	server := p.expectString()
 	tool := p.expectString()
 	p.expect(lexer.TokenLBrace)
@@ -788,7 +788,7 @@ func (p *parser) parseMCPCall() *ast.MCPCall {
 		keyTok := p.advance()
 		key := keyTok.Value
 		if key == "" {
-			p.errorf("expected mcp argument name, got %q", keyTok.Value)
+			p.errorf("expected tool argument name, got %q", keyTok.Value)
 			continue
 		}
 		val := p.parseExpr()
@@ -855,12 +855,12 @@ func (p *parser) parseEnrich() *ast.EnrichBlock {
 		case lexer.TokenStaleAfter:
 			p.advance()
 			b.StaleAfter = p.parseDuration()
-		case lexer.TokenMcp:
+		case lexer.TokenTool:
 			b.Call = p.parseMCPCall()
 		case lexer.TokenUpdate:
 			b.Updates = append(b.Updates, p.parseUpdateClause())
 		default:
-			p.errorf("unexpected token %q inside enrich block (expected stale_after / mcp / update)", p.peek().Value)
+			p.errorf("unexpected token %q inside enrich block (expected stale_after / tool / update)", p.peek().Value)
 			p.advance()
 		}
 	}
@@ -908,12 +908,12 @@ func (p *parser) parseCollect() *ast.CollectBlock {
 		case lexer.TokenSchedule:
 			p.advance()
 			b.Schedule = p.parseScheduleExpr()
-		case lexer.TokenMcp:
+		case lexer.TokenTool:
 			b.Call = p.parseMCPCall()
 		case lexer.TokenStore:
 			p.parseCollectStore(b)
 		default:
-			p.errorf("unexpected token %q inside collect block (expected schedule / mcp / store)", p.peek().Value)
+			p.errorf("unexpected token %q inside collect block (expected schedule / tool / store)", p.peek().Value)
 			p.advance()
 		}
 	}
@@ -3027,9 +3027,9 @@ func (p *parser) parseTestBlock() *ast.TestBlock {
 			p.advance() // expect
 			p.expect(lexer.TokenLBrace)
 			for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
-				// mcp_called needs richer structure than TestAssertion,
+				// tool_called needs richer structure than TestAssertion,
 				// so it lands in its own list.
-				if p.at(lexer.TokenIdent) && p.peek().Value == "mcp_called" {
+				if p.at(lexer.TokenIdent) && p.peek().Value == "tool_called" {
 					b.MCPCalls = append(b.MCPCalls, p.parseMCPCalledAssertion())
 					continue
 				}
@@ -3051,11 +3051,11 @@ func (p *parser) parseTestBlock() *ast.TestBlock {
 	return b
 }
 
-// parseMockClause parses `mock mcp "server" "tool" { returns { k v ... } |
+// parseMockClause parses `mock tool "server" "tool" { returns { k v ... } |
 // fails "msg" | fails after N }`.
 func (p *parser) parseMockClause() ast.MockClause {
 	p.advance() // mock
-	p.expect(lexer.TokenMcp)
+	p.expect(lexer.TokenTool)
 	m := ast.MockClause{Server: p.expectString(), Tool: p.expectString()}
 	if !p.expect(lexer.TokenLBrace) {
 		return m
@@ -3094,10 +3094,10 @@ func (p *parser) parseMockClause() ast.MockClause {
 	return m
 }
 
-// parseMCPCalledAssertion parses `mcp_called "server" "tool" [with { name
+// parseMCPCalledAssertion parses `tool_called "server" "tool" [with { name
 // OP value ... }]`.
 func (p *parser) parseMCPCalledAssertion() ast.MCPCalledAssertion {
-	p.advance() // mcp_called
+	p.advance() // tool_called
 	a := ast.MCPCalledAssertion{Server: p.expectString(), Tool: p.expectString()}
 	if p.at(lexer.TokenIdent) && p.peek().Value == "with" {
 		p.advance() // with
@@ -3117,7 +3117,7 @@ func (p *parser) parseMCPCalledAssertion() ast.MCPCalledAssertion {
 }
 
 // parseLiteralValue reads a single literal (string / number / bool) as a
-// Go value, for mock returns and mcp_called arg predicates.
+// Go value, for mock returns and tool_called arg predicates.
 func (p *parser) parseLiteralValue() any {
 	switch p.peek().Type {
 	case lexer.TokenString:
@@ -3265,7 +3265,7 @@ func (p *parser) atTestAssertionBoundary() bool {
 		return true
 	case lexer.TokenIdent:
 		switch p.peek().Value {
-		case "did", "did_not", "mcp_called", "score":
+		case "did", "did_not", "tool_called", "score":
 			return true
 		}
 	}

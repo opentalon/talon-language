@@ -11,9 +11,9 @@ import (
 	"github.com/opentalon/tln-language/internal/planner"
 )
 
-// recordingCaller is the test double installed for `mock mcp` clauses. It
+// recordingCaller is the test double installed for `mock tool` clauses. It
 // answers calls from the matching MockClause (canned response or error)
-// and records every invocation for `mcp_called` assertions. Unmocked
+// and records every invocation for `tool_called` assertions. Unmocked
 // calls return an empty success so the block under test proceeds.
 type recordingCaller struct {
 	mocks []ast.MockClause
@@ -70,7 +70,7 @@ func cloneReturns(m map[string]any) map[string]any {
 }
 
 // runMCPAssertions runs the block through the real executor with a
-// recording caller, then checks each mcp_called assertion. Returned
+// recording caller, then checks each tool_called assertion. Returned
 // strings are assertion-failure messages (empty slice = all passed).
 func runMCPAssertions(tb *ast.TestBlock, plan *planner.QueryPlan, entities map[int]*entity) []string {
 	if plan == nil {

@@ -626,13 +626,13 @@ func TestPlanWorkflowTopoSort(t *testing.T) {
 	plan := planBlock(t, `
 workflow "Deploy" {
   step "notify" depends_on "deploy" {
-    mcp "slack" "post" { channel "ops" }
+    tool "slack" "post" { channel "ops" }
   }
   step "deploy" depends_on "build" {
-    mcp "ci" "deploy" { env "prod" }
+    tool "ci" "deploy" { env "prod" }
   }
   step "build" {
-    mcp "ci" "build" { branch "main" }
+    tool "ci" "build" { branch "main" }
   }
 }`, "Deploy")
 
@@ -778,7 +778,7 @@ detect "Defective" {
   for records where status == "defective"
   flag matching items
   remediate {
-    mcp "inventory" "create-ticket" { title "x" }
+    tool "inventory" "create-ticket" { title "x" }
   }
 }`, "Defective")
 
@@ -809,7 +809,7 @@ func TestPlanEnrichStep(t *testing.T) {
 enrich "R" {
   for records where type == "stock_item"
   stale_after 1 hour
-  mcp "inv" "show" { id attr "id" }
+  tool "inv" "show" { id attr "id" }
   update attr "current_stock" from result.current_stock
 }`, "R")
 	var found *GoComputation

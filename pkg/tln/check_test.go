@@ -11,7 +11,7 @@ func TestCheck_ValidWorkflow(t *testing.T) {
 	src := `
 workflow "ok" {
   step "one" {
-    mcp "svc" "do" { arg "x" }
+    tool "svc" "do" { arg "x" }
   }
 }`
 	if err := tln.Check(src); err != nil {

@@ -35,7 +35,7 @@ func TestRunWorkflow_MCPDispatch(t *testing.T) {
 	src := `
 workflow "create" {
   step "create" {
-    mcp "hr" "create-person" {
+    tool "hr" "create-person" {
       name "Alice"
     }
   }
@@ -69,12 +69,12 @@ func TestRunWorkflow_StepResultChaining(t *testing.T) {
 	src := `
 workflow "chain" {
   step "create" {
-    mcp "hr" "create-person" {
+    tool "hr" "create-person" {
       name "Alice"
     }
   }
   step "assign" depends_on "create" {
-    mcp "inv" "assign-item" {
+    tool "inv" "assign-item" {
       person_id step("create").result.id
     }
   }
@@ -103,7 +103,7 @@ func TestRunWorkflow_ConfirmDeny(t *testing.T) {
 	src := `
 workflow "deny" {
   step "delete" {
-    mcp "srv" "delete-all" {
+    tool "srv" "delete-all" {
       confirm true
     }
   }
@@ -134,7 +134,7 @@ func TestRunWorkflow_CollectAll(t *testing.T) {
 	src := `
 workflow "paginate" {
   step "find" {
-    mcp "srv" "list" {
+    tool "srv" "list" {
       query "test"
       collect_all true
     }
@@ -176,12 +176,12 @@ func TestRunWorkflow_MapExpr(t *testing.T) {
 	src := `
 workflow "map" {
   step "find" {
-    mcp "srv" "list" {
+    tool "srv" "list" {
       query "test"
     }
   }
   step "delete" depends_on "find" {
-    mcp "srv" "batch-delete" {
+    tool "srv" "batch-delete" {
       ids step("find").result.items.map(id)
     }
   }
@@ -222,7 +222,7 @@ func TestRunWorkflow_NoToolResolver(t *testing.T) {
 	src := `
 workflow "stub" {
   step "s1" {
-    mcp "srv" "tool" {
+    tool "srv" "tool" {
       x 1
     }
   }
@@ -244,7 +244,7 @@ func TestRunWorkflow_MCPError(t *testing.T) {
 	src := `
 workflow "err" {
   step "s1" {
-    mcp "srv" "tool" {
+    tool "srv" "tool" {
       x 1
     }
   }

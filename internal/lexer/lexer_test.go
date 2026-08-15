@@ -73,7 +73,7 @@ func TestKeywords(t *testing.T) {
 		{"every", TokenEvery},
 		{"on", TokenOn},
 		{"step", TokenStep},
-		{"mcp", TokenMcp},
+		{"tool", TokenTool},
 		{"anomaly", TokenAnomaly},
 		{"compared_to", TokenComparedTo},
 		{"series", TokenSeries},
