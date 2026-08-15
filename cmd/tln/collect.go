@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/opentalon/tln-language/internal/ast"
-	"github.com/opentalon/tln-language/internal/datalevin"
 	"github.com/opentalon/tln-language/internal/diagnostic"
 	"github.com/opentalon/tln-language/internal/executor"
 	"github.com/opentalon/tln-language/internal/factstore"
@@ -20,7 +19,7 @@ import (
 // and `run` fires one execution when the host decides to.
 func runCollect() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: tln collect <list|run> <file.tln> [--name NAME] [--store ...]")
+		fmt.Fprintln(os.Stderr, "usage: tln collect <list|run> <file.tln> [--name NAME]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	switch os.Args[2] {
@@ -74,27 +73,14 @@ func runCollectList() {
 // the SDK; here `run` wires the store and reports what was asserted.
 func runCollectRun() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "usage: tln collect run <file.tln> --name NAME [--store memory|datalevin]")
+		fmt.Fprintln(os.Stderr, "usage: tln collect run <file.tln> --name NAME")
 		os.Exit(diagnostic.ExitUsage)
 	}
 	path := os.Args[3]
 	name := ""
-	storeKind := "memory"
-	serverURL := "http://localhost:8898"
-	tenant := ""
 	for i := 4; i < len(os.Args); i++ {
-		switch {
-		case os.Args[i] == "--name" && i+1 < len(os.Args):
+		if os.Args[i] == "--name" && i+1 < len(os.Args) {
 			name = os.Args[i+1]
-			i++
-		case os.Args[i] == "--store" && i+1 < len(os.Args):
-			storeKind = os.Args[i+1]
-			i++
-		case os.Args[i] == "--datalevin" && i+1 < len(os.Args):
-			serverURL = os.Args[i+1]
-			i++
-		case os.Args[i] == "--tenant" && i+1 < len(os.Args):
-			tenant = os.Args[i+1]
 			i++
 		}
 	}
@@ -116,7 +102,7 @@ func runCollectRun() {
 	}
 
 	ctx := context.Background()
-	store := collectStore(storeKind, serverURL, tenant)
+	store := factstore.NewMemoryStore()
 	exec := executor.NewExecutor(store)
 	// exec.Tools stays nil: the standalone CLI has no MCP transport. A host
 	// injects a caller via the SDK; here the fetch is a no-op.
@@ -158,21 +144,4 @@ func parseCollectBlocks(path string) []*ast.CollectBlock {
 		}
 	}
 	return out
-}
-
-func collectStore(kind, serverURL, tenant string) factstore.FactStore {
-	switch kind {
-	case "memory":
-		return factstore.NewMemoryStore()
-	case "datalevin":
-		client := datalevin.NewClient(serverURL)
-		if tenant != "" {
-			client = client.WithTenant(tenant)
-		}
-		return client
-	default:
-		fmt.Fprintf(os.Stderr, "tln collect run: unknown --store %q (want memory or datalevin)\n", kind)
-		os.Exit(diagnostic.ExitUsage)
-		return nil
-	}
 }

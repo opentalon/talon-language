@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentalon/tln-language/internal/datalevin"
 	"github.com/opentalon/tln-language/internal/diagnostic"
 	"github.com/opentalon/tln-language/internal/executor"
 	"github.com/opentalon/tln-language/internal/explain"
@@ -399,33 +398,21 @@ func runTestPair(rulesPath, testPath, filter string, verbose bool) ([]testrunner
 }
 
 func runExecute() {
-	// Parse args: tln run <file.tln> [--store backend] [--datalevin URL] [--tenant NAME] [--seed file.tln.test]
+	// Parse args: tln run <file.tln> [--seed file.tln.test]
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: tln run <file.tln> [--store datalevin|memory] [--datalevin URL] [--tenant NAME] [--seed file.tln.test]")
+		fmt.Fprintln(os.Stderr, "usage: tln run <file.tln> [--seed file.tln.test]")
 		os.Exit(diagnostic.ExitUsage)
 	}
 
 	path := os.Args[2]
 	// If the project has been bundled (`tln bundle`), run through the
-	// project-local binary so declared plugins are loaded. Exits on completion.
-	maybeExecBundle(path, nil)
-	serverURL := "http://localhost:8898"
+	// project-local binary so declared plugins are loaded (forwarding flags like
+	// --seed). Exits on completion.
+	maybeExecBundle(path, os.Args[3:])
 	seedPath := ""
-	storeKind := "datalevin"
-	tenant := ""
 	for i := 3; i < len(os.Args); i++ {
-		switch {
-		case os.Args[i] == "--datalevin" && i+1 < len(os.Args):
-			serverURL = os.Args[i+1]
-			i++
-		case os.Args[i] == "--seed" && i+1 < len(os.Args):
+		if os.Args[i] == "--seed" && i+1 < len(os.Args) {
 			seedPath = os.Args[i+1]
-			i++
-		case os.Args[i] == "--store" && i+1 < len(os.Args):
-			storeKind = os.Args[i+1]
-			i++
-		case os.Args[i] == "--tenant" && i+1 < len(os.Args):
-			tenant = os.Args[i+1]
 			i++
 		}
 	}
@@ -445,28 +432,10 @@ func runExecute() {
 
 	ctx := context.Background()
 
-	// Wire the FactStore. `--store datalevin` (default) connects to the
-	// JVM sidecar; `--store memory` runs entirely in-process — useful
-	// for embedded deployments, demos, and CI.
-	var store factstore.FactStore
-	switch storeKind {
-	case "datalevin":
-		client := datalevin.NewClient(serverURL)
-		if err := client.Health(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "tln run: cannot reach datalevin-server at %s: %v\n", serverURL, err)
-			fmt.Fprintln(os.Stderr, "hint: start the server with: cd datalevin-server && clj -M:run")
-			os.Exit(diagnostic.ExitError)
-		}
-		if tenant != "" {
-			client = client.WithTenant(tenant)
-		}
-		store = client
-	case "memory":
-		store = factstore.NewMemoryStore()
-	default:
-		fmt.Fprintf(os.Stderr, "tln run: unknown --store %q (want datalevin or memory)\n", storeKind)
-		os.Exit(diagnostic.ExitUsage)
-	}
+	// Non-bundled runs use the in-process store. A program that needs a real
+	// backing store declares one in config/store.tln and runs via `tln bundle`,
+	// which loads the store plugin (e.g. tln-datalevin). See ADR 0013.
+	store := factstore.NewMemoryStore()
 
 	exec := executor.NewExecutor(store)
 

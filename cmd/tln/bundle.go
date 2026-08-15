@@ -134,21 +134,21 @@ func generateBundle(plugins []mod.Plugin) (goMod, mainGo, lock string, err error
 		return "", "", "", fmt.Errorf("mod.tln declares %d store plugins; at most one is allowed", storeCount)
 	}
 
-	// A store plugin is wired after the opts literal: load config/store.tln,
-	// build the FactStore via the plugin's Factory, and override the default
-	// in-memory store. No store plugin → the memory default stands.
+	// A store plugin overrides the default in-memory store: load
+	// config/store.tln, build the FactStore via the plugin's Factory. No store
+	// plugin → the memory default stands.
 	storeWiring := ""
 	if storeCount == 1 {
 		storeWiring = fmt.Sprintf(`	if spec, ok, serr := tln.LoadStoreConfig("config/store.tln"); serr != nil {
 		fmt.Fprintln(os.Stderr, serr)
 		os.Exit(1)
 	} else if ok {
-		store, serr := %s.Factory(spec)
+		s, serr := %s.Factory(spec)
 		if serr != nil {
 			fmt.Fprintln(os.Stderr, serr)
 			os.Exit(1)
 		}
-		opts = append(opts, tln.WithFactStore(store))
+		store = s
 	}
 `, storeAlias)
 	}
@@ -168,19 +168,42 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: tlnbundle <file.tln>")
+		fmt.Fprintln(os.Stderr, "usage: tlnbundle <file.tln> [--seed <file.tln.test>]")
 		os.Exit(2)
 	}
-	src, err := os.ReadFile(os.Args[1])
+	file := os.Args[1]
+	seed := ""
+	for i := 2; i < len(os.Args); i++ {
+		if os.Args[i] == "--seed" && i+1 < len(os.Args) {
+			seed = os.Args[i+1]
+			i++
+		}
+	}
+	src, err := os.ReadFile(file)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
+	ctx := context.Background()
+	var store tln.FactStore = tln.NewMemoryStore()
+` + storeWiring + `	if seed != "" {
+		seedSrc, serr := os.ReadFile(seed)
+		if serr != nil {
+			fmt.Fprintln(os.Stderr, serr)
+			os.Exit(1)
+		}
+		if _, serr := tln.Seed(ctx, store, string(seedSrc)); serr != nil {
+			fmt.Fprintln(os.Stderr, serr)
+			os.Exit(1)
+		}
+	}
+
 	opts := []tln.Option{
-		tln.WithFactStore(tln.NewMemoryStore()),
+		tln.WithFactStore(store),
 		tln.WithEnv(os.LookupEnv),
 ` + regs.String() + `	}
-` + storeWiring + `	res, err := tln.Run(context.Background(), string(src), opts...)
+	res, err := tln.Run(ctx, string(src), opts...)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)

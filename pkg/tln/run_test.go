@@ -175,54 +175,12 @@ func TestSeed_NilStore(t *testing.T) {
 	}
 }
 
-func TestRun_WithDatalevinURL_FailsFastOnUnreachable(t *testing.T) {
-	// The URL sugar runs Health() on first store access; an
-	// unreachable URL should surface as a clean Run error, not a
-	// panic deep in the executor.
-	_, err := tln.Run(context.Background(), detectSrc,
-		tln.WithDatalevinURL("http://127.0.0.1:1"), // closed port
-	)
-	if err == nil {
-		t.Fatal("expected error from unreachable datalevin URL")
-	}
-	if !strings.Contains(err.Error(), "127.0.0.1:1") {
-		t.Errorf("error should reference the URL: %v", err)
-	}
-}
-
-func TestNewFactStore_FailsAtFirstUse(t *testing.T) {
-	// Construction returns a usable handle even with an unreachable
-	// URL — the health check fires lazily on first Query/Transact/
-	// Schema. That contract lets callers (e.g. tln-plugin) build
-	// the store at startup without blocking on the backend being
-	// up; the error surfaces the moment any operation needs it.
-	fs := tln.NewFactStore("http://127.0.0.1:1")
-	if fs == nil {
-		t.Fatal("NewFactStore returned nil")
-	}
-	q := factstore.Query{
-		Find: []string{"?e"},
-		Where: []factstore.Clause{
-			&factstore.Pattern{Entity: factstore.Var("e"), Attribute: ":x", Value: factstore.Var("v")},
-		},
-	}
-	_, err := fs.Query(context.Background(), q)
-	if err == nil {
-		t.Fatal("expected error for unreachable URL")
-	}
-	if !strings.Contains(err.Error(), "127.0.0.1:1") {
-		t.Errorf("error should reference URL: %v", err)
-	}
-}
-
 // Compile-time surface guards — any rename in the public API breaks
 // the test build instead of silently slipping through.
 var (
 	_ = tln.Run
 	_ = tln.Seed
 	_ = tln.WithFactStore
-	_ = tln.WithDatalevinURL
-	_ = tln.NewFactStore
 	_ = tln.ErrRequiresFactStore
 )
 

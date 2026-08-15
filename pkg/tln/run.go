@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/opentalon/tln-language/internal/ast"
-	"github.com/opentalon/tln-language/internal/datalevin"
 	"github.com/opentalon/tln-language/internal/executor"
 	"github.com/opentalon/tln-language/internal/factstore"
 	"github.com/opentalon/tln-language/internal/imports"
@@ -21,57 +20,21 @@ import (
 // query blocks and to seed facts via [Seed]. Aliased from the
 // executor's internal interface so the two stay in lockstep.
 //
-// The shipped backend is Datalevin (internal/datalevin/client.go) — a
-// *datalevin.Client satisfies this interface unchanged. A future SQL
-// or vector-store backend can satisfy it too; method shapes reflect
-// Datalog conventions (Query takes a query string, Transact takes
-// fact maps), so a non-Datalog backend's impl is responsible for
-// translating to its native dialect.
+// Core ships only the in-process [NewMemoryStore]. Any other backend is a
+// plugin implementing this interface — a store plugin (e.g. tln-datalevin,
+// tln-db) selected via config/store.tln, or one passed to [WithFactStore]
+// directly by an embedding host. See ADR 0013.
 type FactStore = executor.FactStore
 
 // ErrRequiresFactStore is returned by [RunWorkflow] when the program
 // contains detect / query blocks that need a fact store. Switch to
-// [Run] with [WithFactStore] (or [WithDatalevinURL] for the default
-// backend) on the same source.
+// [Run] with [WithFactStore] on the same source.
 var ErrRequiresFactStore = errors.New("tln: program contains detect/query blocks; use Run with a FactStore")
 
 // WithFactStore installs a FactStore for [Run] and [Seed]. Required
 // for programs containing detect or query blocks; ignored otherwise.
 func WithFactStore(s FactStore) Option {
 	return func(cfg *runConfig) { cfg.factStore = s }
-}
-
-// WithDatalevinURL is sugar over [WithFactStore]: it constructs the
-// default Datalevin HTTP client against the given URL and runs a
-// Health check on dial so misconfigured deploys fail fast at Run
-// time rather than at first Query.
-//
-// Tests and callers using a fake or alternate backend should pass
-// [WithFactStore] directly instead.
-func WithDatalevinURL(url string) Option {
-	return func(cfg *runConfig) {
-		cfg.factStore = NewFactStore(url)
-	}
-}
-
-// NewFactStore returns a FactStore backed by the default shipped
-// implementation (today: Datalevin over HTTP) connected to the given
-// URL. The store runs a Health() check lazily on the first store
-// access, so misconfigured deploys surface a clean error at
-// Run / Seed time rather than panicking deep inside the executor —
-// and construction never blocks on the backend being up.
-//
-// The function name is intentionally backend-neutral: when a SQL or
-// vector-store-backed implementation lands, this constructor stays
-// the same and dispatches on URL scheme (e.g. `datalevin://...`,
-// `postgres://...`). Callers using a custom or fake FactStore should
-// pass it to [WithFactStore] directly instead.
-//
-// NewFactStore is for long-lived backends — typically a plugin or
-// service that holds the store across many Run / Seed calls. For
-// one-shot use within a single Run, prefer [WithDatalevinURL].
-func NewFactStore(url string) FactStore {
-	return &healthCheckedClient{client: datalevin.NewClient(url), url: url}
 }
 
 // NewMemoryStore returns a fresh Prolog-style in-memory FactStore. It
@@ -81,48 +44,6 @@ func NewFactStore(url string) FactStore {
 // deployments where a sidecar is overkill.
 func NewMemoryStore() *factstore.MemoryStore {
 	return factstore.NewMemoryStore()
-}
-
-// healthCheckedClient wraps a *datalevin.Client and runs Health()
-// the first time the executor touches the store, so the URL-sugar
-// path surfaces a clean error instead of panicking on the first
-// query failure deep inside the executor.
-type healthCheckedClient struct {
-	client  *datalevin.Client
-	url     string
-	checked bool
-}
-
-func (h *healthCheckedClient) check(ctx context.Context) error {
-	if h.checked {
-		return nil
-	}
-	if err := h.client.Health(ctx); err != nil {
-		return fmt.Errorf("tln: datalevin at %s unreachable: %w", h.url, err)
-	}
-	h.checked = true
-	return nil
-}
-
-func (h *healthCheckedClient) Query(ctx context.Context, q factstore.Query) ([][]any, error) {
-	if err := h.check(ctx); err != nil {
-		return nil, err
-	}
-	return h.client.Query(ctx, q)
-}
-
-func (h *healthCheckedClient) Assert(ctx context.Context, facts []factstore.Fact) error {
-	if err := h.check(ctx); err != nil {
-		return err
-	}
-	return h.client.Assert(ctx, facts)
-}
-
-func (h *healthCheckedClient) Retract(ctx context.Context, p factstore.RetractPattern) error {
-	if err := h.check(ctx); err != nil {
-		return err
-	}
-	return h.client.Retract(ctx, p)
 }
 
 // Run compiles and executes a full tln source (workflow + detect /

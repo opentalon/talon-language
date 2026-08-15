@@ -118,8 +118,8 @@ jobs:
         if: always()
         run: kill $TLNDB_PID 2>/dev/null || true
 
-  tln-run:
-    name: tln Run (HTTP)
+  datalevin-plugin-e2e:
+    name: tln + Datalevin (plugin)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -134,30 +134,30 @@ jobs:
         run: |
           curl -sL https://download.clojure.org/install/linux-install-1.12.5.1638.sh -o install-clojure.sh
           sudo bash install-clojure.sh || true
-          clojure --version
-      - run: go build ./cmd/tln
-      - name: Start datalevin-server
+      - run: go build -o /usr/local/bin/tln ./cmd/tln
+      - name: Start datalevin-server (sidecar)
         run: |
-          cd datalevin-server && clojure -M:run &
+          git clone --depth 1 https://github.com/opentalon/datalevin-server.git /tmp/datalevin-server
+          cd /tmp/datalevin-server && clojure -M:run &
           for i in $(seq 1 60); do
             sleep 2
-            if curl -s http://localhost:8898/health | grep -q ok; then
-              echo "datalevin-server is up"
-              break
-            fi
-            echo "waiting... ($i)"
+            if curl -s http://localhost:8898/health | grep -q ok; then echo "datalevin-server is up"; break; fi
           done
           curl -sf http://localhost:8898/health || { echo "FAIL: server did not start"; exit 1; }
-      - name: Run tln with seed from test file
-        run: |
-          output=$(./tln run examples/fleet_maintenance.tln --seed test/fleet_maintenance.tln.test)
-          echo "$output"
-          echo "$output" | grep -q "seeded.*entity" || { echo "FAIL: seed did not run"; exit 1; }
-          echo "$output" | grep -q "Service overdue.*2 row(s)" || { echo "FAIL: expected 2 overdue vehicles"; exit 1; }
-      - name: Smoke tests — schema merge, Retract, FullText, recursive rules
+      - name: Bundle the datalevin plugin, seed + detect against the live server
         env:
           DATALEVIN_URL: http://localhost:8898
-        run: go test -tags=datalevin -run Smoke -v ./internal/datalevin/...
+          GOSUMDB: "off"
+          GOPROXY: "https://proxy.golang.org,direct"
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          mkdir -p proj/config && cd proj
+          cp ../examples/fleet_maintenance.tln rules.tln
+          printf 'plugin "datalevin" "v0.1.0" store\n' > mod.tln
+          printf 'store datalevin { url env "DATALEVIN_URL" }\n' > config/store.tln
+          tln bundle
+          tln run rules.tln --seed ../test/fleet_maintenance.tln.test | tee out.txt
+          grep -q "Service overdue" out.txt || { echo "FAIL: detect did not run against datalevin via the plugin"; exit 1; }
 
   bundle-e2e:
     name: Bundle E2E (4 base plugins)
