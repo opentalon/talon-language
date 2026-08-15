@@ -689,3 +689,14 @@ EOF     = (* end of input *)
    (github.com/opentalon/tln-<name>). Comments start with `#` or `//`. *)
 Manifest    = { PluginLine }
 PluginLine  = "plugin" STRING STRING [ "store" ] [ "from" STRING ]
+
+(* ─── config/store.tln (store selection, ADR 0013) ──────────────────────────── *)
+
+(* Active Record style: the backing store is chosen by config, defaulting to
+   in-memory when this file is absent. `store <plugin>` names the store plugin
+   declared with `store` in mod.tln; the body is free-form config. `env "VAR"`
+   resolves from the environment at run time (store DSNs are host infra). At
+   most one store block. *)
+StoreConfig = [ StoreBlock ]
+StoreBlock  = "store" IDENT "{" { IDENT StoreValue } "}"
+StoreValue  = STRING | ( "env" STRING )

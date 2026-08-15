@@ -197,6 +197,25 @@ The four base plugins ([tln-mcp](https://github.com/opentalon/tln-mcp),
 [tln-asp](https://github.com/opentalon/tln-asp)) each expose a `Factory`; any
 GitHub module with one is a plugin (use `from "…"` for a non-conventional path).
 
+### The backing store — Active Record style
+
+The store is chosen by config, defaulting to **in-memory**. Add a `store` plugin
+to `mod.tln` and a `config/store.tln`, and that becomes the store — same program,
+no code change:
+
+```tln
+# mod.tln
+plugin "db" "v0.1.0" store
+```
+```tln
+# config/store.tln  (absent → in-memory)
+store db { target env "TLNDB_ADDR" }
+```
+
+Precedence: host `WithFactStore` > the `mod.tln` store plugin + `config/store.tln`
+> in-memory. One store per project. ([tln-db](https://github.com/opentalon/tln-db)
+is a sidecar — the bundle carries the client; `tlndb-server` runs separately.)
+
 ## Architecture
 
 ```mermaid
