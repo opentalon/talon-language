@@ -112,19 +112,45 @@ and what each REPL command does — is in [`docs/repl.md`](docs/repl.md).
 
 ## FactStore backends
 
-`tln run` picks its fact backend with `--store`:
+`tln run` picks its built-in fact backend with `--store`:
 
 | Backend | When to use | Setup |
 |---|---|---|
 | `datalevin` (default) | Production today. JVM sidecar, native Datalog, FTS, raft. | `cd datalevin-server && clojure -M:run` |
 | `memory` | REPL, demos, unit tests, CI smoke runs. Entirely in-process. | None — works out of the box |
 
-> **tln-db backend (planned plugin).** The Go-native gRPC backend
-> (embedded bbolt + bitmap/HNSW indexes) previously lived in core as the
-> `--store talon-db` adapter. It has been **cut from core** — tln has no
-> Go dependency on the database — and will return as an external plugin so
-> the language stays storage-agnostic and code-free at the boundary. The
-> server lives at [opentalon/tln-db](https://github.com/opentalon/tln-db).
+Backends are **pluggable**: any type implementing the public
+[`pkg/factstore.FactStore`](./pkg/factstore/factstore.go) SPI can be wired in via
+the Go SDK's `tln.WithFactStore(...)` — tln core has zero Go dependency on any
+database.
+
+### tln-db — Go-native backend (plugin)
+
+[**opentalon/tln-db**](https://github.com/opentalon/tln-db) is the Go-native
+backend: an embedded bbolt store with roaring-bitmap + HNSW vector indexes,
+served over gRPC (`tlndb-server`). It used to live in core as the
+`--store talon-db` adapter; it was **cut from core** and now lives in its own
+repo, where `tlnstore` implements `pkg/factstore.FactStore` directly — so the
+language stays storage-agnostic and code-free at the boundary.
+
+```bash
+# 1. run the server (embedded bbolt, gRPC over a Unix socket)
+tlndb-server --db ./tln.bbolt --socket /tmp/tlndb.sock
+```
+
+```go
+// 2. wire it into tln.Run via the SPI — no adapter shim
+import (
+    "github.com/opentalon/tln-language/pkg/tln"
+    "github.com/opentalon/tln-db/tlnstore"
+)
+
+cli, _ := tlnstore.NewClient(ctx, "unix:///tmp/tlndb.sock")
+tln.Run(ctx, program, tln.WithFactStore(tlnstore.New(cli)))
+```
+
+It also serves the HNSW index behind `find similar` (see
+[Vector similarity](#vector-similarity-hnsw)).
 
 ## Architecture
 
