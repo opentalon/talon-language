@@ -24,9 +24,21 @@ Block     = DetectBlock
           | EnrichBlock
           | CollectBlock
           | ThresholdBlock
+          | ConnectorBlock
           | DeriveBlock
           | ModelBlock
           | ModuleBlock
+
+(* ─── connector ──────────────────────────────────────────────────────────────── *)
+
+(* connector binds a tool-server name to the plugin that backs it, with
+   free-form plugin-specific config (ADR 0012). `endpoint`/`bearer` for mcp;
+   `path`/`stream` for io. A config value may be `env "VAR"` — resolved from the
+   environment at run time — but env is valid ONLY here: it is absent from the
+   general Expr grammar so a secret can never reach a label, a fact, or a tool
+   argument. Sandboxed hosts (tln-plugin) deny env AND io entirely. *)
+ConnectorBlock = "connector" STRING "via" IDENT "{" { IDENT ConnectorValue } "}"
+ConnectorValue = ( "env" STRING ) | Expr
 
 (* ─── collect ────────────────────────────────────────────────────────────────── *)
 

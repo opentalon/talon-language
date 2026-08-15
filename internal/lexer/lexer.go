@@ -115,6 +115,9 @@ const (
 	TokenStep
 	TokenDepends
 	TokenTool
+	TokenConnector
+	TokenVia
+	TokenEnv
 	TokenInvoke
 
 	// Keywords — control flow (issue #13 groundwork): imperative if/else,
@@ -307,6 +310,9 @@ var keywords = map[string]TokenType{
 	"step":              TokenStep,
 	"depends_on":        TokenDepends,
 	"tool":              TokenTool,
+	"connector":         TokenConnector,
+	"via":               TokenVia,
+	"env":               TokenEnv,
 	"invoke":            TokenInvoke,
 	"if":                TokenIf,
 	"else":              TokenElse,

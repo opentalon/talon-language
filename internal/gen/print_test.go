@@ -133,6 +133,15 @@ func TestRoundTripExampleTests(t *testing.T) {
 // expression the AST models is exercised at least once.
 func TestRoundTripSnippets(t *testing.T) {
 	cases := map[string]string{
+		"connector_env": `
+connector "inventory" via mcp {
+  bearer env "INVENTORY_TOKEN"
+  endpoint env "INVENTORY_ENDPOINT"
+}`,
+		"connector_io_file": `
+connector "audit" via io {
+  path "/var/log/tln/audit.log"
+}`,
 		"detect_minimal": `
 detect "Low stock" {
   for records where type == "stock_item"
