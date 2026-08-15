@@ -141,6 +141,8 @@ func (p *printer) block(b ast.Block) {
 		p.collect(b)
 	case *ast.ThresholdBlock:
 		p.threshold(b)
+	case *ast.ConnectorBlock:
+		p.connector(b)
 	case *ast.DeriveBlock:
 		p.derive(b)
 	case *ast.ModelBlock:
@@ -717,6 +719,21 @@ func (p *printer) threshold(b *ast.ThresholdBlock) {
 	p.close()
 }
 
+// connector renders a connector block. Config keys are emitted in sorted order
+// for deterministic output.
+func (p *printer) connector(b *ast.ConnectorBlock) {
+	p.open("connector " + quote(b.Name) + " via " + b.Plugin)
+	keys := make([]string, 0, len(b.Config))
+	for k := range b.Config {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		p.line(k + " " + exprStr(b.Config[k]))
+	}
+	p.close()
+}
+
 // scheduleStr renders the stored schedule metadata back to its source form.
 // Stored values: "weekly"|"daily"|"hourly", "every N unit", "cron:<expr>", or
 // an opaque string.
@@ -1212,6 +1229,8 @@ func exprStr(e ast.Expr) string {
 		return "today"
 	case *ast.ThresholdRefExpr:
 		return "threshold " + quote(e.Name)
+	case *ast.EnvExpr:
+		return "env " + quote(e.Name)
 	case *ast.MapExpr:
 		return exprStr(e.Source) + ".map(" + e.Field + ")"
 	case *ast.LearnedThresholdExpr:

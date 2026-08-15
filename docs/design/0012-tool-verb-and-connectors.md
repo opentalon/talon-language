@@ -75,7 +75,24 @@ it needs an endpoint + creds), while `io` is a built-in default that applies in
 the no-host case. A host owns its own I/O; `io` is not auto-provided under a
 host.
 
-### 5. Metaprogramming
+### 5. Security — `env` and `io` are host-gated capabilities
+
+External access is a **capability the host grants**, not something source can take:
+
+- **`env` is deny-by-default and connector-scoped.** It parses *only* inside a
+  connector's config — the general expression grammar rejects it — so an
+  environment value can never flow into a `label`, a stored fact, or a `tool`
+  argument. Even inside a connector, it resolves only if the host installs an
+  env resolver; with none, `env` is unavailable.
+- **Sandboxed / untrusted-source hosts deny more.** `tln-plugin` executes
+  **LLM-authored** workflows, where `env` (secret exfiltration) and `io`
+  (arbitrary host filesystem/stdio) are both too dangerous — a prompt-injected
+  workflow could read secrets or write files. In that context the host **cuts
+  `env` entirely and restricts the `io` server**, permitting only host-mediated
+  `tool` calls that run through its own policy/credential path. Core exposes the
+  capability set; the host decides it.
+
+### 6. Metaprogramming
 
 `tool` and `connector` are ordinary blocks, so a compile-time macro
 ([ADR 0011](0011-compile-time-macros.md)) can emit them like any other AST —
@@ -91,9 +108,14 @@ e.g. a macro that generates a `tool "audit" "writeln"` line for every rule.
 
 ## Status / next steps
 
-- **Done:** `mcp` → `tool` verb across lexer, parser, printer, grammar, spec,
-  fixtures, and docs. `mock tool` / `tool_called` test DSL. Full suite green.
-- **Next PR:** the `connector` + `env` grammar, the AST nodes, validator wiring
-  (every `tool "X"` resolves to a host binding or a declared connector), and the
-  runtime two-mode routing (plugin factories + env resolver). io-tln gains
-  `path` / `stream` connector config.
+- **Done:** `mcp` → `tool` verb. **`connector "name" via <plugin> { … }`** and
+  connector-scoped **`env "VAR"`** — lexer, AST (`ConnectorBlock`, `EnvExpr`),
+  parser (env rejected outside connectors), printer round-trip, validator,
+  grammar, and tests. Full suite green.
+- **Next PR (runtime):** two-mode routing — a plugin-factory registry
+  (`WithPlugin(name, factory)`) so core wires `connector → plugin` without
+  importing plugins, an env resolver the host installs (deny-by-default), and
+  the host-wins / connector-fallback / built-in-`io` / error resolution order.
+  io-tln reads `path` / `stream`.
+- **Next PR (sandbox):** capability gating so `tln-plugin` cuts `env` and
+  restricts the `io` server for LLM-authored source.

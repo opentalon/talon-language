@@ -315,11 +315,11 @@ type RelatedBlock struct {
 // the FactStore emits a matching event. See docs/reactive.md.
 type OnBlock struct {
 	Pos      Pos
-	Name     string   // synthesized: "on change attr "x"" etc., used for diagnostics
-	Trigger  string   // "change", "assert", "retract"
-	Attr     string   // for change: the attribute name
-	ToValue  Expr     // for change ... to <expr>: the target value (optional)
-	FactType string   // for assert/retract: the fact type (e.g. "record", "activity")
+	Name     string // synthesized: "on change attr "x"" etc., used for diagnostics
+	Trigger  string // "change", "assert", "retract"
+	Attr     string // for change: the attribute name
+	ToValue  Expr   // for change ... to <expr>: the target value (optional)
+	FactType string // for assert/retract: the fact type (e.g. "record", "activity")
 	When     Condition
 	Actions  []OnAction
 }
@@ -371,7 +371,7 @@ type StateMachineBlock struct {
 	Selector    Selector
 	States      []StateDecl
 	Initial     string
-	StateAttr   string         // attribute holding current state; "" defaults to ":record/state"
+	StateAttr   string // attribute holding current state; "" defaults to ":record/state"
 	Transitions []Transition
 	Invariants  []StateInvariant
 }
@@ -381,8 +381,8 @@ type StateMachineBlock struct {
 // transition targets the parent.
 type StateDecl struct {
 	Name    string
-	Parent  string   // "" for top-level
-	Initial string   // substate to enter when transitioning into a composite parent
+	Parent  string // "" for top-level
+	Initial string // substate to enter when transitioning into a composite parent
 }
 
 // Transition is one labelled arrow in the state machine. When the
@@ -450,49 +450,51 @@ type ViolationClause struct {
 	Message string // optional; empty if not provided
 }
 
-func (*DetectBlock) blockNode()     {}
-func (*RuleBlock) blockNode()       {}
-func (*RecommendBlock) blockNode()  {}
-func (*CombineBlock) blockNode()    {}
-func (*DefineBlock) blockNode()     {}
-func (*WorkflowBlock) blockNode()   {}
-func (*PredictBlock) blockNode()    {}
-func (*ForecastBlock) blockNode()   {}
-func (*ClusterBlock) blockNode()    {}
-func (*ClassifyBlock) blockNode()   {}
-func (*SimilarBlock) blockNode()    {}
-func (*RelatedBlock) blockNode()    {}
-func (*OnBlock) blockNode()         {}
-func (*ConstraintBlock) blockNode()    {}
+func (*DetectBlock) blockNode()       {}
+func (*RuleBlock) blockNode()         {}
+func (*RecommendBlock) blockNode()    {}
+func (*CombineBlock) blockNode()      {}
+func (*DefineBlock) blockNode()       {}
+func (*WorkflowBlock) blockNode()     {}
+func (*PredictBlock) blockNode()      {}
+func (*ForecastBlock) blockNode()     {}
+func (*ClusterBlock) blockNode()      {}
+func (*ClassifyBlock) blockNode()     {}
+func (*SimilarBlock) blockNode()      {}
+func (*RelatedBlock) blockNode()      {}
+func (*OnBlock) blockNode()           {}
+func (*ConstraintBlock) blockNode()   {}
 func (*StateMachineBlock) blockNode() {}
-func (*EnrichBlock) blockNode()        {}
-func (*CollectBlock) blockNode()       {}
-func (*ThresholdBlock) blockNode()     {}
-func (*DeriveBlock) blockNode()        {}
-func (*ModelBlock) blockNode()         {}
-func (*ModuleBlock) blockNode()        {}
+func (*EnrichBlock) blockNode()       {}
+func (*CollectBlock) blockNode()      {}
+func (*ThresholdBlock) blockNode()    {}
+func (*ConnectorBlock) blockNode()    {}
+func (*DeriveBlock) blockNode()       {}
+func (*ModelBlock) blockNode()        {}
+func (*ModuleBlock) blockNode()       {}
 
-func (b *DetectBlock) BlockName() string     { return b.Name }
-func (b *RuleBlock) BlockName() string       { return b.Name }
-func (b *RecommendBlock) BlockName() string  { return b.Name }
-func (b *CombineBlock) BlockName() string    { return b.Name }
-func (b *DefineBlock) BlockName() string     { return b.Name }
-func (b *WorkflowBlock) BlockName() string   { return b.Name }
-func (b *PredictBlock) BlockName() string    { return b.Name }
-func (b *ForecastBlock) BlockName() string   { return b.Name }
-func (b *ClusterBlock) BlockName() string    { return b.Name }
-func (b *ClassifyBlock) BlockName() string   { return b.Name }
-func (b *SimilarBlock) BlockName() string    { return b.Name }
-func (b *RelatedBlock) BlockName() string    { return b.Name }
-func (b *OnBlock) BlockName() string         { return b.Name }
-func (b *ConstraintBlock) BlockName() string    { return b.Name }
+func (b *DetectBlock) BlockName() string       { return b.Name }
+func (b *RuleBlock) BlockName() string         { return b.Name }
+func (b *RecommendBlock) BlockName() string    { return b.Name }
+func (b *CombineBlock) BlockName() string      { return b.Name }
+func (b *DefineBlock) BlockName() string       { return b.Name }
+func (b *WorkflowBlock) BlockName() string     { return b.Name }
+func (b *PredictBlock) BlockName() string      { return b.Name }
+func (b *ForecastBlock) BlockName() string     { return b.Name }
+func (b *ClusterBlock) BlockName() string      { return b.Name }
+func (b *ClassifyBlock) BlockName() string     { return b.Name }
+func (b *SimilarBlock) BlockName() string      { return b.Name }
+func (b *RelatedBlock) BlockName() string      { return b.Name }
+func (b *OnBlock) BlockName() string           { return b.Name }
+func (b *ConstraintBlock) BlockName() string   { return b.Name }
 func (b *StateMachineBlock) BlockName() string { return b.Name }
-func (b *EnrichBlock) BlockName() string        { return b.Name }
-func (b *CollectBlock) BlockName() string       { return b.Name }
-func (b *ThresholdBlock) BlockName() string     { return b.Name }
-func (b *DeriveBlock) BlockName() string        { return b.Name }
-func (b *ModelBlock) BlockName() string         { return b.Name }
-func (b *ModuleBlock) BlockName() string        { return "module " + b.Namespace }
+func (b *EnrichBlock) BlockName() string       { return b.Name }
+func (b *CollectBlock) BlockName() string      { return b.Name }
+func (b *ThresholdBlock) BlockName() string    { return b.Name }
+func (b *ConnectorBlock) BlockName() string    { return b.Name }
+func (b *DeriveBlock) BlockName() string       { return b.Name }
+func (b *ModelBlock) BlockName() string        { return b.Name }
+func (b *ModuleBlock) BlockName() string       { return "module " + b.Namespace }
 
 // ModelBlock is a named ML model carrying inline fitted params (issue #13
 // ML-module system). v1 is a lazy kNN classifier: the "fitted" params are
@@ -501,13 +503,13 @@ func (b *ModuleBlock) BlockName() string        { return "module " + b.Namespace
 type ModelBlock struct {
 	Pos          Pos
 	Name         string
-	Algo         string   // "classify_knn" | "predict_decision_tree"
-	K            int      // neighbours, for kNN
-	Features     []Expr   // ordered feature attr references
+	Algo         string          // "classify_knn" | "predict_decision_tree"
+	K            int             // neighbours, for kNN
+	Features     []Expr          // ordered feature attr references
 	Examples     []FittedExample // kNN: the labeled points (lazy — this IS the model)
 	Tree         []TreeNode      // decision tree: the fitted splits + leaves
-	ComputedFrom string // optional provenance (mirrors ThresholdBlock)
-	ValidUntil   string // optional expiry hint
+	ComputedFrom string          // optional provenance (mirrors ThresholdBlock)
+	ValidUntil   string          // optional expiry hint
 }
 
 // FittedExample is one labeled point in a model's inline fitted set: a
@@ -589,6 +591,19 @@ type ThresholdBlock struct {
 	Value        float64
 	ComputedFrom string // optional provenance string
 	ValidUntil   string // optional RFC 3339 / YYYY-MM-DD expiry; validator warns when past
+}
+
+// ConnectorBlock binds a tool-server name to the plugin that backs it, with
+// plugin-specific config (ADR 0012). `connector "inventory" via mcp { endpoint
+// env "X" bearer env "Y" }` — Name is the server referenced by `tool "Name"
+// …`, Plugin is the backing plugin ("mcp", "io", …), and Config is free-form
+// key→value the plugin interprets. Credentials/endpoints use [EnvExpr] so
+// secrets stay out of source.
+type ConnectorBlock struct {
+	Pos    Pos
+	Name   string
+	Plugin string
+	Config map[string]Expr
 }
 
 // EnrichBlock refreshes stale facts from an MCP tool. It selects records
@@ -673,6 +688,16 @@ type ThresholdRefExpr struct {
 	Name string
 }
 
+// EnvExpr is `env "VAR"` — a value resolved from the environment at run time
+// (ADR 0012). It is valid ONLY inside connector config, for credentials and
+// endpoints: the parser does not accept it in the general expression grammar,
+// so an environment value can never flow into a label, a stored fact, or a tool
+// argument. That confinement is a security boundary — secrets stay inside the
+// connector that needs them and are never observable elsewhere.
+type EnvExpr struct {
+	Name string
+}
+
 // TodayExpr is the `today` keyword.
 type TodayExpr struct{}
 
@@ -733,6 +758,7 @@ func (*StepResultExpr) exprNode()       {}
 func (*CategoryTreeExpr) exprNode()     {}
 func (*TodayExpr) exprNode()            {}
 func (*ThresholdRefExpr) exprNode()     {}
+func (*EnvExpr) exprNode()              {}
 func (*MapExpr) exprNode()              {}
 func (*LearnedThresholdExpr) exprNode() {}
 func (*CallExpr) exprNode()             {}
@@ -843,20 +869,20 @@ type PredicateCallCondition struct {
 	Var  string
 }
 
-func (*CompareCondition) condNode()      {}
-func (*LogicalCondition) condNode()      {}
-func (*NotCondition) condNode()          {}
-func (*MembershipCondition) condNode()   {}
-func (*IsCondition) condNode()           {}
-func (*HasCondition) condNode()          {}
-func (*StringMatchCondition) condNode()  {}
-func (*AnomalyCondition) condNode()      {}
-func (*CorrelationCondition) condNode()  {}
-func (*TemporalCondition) condNode()     {}
-func (*ChangedToCondition) condNode()    {}
-func (*AsOfCondition) condNode()         {}
-func (*BlockMatchesCondition) condNode() {}
-func (*PredicateCallCondition) condNode() {}
+func (*CompareCondition) condNode()        {}
+func (*LogicalCondition) condNode()        {}
+func (*NotCondition) condNode()            {}
+func (*MembershipCondition) condNode()     {}
+func (*IsCondition) condNode()             {}
+func (*HasCondition) condNode()            {}
+func (*StringMatchCondition) condNode()    {}
+func (*AnomalyCondition) condNode()        {}
+func (*CorrelationCondition) condNode()    {}
+func (*TemporalCondition) condNode()       {}
+func (*ChangedToCondition) condNode()      {}
+func (*AsOfCondition) condNode()           {}
+func (*BlockMatchesCondition) condNode()   {}
+func (*PredicateCallCondition) condNode()  {}
 func (*EventSequenceCondition) condNode()  {}
 func (*RecordSequenceCondition) condNode() {}
 
@@ -925,14 +951,14 @@ func (*FuncNode) templateNode()    {}
 // KnownTemplateFunctions enumerates the functions ParseTemplate accepts.
 // Used by the validator to surface unknown-function diagnostics.
 var KnownTemplateFunctions = map[string]struct{}{
-	"count":       {},
-	"total":       {},
-	"sum":         {},
-	"avg":         {},
-	"min":         {},
-	"max":         {},
-	"days_until":  {},
-	"days_since":  {},
+	"count":      {},
+	"total":      {},
+	"sum":        {},
+	"avg":        {},
+	"min":        {},
+	"max":        {},
+	"days_until": {},
+	"days_since": {},
 }
 
 // ParseTemplate parses a raw template string into a Template with Nodes

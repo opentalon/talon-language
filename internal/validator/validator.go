@@ -465,6 +465,13 @@ func (v *validator) checkCompleteness() {
 			if bb.StoreAs == "" {
 				v.errAt(bb.Pos, fmt.Sprintf("collect %q requires a 'store results as <type>' clause", bb.Name), "")
 			}
+		case *ast.ConnectorBlock:
+			if bb.Name == "" {
+				v.errAt(bb.Pos, "connector requires a name", "")
+			}
+			if bb.Plugin == "" {
+				v.errAt(bb.Pos, fmt.Sprintf("connector %q requires a plugin (`via <plugin>`)", bb.Name), "")
+			}
 		case *ast.PredictBlock:
 			// A `using model "..."` block drives prediction from the model's
 			// inline fitted tree, so the inline training clauses aren't needed.

@@ -107,6 +107,8 @@ func (p *parser) parseBlock() ast.Block {
 		return p.parseStateMachineBlock()
 	case lexer.TokenThreshold:
 		return p.parseThresholdBlock()
+	case lexer.TokenConnector:
+		return p.parseConnectorBlock()
 	case lexer.TokenDerive:
 		return p.parseDeriveBlock()
 	case lexer.TokenModel:
@@ -1261,6 +1263,53 @@ func (p *parser) parseThresholdBlock() *ast.ThresholdBlock {
 	}
 	if !hasValue {
 		p.errorf("threshold %q requires a 'value' clause", name)
+	}
+	p.expect(lexer.TokenRBrace)
+	return b
+}
+
+// parseConnectorBlock reads `connector "name" via <plugin> { key Expr … }`
+// (ADR 0012): a server name bound to a backing plugin, with free-form
+// plugin-specific config values (typically env "VAR" for creds/endpoints).
+func (p *parser) parseConnectorBlock() *ast.ConnectorBlock {
+	tok := p.advance() // connector
+	name := p.expectString()
+	if !p.expect(lexer.TokenVia) {
+		p.synchronize()
+		return nil
+	}
+	plugin := p.advance().Value // bare plugin name: mcp, io, …
+	if plugin == "" {
+		p.errorf("connector %q: expected a plugin name after 'via'", name)
+	}
+	if !p.expect(lexer.TokenLBrace) {
+		p.synchronize()
+		return nil
+	}
+	b := &ast.ConnectorBlock{
+		Name:   name,
+		Plugin: plugin,
+		Config: map[string]ast.Expr{},
+		Pos:    ast.Pos{Line: tok.Line, Col: tok.Col},
+	}
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		// Config keys are free-form (plugin-interpreted), so consume one token
+		// as the key unconditionally — this both accepts keyword-named keys and
+		// guarantees forward progress.
+		key := p.advance().Value
+		if key == "" {
+			p.errorf("connector %q: expected a config key", name)
+			continue
+		}
+		// `env "VAR"` is valid ONLY here, in connector config — it resolves a
+		// credential/endpoint from the environment at run time. Everything else
+		// is an ordinary literal (path "…", stream "stderr", …).
+		if p.at(lexer.TokenEnv) {
+			p.advance()
+			b.Config[key] = &ast.EnvExpr{Name: p.expectString()}
+		} else {
+			b.Config[key] = p.parseExpr()
+		}
 	}
 	p.expect(lexer.TokenRBrace)
 	return b
