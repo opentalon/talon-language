@@ -131,3 +131,21 @@ running connector program in three commands (`tln init x && cd x && tln bundle`)
 4. `tln bundle` — generate the bootstrap module, `go build` the project-local
    binary, write `mod.lock`.
 5. `tln run` — re-exec the bundle when present (plain `tln run` otherwise).
+
+## Update — store plugins (Active Record)
+
+A **store** plugin (a `FactStore`, e.g. tln-db) is not a per-call connector — a
+run has exactly one backing store — so it is selected by config, not wiring:
+
+- `mod.tln`: `plugin "db" "v0.1.0" store` declares it (bundled via its module).
+- `config/store.tln`: `store db { target env "TLNDB_ADDR" }` gives the
+  connection (env-resolved at run time; absent file → in-memory default).
+- The plugin exposes `Factory(ConnectorSpec) (FactStore, error)`; `tln bundle`
+  emits `tln.LoadStoreConfig("config/store.tln")` → `Factory` → `WithFactStore`.
+- Precedence: host `WithFactStore` > the manifest store plugin + config >
+  in-memory. At most one store plugin.
+
+This keeps the store selection convention-driven (Active Record): the same
+program runs on memory, tln-db, or a future datalevin plugin depending only on
+`mod.tln` + `config/store.tln`. A sidecar store (tln-db) still runs its server
+separately; the bundle carries only the client.
