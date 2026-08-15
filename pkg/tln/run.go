@@ -11,6 +11,7 @@ import (
 	"github.com/opentalon/tln-language/internal/factstore"
 	"github.com/opentalon/tln-language/internal/imports"
 	"github.com/opentalon/tln-language/internal/lexer"
+	"github.com/opentalon/tln-language/internal/macro"
 	"github.com/opentalon/tln-language/internal/parser"
 	"github.com/opentalon/tln-language/internal/planner"
 	"github.com/opentalon/tln-language/internal/validator"
@@ -234,6 +235,14 @@ func compileProgram(file, src string) (*ast.Program, map[string]*planner.QueryPl
 		}
 		prog = merged
 	}
+	// Compile-time macro expansion (ADR 0011): rewrite macros to a fixpoint
+	// after imports (so imported macros are in scope) and before validation, so
+	// everything downstream sees only ordinary, fully-expanded AST.
+	expanded, macroDiags := macro.Expand(file, prog)
+	if macroDiags.HasErrors() {
+		return nil, nil, &CompileError{Stage: "macro", Diags: macroDiags}
+	}
+	prog = expanded
 	if valDiags := validator.Validate(file, prog); valDiags.HasErrors() {
 		return nil, nil, &CompileError{Stage: "validate", Diags: valDiags}
 	}
