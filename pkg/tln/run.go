@@ -138,7 +138,7 @@ func Run(ctx context.Context, src string, opts ...Option) (*Result, error) {
 		opt(cfg)
 	}
 
-	plans, err := compile(cfg.file, src)
+	prog, plans, err := compileProgram(cfg.file, src)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func Run(ctx context.Context, src string, opts ...Option) (*Result, error) {
 	}
 
 	exec := executor.NewExecutor(cfg.factStore)
-	exec.MCP = cfg.mcp
+	exec.Tools = effectiveResolver(cfg, prog)
 	exec.ConfirmHook = cfg.confirm
 	exec.ApprovalHook = cfg.approval
 	exec.Queue = cfg.queue
@@ -200,6 +200,53 @@ func Seed(ctx context.Context, store FactStore, src string, opts ...Option) (int
 
 	exec := executor.NewExecutor(store)
 	return exec.Seed(ctx, prog)
+}
+
+// effectiveResolver picks the tool resolver for a run (ADR 0012 two-mode
+// routing): a host-installed [WithToolResolver] wins outright; otherwise, if any
+// plugin factories are registered, a connector-backed resolver built from the
+// program's `connector` blocks; otherwise nil (tool calls are no-ops/stubs).
+func effectiveResolver(cfg *runConfig, prog *ast.Program) ToolResolver {
+	if cfg.mcp != nil {
+		return cfg.mcp
+	}
+	if len(cfg.plugins) == 0 {
+		return nil
+	}
+	return executor.NewConnectorResolver(extractConnectors(prog), cfg.plugins, cfg.env)
+}
+
+// extractConnectors projects the program's connector blocks into the executor's
+// decoupled Connector form, mapping env "VAR" values to env references and
+// everything else to literals.
+func extractConnectors(prog *ast.Program) []executor.Connector {
+	if prog == nil {
+		return nil
+	}
+	var out []executor.Connector
+	for _, b := range prog.Blocks {
+		cb, ok := b.(*ast.ConnectorBlock)
+		if !ok {
+			continue
+		}
+		conn := executor.Connector{
+			Name:   cb.Name,
+			Plugin: cb.Plugin,
+			Config: make(map[string]executor.ConnectorConfigValue, len(cb.Config)),
+		}
+		for k, v := range cb.Config {
+			switch ev := v.(type) {
+			case *ast.EnvExpr:
+				conn.Config[k] = executor.ConnectorConfigValue{EnvVar: ev.Name}
+			case *ast.LiteralExpr:
+				conn.Config[k] = executor.ConnectorConfigValue{Literal: ev.Value}
+			default:
+				conn.Config[k] = executor.ConnectorConfigValue{Literal: fmt.Sprintf("%v", v)}
+			}
+		}
+		out = append(out, conn)
+	}
+	return out
 }
 
 // compile runs lex → parse → resolve imports → validate → plan,

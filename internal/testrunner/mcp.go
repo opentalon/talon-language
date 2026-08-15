@@ -78,7 +78,7 @@ func runMCPAssertions(tb *ast.TestBlock, plan *planner.QueryPlan, entities map[i
 	}
 	rec := newRecordingCaller(tb.Mocks)
 	exec := executor.NewExecutor(storeFromEntities(entities))
-	exec.MCP = rec
+	exec.Tools = rec
 	if _, err := exec.Run(context.Background(), plan); err != nil {
 		return []string{fmt.Sprintf("mcp run of %q failed: %v", tb.WhenBlock, err)}
 	}

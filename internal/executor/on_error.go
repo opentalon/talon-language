@@ -32,7 +32,7 @@ func (e *Executor) dispatchMCP(ctx context.Context, server, tool string, args ma
 	)
 	for i := 0; i < attempts; i++ {
 		start := time.Now()
-		res, err = e.MCP.Call(ctx, server, tool, args)
+		res, err = e.Tools.Call(ctx, server, tool, args)
 		status := "ok"
 		if err != nil {
 			status = "error"

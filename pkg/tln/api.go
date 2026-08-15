@@ -15,10 +15,11 @@ import (
 )
 
 // ToolResolver is the host/plugin callback tln uses to dispatch the tool calls
-// produced by a workflow's `mcp` steps, `collect`, `enrich`, and `remediate`.
+// produced by a workflow's `tool` steps, `collect`, `enrich`, and `remediate`.
 // Implementations route (server, tool, args) to whatever transport they own —
 // e.g. the tln-mcp plugin speaks the Model Context Protocol — and return the
-// structured result. Install it with [WithToolResolver].
+// structured result. Install it with [WithToolResolver], or let connectors pick
+// a plugin per server via [WithPlugin] (see ADR 0012).
 type ToolResolver = executor.ToolResolver
 
 // ConfirmationHook runs before each MCP step. Returning false skips the
@@ -125,6 +126,40 @@ type runConfig struct {
 	approval  ApprovalHook
 	queue     Queue
 	factStore FactStore
+	plugins   map[string]PluginFactory
+	env       EnvResolver
+}
+
+// PluginFactory builds a ToolResolver for one connector from its resolved
+// config. Register it with [WithPlugin] so `connector … via <name>` blocks
+// route to it when no host [WithToolResolver] is installed.
+type PluginFactory = executor.PluginFactory
+
+// ConnectorSpec is the env-resolved config a [PluginFactory] receives.
+type ConnectorSpec = executor.ConnectorSpec
+
+// EnvResolver resolves an `env "VAR"` reference in connector config. Install it
+// with [WithEnv]; when absent, environment access is denied.
+type EnvResolver = executor.EnvResolver
+
+// WithPlugin registers a plugin factory under name, the identifier a program
+// uses in `connector "server" via <name> { … }`. Used only in the "no host"
+// mode: if [WithToolResolver] is set, the host resolver handles every call and
+// connectors are not consulted.
+func WithPlugin(name string, f PluginFactory) Option {
+	return func(cfg *runConfig) {
+		if cfg.plugins == nil {
+			cfg.plugins = map[string]PluginFactory{}
+		}
+		cfg.plugins[name] = f
+	}
+}
+
+// WithEnv installs the resolver for `env "VAR"` values in connector config.
+// Without it, environment access is denied (deny-by-default) — any connector
+// that reads env fails. Sandboxes (e.g. tln-plugin) simply never install one.
+func WithEnv(r EnvResolver) Option {
+	return func(cfg *runConfig) { cfg.env = r }
 }
 
 // WithToolResolver installs the resolver tln dispatches tool calls to.
@@ -212,7 +247,7 @@ func RunWorkflow(ctx context.Context, src string, opts ...Option) (*Result, erro
 	}
 
 	exec := &executor.Executor{
-		MCP:          cfg.mcp,
+		Tools:        effectiveResolver(cfg, prog),
 		ConfirmHook:  cfg.confirm,
 		ApprovalHook: cfg.approval,
 		Queue:        cfg.queue,

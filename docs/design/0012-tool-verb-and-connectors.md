@@ -121,11 +121,14 @@ expansion.
   connector-scoped **`env "VAR"`** — lexer, AST (`ConnectorBlock`, `EnvExpr`),
   parser (env rejected outside connectors), printer round-trip, validator,
   grammar, and tests. Full suite green.
-- **Next PR (runtime):** two-mode routing — a plugin-factory registry
-  (`WithPlugin(name, factory)`) so core wires `connector → plugin` without
-  importing plugins, an env resolver the host installs (deny-by-default), and
-  the host-wins / connector-fallback / built-in-`io` / error resolution order.
-  io-tln reads `path` / `stream`.
+- **Done (runtime):** two-mode routing — `WithPlugin(name, factory)` registers a
+  plugin factory (core never imports a plugin), `WithEnv(resolver)` installs the
+  env resolver (deny-by-default), and a connector-backed `ToolResolver` routes
+  each `tool "server"` call to its connector's plugin, resolving `env` values and
+  caching the built resolver. Host resolver (`WithToolResolver`) wins outright;
+  otherwise connectors are consulted; otherwise the call errors. The executor's
+  resolver field is `Tools` (renamed from `MCP`). Tests in
+  `pkg/tln/connector_runtime_test.go`.
 - **Next PR (sandbox):** capability gating so `tln-plugin` cuts `env` and
   restricts the `io` server for LLM-authored source; and the macro-expansion
   phase (ADR 0011) rejecting any expansion output that contains a

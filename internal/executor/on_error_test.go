@@ -27,7 +27,7 @@ func failNTimes(n int) func(string, string, map[string]any) (any, error) {
 
 func TestDispatchMCP_RetriesThenSucceeds(t *testing.T) {
 	mock := &mockMCP{handler: failNTimes(2)} // fail twice, succeed on the 3rd
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	oe := &ast.OnErrorClause{Actions: []ast.ErrorAction{&ast.RetryAction{Times: 3}}}
 
 	res, skipped, err := e.dispatchMCP(context.Background(), "s", "t", nil, oe, nil)
@@ -46,7 +46,7 @@ func TestDispatchMCP_RetryExhaustedDefaultsToFail(t *testing.T) {
 	mock := &mockMCP{handler: func(_, _ string, _ map[string]any) (any, error) {
 		return nil, errors.New("always down")
 	}}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	oe := &ast.OnErrorClause{Actions: []ast.ErrorAction{&ast.RetryAction{Times: 2}}} // no skip/fail → default fail
 
 	_, skipped, err := e.dispatchMCP(context.Background(), "s", "t", nil, oe, nil)
@@ -65,7 +65,7 @@ func TestDispatchMCP_SkipSwallowsFailure(t *testing.T) {
 	mock := &mockMCP{handler: func(_, _ string, _ map[string]any) (any, error) {
 		return nil, errors.New("down")
 	}}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	oe := &ast.OnErrorClause{Actions: []ast.ErrorAction{
 		&ast.RetryAction{Times: 1},
 		&ast.SkipAction{},
@@ -89,7 +89,7 @@ func TestDispatchMCP_LogInterpolatesErrorAndRow(t *testing.T) {
 	mock := &mockMCP{handler: func(_, _ string, _ map[string]any) (any, error) {
 		return nil, errors.New("connection refused")
 	}}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	oe := &ast.OnErrorClause{Actions: []ast.ErrorAction{
 		&ast.LogErrorAction{Message: ast.ParseTemplate("failed for {item.name}: {error}")},
 		&ast.SkipAction{},
@@ -108,7 +108,7 @@ func TestDispatchMCP_NoPolicyFailsImmediately(t *testing.T) {
 	mock := &mockMCP{handler: func(_, _ string, _ map[string]any) (any, error) {
 		return nil, errors.New("boom")
 	}}
-	e := &Executor{MCP: mock}
+	e := &Executor{Tools: mock}
 	if _, _, err := e.dispatchMCP(context.Background(), "s", "t", nil, nil, nil); err == nil {
 		t.Error("no on_error clause should fail on first error")
 	}

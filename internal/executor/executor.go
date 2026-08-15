@@ -78,7 +78,7 @@ type VectorHit struct {
 type Executor struct {
 	Client      FactStore
 	Registry    *mlruntime.Registry
-	MCP         ToolResolver
+	Tools       ToolResolver
 	ConfirmHook ConfirmationHook
 
 	// ApprovalHook gates `remediate approve` calls; Queue receives
@@ -585,7 +585,7 @@ func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, v
 		return map[string]any{"status": "stub", "step": gc.Params["step"]}, nil
 	}
 
-	if e.MCP == nil {
+	if e.Tools == nil {
 		return map[string]any{"status": "stub", "step": gc.Params["step"]}, nil
 	}
 
@@ -644,7 +644,7 @@ func (e *Executor) collectAll(ctx context.Context, server, tool string, args map
 	page := 1
 	for {
 		args["page"] = page
-		result, err := e.MCP.Call(ctx, server, tool, args)
+		result, err := e.Tools.Call(ctx, server, tool, args)
 		if err != nil {
 			return nil, err
 		}
@@ -991,4 +991,3 @@ func fieldNamespace(kind, key string) string {
 		return ":record/" + key
 	}
 }
-
