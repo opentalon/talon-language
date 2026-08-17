@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/opentalon/tln-language/internal/ast"
+	"github.com/opentalon/tln-language/pkg/arith"
 )
 
 // Verdict is the outcome of running a record through a set of constraints.
@@ -278,25 +279,15 @@ func evalExpr(e ast.Expr, record map[string]any, now time.Time) (any, error) {
 		if !lok || !rok {
 			return nil, fmt.Errorf("binary %s on %T %T", ee.Op, left, right)
 		}
-		switch ee.Op {
-		case "+":
-			return lf + rf, nil
-		case "-":
-			return lf - rf, nil
-		case "*":
-			return lf * rf, nil
-		case "/":
-			if rf == 0 {
-				return nil, fmt.Errorf("division by zero")
-			}
-			return lf / rf, nil
-		case "%":
-			if rf == 0 {
-				return nil, fmt.Errorf("modulo by zero")
-			}
-			return float64(int64(lf) % int64(rf)), nil
+		// Route through the shared numeric kernel so tln core and the
+		// tln-prolog reasoner compute arithmetic identically. tln is
+		// float-valued, so we feed float operands and take the float view of
+		// the result — behaviour-preserving for +, -, *, / and %.
+		res, err := arith.Binary(ee.Op, arith.Float(lf), arith.Float(rf))
+		if err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("unknown binary op %q", ee.Op)
+		return res.Float(), nil
 	case *ast.CallExpr:
 		return evalCall(ee, record, now)
 	}
