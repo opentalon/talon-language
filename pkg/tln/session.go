@@ -3,6 +3,7 @@ package tln
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -222,6 +223,12 @@ func (s *Session) handle(ctx context.Context, block *ast.OnBlock, ev factstore.E
 			},
 		},
 	}
+	// Bind the whole triggering record so a fired workflow's step templates can
+	// interpolate {item.name}, bare {category}, {attr.custom_attributes.x} — not
+	// just the one fact that fired the rule.
+	if row := triggerRow(s.store, ev); len(row) > 0 {
+		presets[executor.TriggerRowVar] = row
+	}
 
 	// Run the body in order: logger actions write through the log
 	// package; block references run their plan and record a Firing.
@@ -261,6 +268,37 @@ func (s *Session) handle(ctx context.Context, block *ast.OnBlock, ev factstore.E
 	if !firedRef {
 		s.pending = append(s.pending, Firing{OnBlock: block.Name, Event: ev})
 	}
+}
+
+// triggerRow collects the triggering record's stored attributes as a flat,
+// namespace-stripped row (":record/name" → "name", ":attr/custom_attributes.x"
+// → "custom_attributes.x", bare "type" → "type"), so a fired workflow's step
+// templates can interpolate the whole record. Assert stores every fact before
+// emitting any event, so by the time an on-block fires the record is complete.
+// Returns an empty row when the record id isn't an integer or has no facts.
+func triggerRow(store *factstore.MemoryStore, ev factstore.Event) map[string]any {
+	row := map[string]any{}
+	if store == nil {
+		return row
+	}
+	id, err := strconv.Atoi(ev.Fact.RecordID)
+	if err != nil {
+		return row
+	}
+	attrs, ok := store.Snapshot()[id]
+	if !ok {
+		return row
+	}
+	for a, v := range attrs {
+		key := a
+		if strings.HasPrefix(a, ":") {
+			if i := strings.IndexByte(a, '/'); i >= 0 {
+				key = a[i+1:]
+			}
+		}
+		row[key] = v
+	}
+	return row
 }
 
 // logOnAction interpolates an on-block logger action's template against
