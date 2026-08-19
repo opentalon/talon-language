@@ -198,8 +198,13 @@ func (s *Session) handle(ctx context.Context, block *ast.OnBlock, ev factstore.E
 		}
 	}
 
+	// The triggering record's row (namespace-stripped) — used both to evaluate a
+	// `when` clause that references record fields (e.g. `category`) and to bind
+	// the record into a fired workflow's step templates.
+	row := triggerRow(s.store, ev)
+
 	if block.When != nil {
-		pass, err := evalWhen(block.When, ev)
+		pass, err := evalWhen(block.When, ev, row)
 		if err != nil {
 			s.pending = append(s.pending, Firing{OnBlock: block.Name, Event: ev, Err: err})
 			return
@@ -226,7 +231,7 @@ func (s *Session) handle(ctx context.Context, block *ast.OnBlock, ev factstore.E
 	// Bind the whole triggering record so a fired workflow's step templates can
 	// interpolate {item.name}, bare {category}, {attr.custom_attributes.x} — not
 	// just the one fact that fired the rule.
-	if row := triggerRow(s.store, ev); len(row) > 0 {
+	if len(row) > 0 {
 		presets[executor.TriggerRowVar] = row
 	}
 

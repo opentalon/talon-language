@@ -713,11 +713,20 @@ func resolveStepField(vars map[string]any, stepName, field string) any {
 		return nil
 	}
 	for _, part := range strings.Split(field, ".") {
-		m, ok := result.(map[string]any)
-		if !ok {
+		switch cur := result.(type) {
+		case map[string]any:
+			result = cur[part]
+		case []any:
+			// Numeric segment indexes into a list result, e.g.
+			// step("find").result.0.id → first element's id.
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= len(cur) {
+				return nil
+			}
+			result = cur[idx]
+		default:
 			return nil
 		}
-		result = m[part]
 	}
 	return result
 }
