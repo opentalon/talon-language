@@ -7,21 +7,12 @@ import (
 	"github.com/opentalon/tln-language/internal/factstore"
 )
 
-// eventFields are the identifiers a session `when` clause may reference.
-// Everything the clause names must be one of these or a literal — no
-// cross-fact lookups in this version.
-var eventFields = map[string]struct{}{
-	"new_value":  {},
-	"prev_value": {},
-	"entity":     {},
-}
-
-// validateWhen checks an on-block's `when` clause against the v1 scope:
-// comparisons of event fields (new_value / prev_value / entity) with
-// literals, combined only with and/or. Anything else — cross-fact
-// `attr "..."` lookups, aggregates, step/context refs, unknown
-// identifiers — is rejected so a caller sees the limit at compile time
-// rather than a silently-never-firing rule at runtime.
+// validateWhen checks an on-block's `when` clause: comparisons of an event
+// field (new_value / prev_value / entity) OR a triggering-record field (any
+// other bare identifier, e.g. `category`, `status`) with literals, combined
+// only with and/or. Attr lookups, aggregates, and step/context refs are
+// rejected so a caller sees the limit at compile time rather than a
+// silently-never-firing rule at runtime.
 func validateWhen(on *ast.OnBlock) error {
 	if on.When == nil {
 		return nil
@@ -47,30 +38,31 @@ func checkCond(c ast.Condition) error {
 }
 
 func checkOperand(e ast.Expr) error {
-	switch ex := e.(type) {
+	switch e.(type) {
 	case *ast.LiteralExpr:
 		return nil
 	case *ast.IdentExpr:
-		if _, ok := eventFields[ex.Name]; ok {
-			return nil
-		}
-		return fmt.Errorf("unknown identifier %q in when clause; use new_value, prev_value, or entity", ex.Name)
+		// new_value / prev_value / entity are event fields; any other bare
+		// identifier is a field of the triggering record (e.g. `category`,
+		// `status`), resolved from that record's row at evaluate time.
+		return nil
 	default:
-		return fmt.Errorf("unsupported operand in when clause; cross-fact lookups (e.g. attr \"...\") are not supported in this version")
+		return fmt.Errorf("unsupported operand in when clause; use an event field " +
+			"(new_value / prev_value / entity), a record field, or a literal")
 	}
 }
 
 // evalWhen evaluates a validated `when` clause against an event. Because
 // validateWhen has already run at NewSession time, only the supported
 // shapes reach here.
-func evalWhen(c ast.Condition, ev factstore.Event) (bool, error) {
+func evalWhen(c ast.Condition, ev factstore.Event, row map[string]any) (bool, error) {
 	switch cc := c.(type) {
 	case *ast.LogicalCondition:
-		left, err := evalWhen(cc.Left, ev)
+		left, err := evalWhen(cc.Left, ev, row)
 		if err != nil {
 			return false, err
 		}
-		right, err := evalWhen(cc.Right, ev)
+		right, err := evalWhen(cc.Right, ev, row)
 		if err != nil {
 			return false, err
 		}
@@ -79,17 +71,19 @@ func evalWhen(c ast.Condition, ev factstore.Event) (bool, error) {
 		}
 		return left && right, nil
 	case *ast.CompareCondition:
-		l := operandValue(cc.Left, ev)
-		r := operandValue(cc.Right, ev)
+		l := operandValue(cc.Left, ev, row)
+		r := operandValue(cc.Right, ev, row)
 		return compare(l, cc.Op, r)
 	default:
 		return false, fmt.Errorf("unsupported when clause")
 	}
 }
 
-// operandValue resolves a when-clause operand to a concrete value: an
-// event field for the allowed identifiers, or the literal value.
-func operandValue(e ast.Expr, ev factstore.Event) any {
+// operandValue resolves a when-clause operand to a concrete value: an event
+// field (new_value / prev_value / entity), a field of the triggering record
+// (any other identifier, from the namespace-stripped row — e.g. `category`),
+// or the literal value.
+func operandValue(e ast.Expr, ev factstore.Event, row map[string]any) any {
 	switch ex := e.(type) {
 	case *ast.LiteralExpr:
 		return ex.Value
@@ -101,6 +95,10 @@ func operandValue(e ast.Expr, ev factstore.Event) any {
 			return ev.Prev.Value
 		case "entity":
 			return ev.Fact.RecordID
+		default:
+			if row != nil {
+				return row[ex.Name]
+			}
 		}
 	}
 	return nil

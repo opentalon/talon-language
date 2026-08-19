@@ -408,6 +408,15 @@ func (v *validator) collect() {
 
 func (v *validator) checkDuplicates() {
 	for _, b := range v.prog.Blocks {
+		// Reactive on-blocks are dispatched at runtime by their trigger anchor +
+		// `when` guard, not by name, and are never referenced by name. So several
+		// `on assert item { when ... }` branches legitimately share the
+		// auto-generated "on assert item" label — exempt them from the
+		// unique-name rule (workflow/detect/recommend blocks still need it, as
+		// they ARE referenced by name).
+		if _, isOn := b.(*ast.OnBlock); isOn {
+			continue
+		}
 		name := b.BlockName()
 		pos := blockPos(b)
 		if prev, ok := v.seen[name]; ok {

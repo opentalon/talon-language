@@ -2775,7 +2775,16 @@ func (p *parser) parsePrimary() ast.Expr {
 		field := p.expectIdent()
 		for p.at(lexer.TokenDot) {
 			p.advance()
-			next := p.expectIdent()
+			// A segment is an identifier (`.field`) or an integer list index
+			// (`.0`), so navigation can reach into a list result — e.g.
+			// step("find").result.0.id picks the first match's id.
+			var next string
+			if p.at(lexer.TokenNumber) {
+				next = p.peek().Value
+				p.advance()
+			} else {
+				next = p.expectIdent()
+			}
 			if next == "map" && p.at(lexer.TokenLParen) {
 				p.advance() // consume (
 				mapField := p.expectIdent()
