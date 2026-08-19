@@ -14,7 +14,16 @@ import (
 	tlnlog "github.com/opentalon/tln-language/internal/log"
 	"github.com/opentalon/tln-language/internal/mlruntime"
 	"github.com/opentalon/tln-language/internal/planner"
+	"github.com/opentalon/tln-language/internal/template"
 )
+
+// TriggerRowVar is the reserved variable key under which a reactively-fired
+// workflow receives the triggering record's attributes (namespace-stripped),
+// so its step templates can interpolate {item.name}, bare {category},
+// {attr.custom_attributes.x}, etc. against the record that fired the rule —
+// not just the single triggering fact. Seeded by pkg/tln session; absent for
+// plain (non-reactive) workflow runs, which then keep literal strings verbatim.
+const TriggerRowVar = "__trigger_row"
 
 // newDeterministicRNG returns a *rand.Rand seeded with the given
 // value. Wrapped behind a constructor so a future migration to
@@ -673,6 +682,14 @@ func resolveMCPArgs(exprArgs map[string]ast.Expr, vars map[string]any) map[strin
 func resolveExprValue(expr ast.Expr, vars map[string]any) any {
 	switch e := expr.(type) {
 	case *ast.LiteralExpr:
+		// A string literal carrying `{…}` refs interpolates against the
+		// triggering record's row when one is present (reactive fire). With no
+		// row (plain workflow run) it passes through verbatim, as before.
+		if s, ok := e.Value.(string); ok && strings.IndexByte(s, '{') >= 0 {
+			if row, ok := vars[TriggerRowVar].(map[string]any); ok && len(row) > 0 {
+				return template.Render(ast.ParseTemplate(s), template.RenderContext{Row: template.Row(row)})
+			}
+		}
 		return e.Value
 	case *ast.StepResultExpr:
 		return resolveStepField(vars, e.StepName, e.Field)
