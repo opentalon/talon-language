@@ -1,5 +1,7 @@
 package tln
 
+import "github.com/opentalon/tln-language/internal/ast"
+
 // Check compiles a tln source string without executing it, running
 // the full compile pipeline:
 //
@@ -24,4 +26,29 @@ func Check(src string, opts ...Option) error {
 		return err
 	}
 	return nil
+}
+
+// HasReactiveRules reports whether the tln source contains reactive rules —
+// `on` blocks or `detect` blocks — as opposed to a purely imperative program
+// (top-level `workflow` blocks only). Callers use this to route a domain event:
+// a reactive program is evaluated against the asserted facts (so the matched
+// record binds in interpolation and its on/detect rules fire), while a
+// workflow-only program is run imperatively. It runs the same compile pipeline
+// as [Check] and returns the compile error unchanged for invalid source.
+func HasReactiveRules(src string, opts ...Option) (bool, error) {
+	cfg := &runConfig{file: "<tln>"}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	prog, _, err := compileProgram(cfg.file, src)
+	if err != nil {
+		return false, err
+	}
+	for _, b := range prog.Blocks {
+		switch b.(type) {
+		case *ast.DetectBlock, *ast.OnBlock:
+			return true, nil
+		}
+	}
+	return false, nil
 }

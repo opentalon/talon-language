@@ -130,6 +130,59 @@ func TestFacts_UsableFromExternalModule(t *testing.T) {
 	}
 }
 
+func TestHasReactiveRules_WorkflowOnly(t *testing.T) {
+	src := `
+workflow "ok" {
+  step "one" {
+    tool "svc" "do" { arg "x" }
+  }
+}`
+	reactive, err := tln.HasReactiveRules(src)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reactive {
+		t.Error("workflow-only program must not be reactive")
+	}
+}
+
+func TestHasReactiveRules_DetectBlock(t *testing.T) {
+	src := `
+detect "Low stock" {
+  for records where type == "stock_item"
+    and attr "current_stock" < attr "minimum_amount"
+  flag matching items
+}`
+	reactive, err := tln.HasReactiveRules(src)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reactive {
+		t.Error("a detect block makes a program reactive")
+	}
+}
+
+func TestHasReactiveRules_OnBlock(t *testing.T) {
+	src := `
+on change attr "status" {
+  logger.info "status changed"
+}`
+	reactive, err := tln.HasReactiveRules(src)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reactive {
+		t.Error("an on block makes a program reactive")
+	}
+}
+
+func TestHasReactiveRules_CompileError(t *testing.T) {
+	src := `workflow "broken" { step "s1" {` // unterminated
+	if _, err := tln.HasReactiveRules(src); err == nil {
+		t.Fatal("expected a compile error for invalid source")
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {
