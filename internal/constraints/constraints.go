@@ -290,8 +290,83 @@ func evalExpr(e ast.Expr, record map[string]any, now time.Time) (any, error) {
 		return res.Float(), nil
 	case *ast.CallExpr:
 		return evalCall(ee, record, now)
+	case *ast.StepResultExpr:
+		// A workflow-step `when` guard may compare against a prior step's
+		// result — `step("search").total`, `length(step("search").tickets)`.
+		// The executor injects the block's variable scope under StepScopeKey
+		// before evaluating the guard; navigate it the same way the executor
+		// resolves step("name").field elsewhere.
+		return resolveStepField(stepScope(record), ee.StepName, ee.Field), nil
+	case *ast.MapExpr:
+		// `step("x").items.map(id)` — resolve the source (a StepResultExpr,
+		// handled above) then project the field from each element.
+		src, err := evalExpr(ee.Source, record, now)
+		if err != nil {
+			return nil, err
+		}
+		return resolveMap(src, ee.Field), nil
 	}
 	return nil, fmt.Errorf("constraint evaluator cannot evaluate expression %T", e)
+}
+
+// StepScopeKey is the reserved record slot under which a caller injects the
+// executing block's variable scope so `when` conditions can resolve
+// step("name").result operands. It uses a NUL prefix so it can never collide
+// with a real record attribute name.
+const StepScopeKey = "\x00step_scope"
+
+// stepScope returns the injected variable scope, or nil when the record was
+// built without one (every non-workflow evaluation path — constraints,
+// remediate, state-machine guards — passes no scope, so step operands there
+// resolve to nil rather than erroring).
+func stepScope(record map[string]any) map[string]any {
+	scope, _ := record[StepScopeKey].(map[string]any)
+	return scope
+}
+
+// resolveStepField navigates step("name").result.field over an injected scope,
+// mirroring the executor's own resolver (kept in sync deliberately: the guard
+// evaluator and MCP-arg resolver must read a step result identically). A
+// numeric path segment indexes into a list result (step("find").result.0.id).
+func resolveStepField(scope map[string]any, stepName, field string) any {
+	if scope == nil {
+		return nil
+	}
+	result := scope[stepName+"_result"]
+	if result == nil {
+		return nil
+	}
+	for _, part := range strings.Split(field, ".") {
+		switch cur := result.(type) {
+		case map[string]any:
+			result = cur[part]
+		case []any:
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= len(cur) {
+				return nil
+			}
+			result = cur[idx]
+		default:
+			return nil
+		}
+	}
+	return result
+}
+
+// resolveMap projects a field from each element of a list result, mirroring the
+// executor's resolveMap so `.map(field)` reads identically in a guard.
+func resolveMap(src any, field string) any {
+	arr, ok := src.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(arr))
+	for _, elem := range arr {
+		if m, ok := elem.(map[string]any); ok {
+			out = append(out, m[field])
+		}
+	}
+	return out
 }
 
 // EvalExpr evaluates a value expression against a record's attributes, using
@@ -339,6 +414,12 @@ func evalCall(c *ast.CallExpr, record map[string]any, now time.Time) (any, error
 	case "length":
 		if err := arity(1); err != nil {
 			return nil, err
+		}
+		// A list-valued operand (e.g. a step("search").tickets result) counts
+		// its elements; anything else counts characters, as before. This is
+		// what lets a workflow-step guard test `length(step("x").items) == 0`.
+		if arr, ok := args[0].([]any); ok {
+			return float64(len(arr)), nil
 		}
 		return float64(len([]rune(stringify(args[0])))), nil
 	case "replace":

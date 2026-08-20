@@ -597,6 +597,21 @@ func (e *Executor) execMCPCall(ctx context.Context, gc *planner.GoComputation, v
 
 	stepName, _ := gc.Params["step"].(string)
 
+	// Optional `when` guard: skip this call when the condition doesn't hold.
+	// Evaluated before the confirmation hook so we never prompt for a call the
+	// guard will drop. A skipped step's result is a {status:"skipped"} marker,
+	// so a downstream step depending on it reads nil for its fields.
+	if cond, ok := gc.Params["when"].(ast.Condition); ok && cond != nil {
+		pass, err := e.stepGuardPasses(cond, vars)
+		if err != nil {
+			return nil, fmt.Errorf("step %q: when guard: %w", stepName, err)
+		}
+		if !pass {
+			tlnlog.MCPCall(ctx, mcpCall.Server, mcpCall.Tool, "skipped", 0, nil)
+			return map[string]any{"status": "skipped", "reason": "when_guard"}, nil
+		}
+	}
+
 	// Confirmation hook
 	if e.ConfirmHook != nil {
 		proceed, err := e.ConfirmHook(ctx, stepName, mcpCall.Server, mcpCall.Tool)
@@ -703,6 +718,23 @@ func resolveExprValue(expr ast.Expr, vars map[string]any) any {
 	default:
 		return nil
 	}
+}
+
+// stepGuardPasses evaluates a workflow step's optional `when` guard. The guard
+// sees the triggering record's fields (when the workflow was fired reactively,
+// exposed under TriggerRowVar) plus any prior step's result via
+// step("name").field — the full variable scope is injected under
+// constraints.StepScopeKey so the evaluator resolves those operands. With no
+// trigger row and no matching step result, an operand resolves to nil.
+func (e *Executor) stepGuardPasses(cond ast.Condition, vars map[string]any) (bool, error) {
+	rec := map[string]any{}
+	if row, ok := vars[TriggerRowVar].(map[string]any); ok {
+		for k, v := range row {
+			rec[k] = v
+		}
+	}
+	rec[constraints.StepScopeKey] = vars
+	return constraints.EvalCondition(cond, rec)
 }
 
 // resolveStepField navigates step("name").result.field by traversing the

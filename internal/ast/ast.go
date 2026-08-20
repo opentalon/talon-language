@@ -1222,6 +1222,11 @@ type WorkflowStep struct {
 	Name      string
 	DependsOn []string
 	MCPCall   *MCPCall
+	// When is an optional guard: the step's MCP call runs only if the
+	// condition holds. It may compare the triggering record's fields and/or a
+	// prior step's result (step("search").total, length(step("search").items)),
+	// enabling "search → decide → act" workflows such as dedup. nil = always run.
+	When Condition
 }
 
 type MCPCall struct {

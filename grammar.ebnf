@@ -314,7 +314,18 @@ WorkflowStep  = "step" STRING
                 [ "depends_on" ( STRING | "[" STRING { "," STRING } "]" ) ]
                 "{" StepBody "}"
 
-StepBody      = MCPCall { Condition }
+StepBody      = { "when" Condition } MCPCall
+              | MCPCall { "when" Condition }
+
+(* A `when` guard makes the step's MCP call conditional: it runs only if the
+   condition holds. The condition may compare the triggering record's fields
+   (reactive fire) and/or a prior step's result — step("search").total,
+   length(step("search").tickets) — so a workflow can do "search → decide →
+   act" (e.g. dedup: only create when a prior search found nothing). Multiple
+   `when` lines AND together. A guard may only read a step named in the
+   guarded step's depends_on, so the result it reads has already run. When the
+   guard is false the call is skipped and its result is a {status:"skipped"}
+   marker (dependent steps read nil for its fields). *)
 
 (* The tool-call verb is "tool" (server-agnostic): it dispatches to the host
    ToolResolver as Call(server, tool, args). mcp/io/etc. are servers, never

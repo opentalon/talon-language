@@ -763,8 +763,28 @@ func (p *parser) parseWorkflowStep() ast.WorkflowStep {
 	}
 	p.expect(lexer.TokenLBrace)
 	step := ast.WorkflowStep{Name: name, DependsOn: dependsOn}
-	if p.at(lexer.TokenTool) {
-		step.MCPCall = p.parseMCPCall()
+	// A step body is an MCP call plus an optional `when` guard (either order).
+	// Multiple `when` lines AND together, matching how a define block's
+	// conditions accumulate — so a guard can read like several plain lines.
+	for !p.at(lexer.TokenRBrace) && !p.at(lexer.TokenEOF) {
+		switch {
+		case p.at(lexer.TokenWhen):
+			cond := p.parseWhenClause()
+			if cond == nil {
+				continue
+			}
+			if step.When == nil {
+				step.When = cond
+			} else {
+				step.When = &ast.LogicalCondition{Op: "and", Left: step.When, Right: cond}
+			}
+		case p.at(lexer.TokenTool):
+			step.MCPCall = p.parseMCPCall()
+		default:
+			p.errorf("expected `tool` call or `when` guard inside step, got %q", p.peek().Value)
+			p.synchronizeInBlock()
+			return step
+		}
 	}
 	p.expect(lexer.TokenRBrace)
 	return step
