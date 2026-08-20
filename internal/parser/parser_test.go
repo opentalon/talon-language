@@ -345,6 +345,38 @@ workflow "Delete items" {
 	}
 }
 
+func TestParseWorkflowStepWhenGuard(t *testing.T) {
+	prog := mustParse(t, `
+workflow "dedup" {
+  step "search" {
+    tool "srv" "list-tickets" { query "item_ids:42" }
+  }
+  step "create" depends_on "search" {
+    when length(step("search").tickets) == 0
+    tool "srv" "create-ticket" { title "Repair" }
+  }
+}`)
+	b := block[*ast.WorkflowBlock](t, prog, 0)
+	if b.Steps[0].When != nil {
+		t.Errorf("step 0 should have no guard, got %#v", b.Steps[0].When)
+	}
+	cmp, ok := b.Steps[1].When.(*ast.CompareCondition)
+	if !ok {
+		t.Fatalf("step 1 When: expected CompareCondition, got %T", b.Steps[1].When)
+	}
+	if cmp.Op != "==" {
+		t.Errorf("guard op: got %q", cmp.Op)
+	}
+	call, ok := cmp.Left.(*ast.CallExpr)
+	if !ok || call.Func != "length" {
+		t.Fatalf("guard lhs: expected length(...) CallExpr, got %#v", cmp.Left)
+	}
+	sr, ok := call.Args[0].(*ast.StepResultExpr)
+	if !ok || sr.StepName != "search" || sr.Field != "tickets" {
+		t.Errorf("guard operand: got %#v", call.Args[0])
+	}
+}
+
 // ─── top-level ML blocks ───────────────────────────────────────────────────────
 
 func TestParseForecastBlock(t *testing.T) {

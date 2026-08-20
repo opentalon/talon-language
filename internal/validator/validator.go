@@ -993,6 +993,32 @@ func (v *validator) checkWorkflows() {
 			}
 		}
 
+		// Validate `when` guard step references: a guard may only read a step
+		// the guarded step declares in depends_on, so the referenced result is
+		// guaranteed to have run before the guard is evaluated.
+		for _, step := range wf.Steps {
+			if step.When == nil {
+				continue
+			}
+			deps := map[string]bool{}
+			for _, d := range step.DependsOn {
+				deps[d] = true
+			}
+			for _, ref := range stepRefsInCondition(step.When) {
+				switch {
+				case !stepNames[ref]:
+					v.errAt(wf.Pos,
+						fmt.Sprintf("step %q when-guard references undefined step %q in workflow %q",
+							step.Name, ref, wf.Name),
+						suggest(ref, names(stepNames)))
+				case ref != step.Name && !deps[ref]:
+					v.errAt(wf.Pos,
+						fmt.Sprintf("step %q when-guard reads step %q but does not depend on it — "+
+							"add depends_on %q in workflow %q", step.Name, ref, ref, wf.Name), "")
+				}
+			}
+		}
+
 		// Cycle detection via DFS.
 		type dfsState int
 		const (
@@ -1036,6 +1062,62 @@ func (v *validator) checkWorkflows() {
 			}
 		}
 	}
+}
+
+// stepRefsInCondition returns the step names referenced by step("name").…
+// operands anywhere in a condition, so workflow validation can confirm a
+// guard only reads steps it depends on. Best-effort over the condition/expr
+// shapes a guard realistically uses; unrecognised nodes contribute nothing.
+func stepRefsInCondition(c ast.Condition) []string {
+	var out []string
+	var walkExpr func(ast.Expr)
+	walkExpr = func(e ast.Expr) {
+		switch ee := e.(type) {
+		case *ast.StepResultExpr:
+			out = append(out, ee.StepName)
+		case *ast.MapExpr:
+			walkExpr(ee.Source)
+		case *ast.CallExpr:
+			for _, a := range ee.Args {
+				walkExpr(a)
+			}
+		case *ast.BinaryExpr:
+			walkExpr(ee.Left)
+			walkExpr(ee.Right)
+		case *ast.UnaryExpr:
+			walkExpr(ee.Operand)
+		case *ast.AggregateExpr:
+			if ee.Arg != nil {
+				walkExpr(ee.Arg)
+			}
+		}
+	}
+	var walkCond func(ast.Condition)
+	walkCond = func(c ast.Condition) {
+		switch cc := c.(type) {
+		case *ast.CompareCondition:
+			walkExpr(cc.Left)
+			walkExpr(cc.Right)
+		case *ast.LogicalCondition:
+			walkCond(cc.Left)
+			walkCond(cc.Right)
+		case *ast.NotCondition:
+			walkCond(cc.Inner)
+		case *ast.MembershipCondition:
+			walkExpr(cc.Expr)
+			for _, m := range cc.Members {
+				walkExpr(m)
+			}
+		case *ast.StringMatchCondition:
+			walkExpr(cc.Subject)
+		case *ast.IsCondition:
+			walkExpr(cc.Subject)
+		case *ast.HasCondition:
+			walkExpr(cc.Subject)
+		}
+	}
+	walkCond(c)
+	return out
 }
 
 // checkAsOf enforces the v1 restrictions on `was ( <cond> ) N <unit> ago`:

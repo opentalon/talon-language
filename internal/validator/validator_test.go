@@ -421,7 +421,6 @@ detect "Good score" {
 }`)
 }
 
-
 func TestValidateRemediateEmpty(t *testing.T) {
 	mustError(t, `
 detect "Act" {
@@ -517,4 +516,42 @@ detect "C" {
   calculate r from records average
   flag matching items
 }`, "requires a value column")
+}
+
+// ─── Workflow step `when` guards ────────────────────────────────────────────────
+
+func TestValidateWorkflowStepGuardClean(t *testing.T) {
+	mustClean(t, `
+workflow "dedup" {
+  step "search" {
+    tool "srv" "list-tickets" { query "item_ids:42" }
+  }
+  step "create" depends_on "search" {
+    when length(step("search").tickets) == 0
+    tool "srv" "create-ticket" { title "Repair" }
+  }
+}`)
+}
+
+func TestValidateWorkflowGuardMissingDependsOn(t *testing.T) {
+	mustError(t, `
+workflow "dedup" {
+  step "search" {
+    tool "srv" "list-tickets" { query "item_ids:42" }
+  }
+  step "create" {
+    when length(step("search").tickets) == 0
+    tool "srv" "create-ticket" { title "Repair" }
+  }
+}`, "does not depend on it")
+}
+
+func TestValidateWorkflowGuardUndefinedStep(t *testing.T) {
+	mustError(t, `
+workflow "dedup" {
+  step "create" {
+    when length(step("nope").tickets) == 0
+    tool "srv" "create-ticket" { title "Repair" }
+  }
+}`, "undefined step")
 }

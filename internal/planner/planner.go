@@ -147,7 +147,7 @@ type StateMachineStep struct {
 	BlockName   string
 	Input       string
 	StateAttr   string
-	StateColumn int    // index in row where the current state lives
+	StateColumn int      // index in row where the current state lives
 	Columns     []string // unqualified attribute names per row column starting at index 1
 	Initial     string
 	States      []string
@@ -169,12 +169,12 @@ type StateInvariantSpec struct {
 	Required ast.Condition
 }
 
-func (*FactQuery) stepType() string         { return "FactQuery" }
-func (*GoComputation) stepType() string     { return "GoComputation" }
-func (*MLComputation) stepType() string     { return "MLComputation" }
-func (*Filter) stepType() string            { return "Filter" }
-func (*GraphSnapshot) stepType() string     { return "GraphSnapshot" }
-func (*StateMachineStep) stepType() string  { return "StateMachineStep" }
+func (*FactQuery) stepType() string          { return "FactQuery" }
+func (*GoComputation) stepType() string      { return "GoComputation" }
+func (*MLComputation) stepType() string      { return "MLComputation" }
+func (*Filter) stepType() string             { return "Filter" }
+func (*GraphSnapshot) stepType() string      { return "GraphSnapshot" }
+func (*StateMachineStep) stepType() string   { return "StateMachineStep" }
 func (*EventSequenceStep) stepType() string  { return "EventSequenceStep" }
 func (*RecordSequenceStep) stepType() string { return "RecordSequenceStep" }
 func (*VectorSimilarStep) stepType() string  { return "VectorSimilarStep" }
@@ -1433,6 +1433,7 @@ func (p *planner) planWorkflow(b *ast.WorkflowBlock) *QueryPlan {
 				"step":       step.Name,
 				"depends_on": step.DependsOn,
 				"mcp":        step.MCPCall,
+				"when":       step.When,
 			},
 			Into: step.Name + "_result",
 		})
@@ -1636,21 +1637,21 @@ func topoSortSteps(steps []ast.WorkflowStep) []ast.WorkflowStep {
 // ─── Query builder ────────────────────────────────────────────────────────────
 
 type queryBuilder struct {
-	defines        map[string]*ast.DefineBlock
-	derives        map[string]*ast.DeriveBlock
-	deriving       map[string]bool // predicate names currently being inlined (cycle guard)
-	entityVar      string
-	findVars       []string
-	whereClauses   []factstore.Clause
-	rules          []factstore.Rule
-	goConditions   []ast.Condition
-	anomalyConds   []anomalyBinding
-	thresholdConds []thresholdBinding
+	defines          map[string]*ast.DefineBlock
+	derives          map[string]*ast.DeriveBlock
+	deriving         map[string]bool // predicate names currently being inlined (cycle guard)
+	entityVar        string
+	findVars         []string
+	whereClauses     []factstore.Clause
+	rules            []factstore.Rule
+	goConditions     []ast.Condition
+	anomalyConds     []anomalyBinding
+	thresholdConds   []thresholdBinding
 	correlationConds []correlationBinding
-	eventSeqConds  []*ast.EventSequenceCondition
-	recordSeqConds []*ast.RecordSequenceCondition
-	asOfConds      []*ast.AsOfCondition
-	usedVars       map[string]int // base name → count (for dedup)
+	eventSeqConds    []*ast.EventSequenceCondition
+	recordSeqConds   []*ast.RecordSequenceCondition
+	asOfConds        []*ast.AsOfCondition
+	usedVars         map[string]int // base name → count (for dedup)
 }
 
 // pattern is a builder helper for an EAV match clause where the entity is
