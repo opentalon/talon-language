@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/opentalon/tln-language/internal/ast"
 	"github.com/opentalon/tln-language/internal/lexer"
 	"github.com/opentalon/tln-language/internal/parser"
 	"github.com/opentalon/tln-language/internal/planner"
@@ -93,5 +94,33 @@ func TestStepGuardRunsWhenSearchEmpty(t *testing.T) {
 	}
 	if !created {
 		t.Fatalf("create-ticket must run when the search found nothing; calls=%+v", mock.calls)
+	}
+}
+
+// A list-literal MCP arg (assignee_ids [2383]) must resolve to a real []any,
+// not nil — the gap that blocked reactive create-ticket authoring.
+func TestListLiteralMCPArg(t *testing.T) {
+	var got map[string]any
+	mock := &mockMCP{handler: func(_, tool string, args map[string]any) (any, error) {
+		got = args
+		return map[string]any{"ok": true}, nil
+	}}
+	e := &Executor{Tools: mock}
+	plan := workflowPlan(
+		mcpStep("create", "timly", "create-ticket", nil, map[string]ast.Expr{
+			"name":         &ast.LiteralExpr{Value: "Repair"},
+			"assignee_ids": &ast.ListExpr{Elements: []ast.Expr{&ast.LiteralExpr{Value: 2383}}},
+			"item_ids":     &ast.ListExpr{Elements: []ast.Expr{&ast.LiteralExpr{Value: 1}, &ast.LiteralExpr{Value: 2}}},
+		}),
+	)
+	if _, err := e.Run(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	ids, ok := got["assignee_ids"].([]any)
+	if !ok || len(ids) != 1 || ids[0] != 2383 {
+		t.Fatalf("assignee_ids: want []any{2383}, got %#v", got["assignee_ids"])
+	}
+	if items, ok := got["item_ids"].([]any); !ok || len(items) != 2 {
+		t.Fatalf("item_ids: want 2 elements, got %#v", got["item_ids"])
 	}
 }

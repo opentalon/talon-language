@@ -711,6 +711,16 @@ func resolveExprValue(expr ast.Expr, vars map[string]any) any {
 	case *ast.MapExpr:
 		src := resolveExprValue(e.Source, vars)
 		return resolveMap(src, e.Field)
+	case *ast.ListExpr:
+		// A list literal MCP arg — e.g. `assignee_ids [2383]` or
+		// `item_ids [step("find").result.0.id]`. Each element resolves the same
+		// way any arg value does, so ids, step results, and interpolated strings
+		// all compose inside a list. Complements resolveMap's array (`.map(id)`).
+		out := make([]any, 0, len(e.Elements))
+		for _, el := range e.Elements {
+			out = append(out, resolveExprValue(el, vars))
+		}
+		return out
 	case *ast.ContextExpr:
 		return resolveStepField(vars, "context", e.Field)
 	case *ast.IdentExpr:
