@@ -1840,3 +1840,32 @@ test "lists and actions" {
 		t.Errorf("Actions[2]: want did_not")
 	}
 }
+
+func TestParseFindExpr(t *testing.T) {
+	prog := mustParse(t, `
+workflow "w" {
+  step "cats" { tool "srv" "list-ticket-categories" {} }
+  step "create" depends_on "cats" {
+    tool "srv" "create-ticket" {
+      ticket_category_id step("cats").ticket_categories.find(name == "Defect").id
+    }
+  }
+}`)
+	b := block[*ast.WorkflowBlock](t, prog, 0)
+	arg := b.Steps[1].MCPCall.Args["ticket_category_id"]
+	fe, ok := arg.(*ast.FindExpr)
+	if !ok {
+		t.Fatalf("expected FindExpr, got %T", arg)
+	}
+	if fe.Field != "id" {
+		t.Errorf("FindExpr.Field: got %q, want id", fe.Field)
+	}
+	src, ok := fe.Source.(*ast.StepResultExpr)
+	if !ok || src.StepName != "cats" || src.Field != "ticket_categories" {
+		t.Errorf("FindExpr.Source: got %#v", fe.Source)
+	}
+	cmp, ok := fe.Cond.(*ast.CompareCondition)
+	if !ok || cmp.Op != "==" {
+		t.Fatalf("FindExpr.Cond: got %#v", fe.Cond)
+	}
+}

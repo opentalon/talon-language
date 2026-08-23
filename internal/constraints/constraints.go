@@ -305,6 +305,27 @@ func evalExpr(e ast.Expr, record map[string]any, now time.Time) (any, error) {
 			return nil, err
 		}
 		return resolveMap(src, ee.Field), nil
+	case *ast.FindExpr:
+		// `step("x").items.find(name == "Defect").id` — first element whose
+		// fields satisfy the predicate, then the trailing field navigated on it.
+		src, err := evalExpr(ee.Source, record, now)
+		if err != nil {
+			return nil, err
+		}
+		arr, ok := src.([]any)
+		if !ok {
+			return nil, nil
+		}
+		for _, el := range arr {
+			m, ok := el.(map[string]any)
+			if !ok {
+				continue
+			}
+			if match, err := evalConditionAt(ee.Cond, m, now); err == nil && match {
+				return navigatePath(m, ee.Field), nil
+			}
+		}
+		return nil, nil
 	}
 	return nil, fmt.Errorf("constraint evaluator cannot evaluate expression %T", e)
 }
@@ -332,25 +353,33 @@ func resolveStepField(scope map[string]any, stepName, field string) any {
 	if scope == nil {
 		return nil
 	}
-	result := scope[stepName+"_result"]
-	if result == nil {
+	return navigatePath(scope[stepName+"_result"], field)
+}
+
+// navigatePath walks a dot path over nested maps/lists (numeric segment = list
+// index; off-the-end = nil). Mirrors the executor's helper of the same name.
+func navigatePath(cur any, path string) any {
+	if cur == nil {
 		return nil
 	}
-	for _, part := range strings.Split(field, ".") {
-		switch cur := result.(type) {
+	if path == "" {
+		return cur
+	}
+	for _, part := range strings.Split(path, ".") {
+		switch c := cur.(type) {
 		case map[string]any:
-			result = cur[part]
+			cur = c[part]
 		case []any:
 			idx, err := strconv.Atoi(part)
-			if err != nil || idx < 0 || idx >= len(cur) {
+			if err != nil || idx < 0 || idx >= len(c) {
 				return nil
 			}
-			result = cur[idx]
+			cur = c[idx]
 		default:
 			return nil
 		}
 	}
-	return result
+	return cur
 }
 
 // resolveMap projects a field from each element of a list result, mirroring the

@@ -1077,6 +1077,8 @@ func stepRefsInCondition(c ast.Condition) []string {
 			out = append(out, ee.StepName)
 		case *ast.MapExpr:
 			walkExpr(ee.Source)
+		case *ast.FindExpr:
+			walkExpr(ee.Source)
 		case *ast.CallExpr:
 			for _, a := range ee.Args {
 				walkExpr(a)

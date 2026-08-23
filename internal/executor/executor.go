@@ -711,6 +711,24 @@ func resolveExprValue(expr ast.Expr, vars map[string]any) any {
 	case *ast.MapExpr:
 		src := resolveExprValue(e.Source, vars)
 		return resolveMap(src, e.Field)
+	case *ast.FindExpr:
+		// First element of the array whose fields satisfy the predicate, then the
+		// trailing field navigated on it — e.g.
+		// step("cats").ticket_categories.find(name == "Defect").id.
+		arr, ok := resolveExprValue(e.Source, vars).([]any)
+		if !ok {
+			return nil
+		}
+		for _, el := range arr {
+			m, ok := el.(map[string]any)
+			if !ok {
+				continue
+			}
+			if match, err := constraints.EvalCondition(e.Cond, m); err == nil && match {
+				return navPath(m, e.Field)
+			}
+		}
+		return nil
 	case *ast.ListExpr:
 		// A list literal MCP arg — e.g. `assignee_ids [2383]` or
 		// `item_ids [step("find").result.0.id]`. Each element resolves the same
@@ -750,27 +768,34 @@ func (e *Executor) stepGuardPasses(cond ast.Condition, vars map[string]any) (boo
 // resolveStepField navigates step("name").result.field by traversing the
 // stored step result using dot-separated field paths.
 func resolveStepField(vars map[string]any, stepName, field string) any {
-	result := vars[stepName+"_result"]
-	if result == nil {
+	return navPath(vars[stepName+"_result"], field)
+}
+
+// navPath walks a dot path over nested maps/lists — a numeric segment
+// indexes into a list (step("find").result.0.id), off-the-end yields nil.
+// Shared by step-result and find navigation.
+func navPath(cur any, path string) any {
+	if cur == nil {
 		return nil
 	}
-	for _, part := range strings.Split(field, ".") {
-		switch cur := result.(type) {
+	if path == "" {
+		return cur
+	}
+	for _, part := range strings.Split(path, ".") {
+		switch c := cur.(type) {
 		case map[string]any:
-			result = cur[part]
+			cur = c[part]
 		case []any:
-			// Numeric segment indexes into a list result, e.g.
-			// step("find").result.0.id → first element's id.
 			idx, err := strconv.Atoi(part)
-			if err != nil || idx < 0 || idx >= len(cur) {
+			if err != nil || idx < 0 || idx >= len(c) {
 				return nil
 			}
-			result = cur[idx]
+			cur = c[idx]
 		default:
 			return nil
 		}
 	}
-	return result
+	return cur
 }
 
 // resolveMap extracts a field from each element of an array.

@@ -707,6 +707,18 @@ type MapExpr struct {
 	Field  string // the field to extract, e.g. "id"
 }
 
+// FindExpr is `expr.find(<cond>).<field>` — the FIRST element of an array result
+// whose fields satisfy Cond, then Field navigated on it. Lets a workflow pick a
+// specific record out of a list tool's result by a field value instead of a
+// positional index — e.g.
+// step("cats").ticket_categories.find(name == "Defect").id. Field is "" to
+// return the whole matched element.
+type FindExpr struct {
+	Source Expr      // the array expression (e.g. a StepResultExpr)
+	Cond   Condition // predicate evaluated per element (element fields as attrs)
+	Field  string    // dot path read from the matched element ("" = the element)
+}
+
 // LearnedThresholdExpr is `learned_threshold METHOD of EXPR over last N UNIT`.
 // Method is one of "p50", "p90", "p95", "p99" (or any "p<int>").
 // Subject is the attr/ident expression whose historical values feed the threshold.
@@ -760,6 +772,7 @@ func (*TodayExpr) exprNode()            {}
 func (*ThresholdRefExpr) exprNode()     {}
 func (*EnvExpr) exprNode()              {}
 func (*MapExpr) exprNode()              {}
+func (*FindExpr) exprNode()             {}
 func (*LearnedThresholdExpr) exprNode() {}
 func (*CallExpr) exprNode()             {}
 

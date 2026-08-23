@@ -124,3 +124,37 @@ func TestListLiteralMCPArg(t *testing.T) {
 		t.Fatalf("item_ids: want 2 elements, got %#v", got["item_ids"])
 	}
 }
+
+// `.find(field == value).field` picks a specific element of a list result by a
+// field value — resolving e.g. a ticket category by name instead of a fragile
+// positional index.
+func TestFindByFieldMCPArg(t *testing.T) {
+	var got map[string]any
+	mock := &mockMCP{handler: func(_, tool string, args map[string]any) (any, error) {
+		if tool == "list-ticket-categories" {
+			return map[string]any{"ticket_categories": []any{
+				map[string]any{"id": 1, "name": "Test"},
+				map[string]any{"id": 2, "name": "Defect"},
+			}}, nil
+		}
+		got = args
+		return map[string]any{"ok": true}, nil
+	}}
+	e := &Executor{Tools: mock}
+	plan := compilePlans(t, `
+workflow "w" {
+  step "cats" { tool "timly" "list-ticket-categories" {} }
+  step "create" depends_on "cats" {
+    tool "timly" "create-ticket" {
+      name "x"
+      ticket_category_id step("cats").ticket_categories.find(name == "Defect").id
+    }
+  }
+}`)
+	if _, err := e.Run(context.Background(), plan["w"]); err != nil {
+		t.Fatal(err)
+	}
+	if got["ticket_category_id"] != 2 {
+		t.Fatalf("ticket_category_id: want 2 (Defect), got %#v", got["ticket_category_id"])
+	}
+}
