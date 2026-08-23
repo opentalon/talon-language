@@ -2795,6 +2795,36 @@ func (p *parser) parsePrimary() ast.Expr {
 		field := p.expectIdent()
 		for p.at(lexer.TokenDot) {
 			p.advance()
+			// `.find(<cond>).<field>` — pick the first list element matching a
+			// predicate, then read a field from it. `find` is a keyword token, so
+			// match on the value + a `(` lookahead rather than expectIdent.
+			if p.peek().Value == "find" && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == lexer.TokenLParen {
+				p.advance() // find
+				p.expect(lexer.TokenLParen)
+				cond := p.parseOrCondition()
+				p.expect(lexer.TokenRParen)
+				rest := ""
+				for p.at(lexer.TokenDot) {
+					p.advance()
+					var seg string
+					if p.at(lexer.TokenNumber) {
+						seg = p.peek().Value
+						p.advance()
+					} else {
+						seg = p.expectIdent()
+					}
+					if rest == "" {
+						rest = seg
+					} else {
+						rest += "." + seg
+					}
+				}
+				return &ast.FindExpr{
+					Source: &ast.StepResultExpr{StepName: name, Field: field},
+					Cond:   cond,
+					Field:  rest,
+				}
+			}
 			// A segment is an identifier (`.field`) or an integer list index
 			// (`.0`), so navigation can reach into a list result — e.g.
 			// step("find").result.0.id picks the first match's id.

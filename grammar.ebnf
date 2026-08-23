@@ -646,6 +646,17 @@ AttrRef     = "attr" STRING
 ContextRef  = "context" "." IDENT
 
 StepRef     = "step" "(" STRING ")" "." IDENT { "." IDENT }
+                [ "." "map" "(" IDENT ")" ]
+                [ "." "find" "(" Condition ")" { "." IDENT } ]
+
+(* Navigating a step result: dotted fields + integer indices reach into the
+   JSON (`step("s").items.0.id`). Two array helpers terminate the chain:
+     .map(field)          → project a field from every element → a list
+                            (e.g. assignee_ids step("u").users.map(id))
+     .find(<cond>).<path> → the FIRST element whose fields satisfy <cond>, then
+                            <path> read from it — pick a record by a field value
+                            instead of a positional index, e.g.
+                            step("cats").ticket_categories.find(name == "Defect").id *)
 
 Literal     = STRING | NUMBER | BOOLEAN | Duration
 
