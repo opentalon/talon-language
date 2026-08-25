@@ -30,7 +30,10 @@ type TestResult = testrunner.TestResult
 // (e.g. a test referencing an unknown block, or asserting a verb the rule
 // under test never does). A successful compile returns one TestResult per
 // test block; RunTests accepts the same [Option] values as [Check] and
-// [Run], though only [WithFilename] (labelling rulesSource) applies.
+// [Run], though only [WithFilename] (labelling rulesSource) is relevant —
+// the rest ([WithToolResolver], [WithFactStore], etc.) are silently ignored,
+// since testrunner mocks tool/store effects through the test DSL's own
+// `mock` / `given` clauses rather than a real resolver or store.
 func RunTests(rulesSource, testSource string, opts ...Option) ([]TestResult, error) {
 	cfg := &runConfig{file: "<tln>"}
 	for _, opt := range opts {

@@ -80,7 +80,7 @@ func TestRunTestsRulesLexError(t *testing.T) {
 	}
 }
 
-func TestRunTestsTestSourceLexError(t *testing.T) {
+func TestRunTestsTestSourceParseError(t *testing.T) {
 	_, err := tln.RunTests(testRunnerRules, `test "x" { when rule`)
 	if err == nil {
 		t.Fatal("want error, got nil")
